@@ -1,0 +1,217 @@
+openapi: 3.1.0
+info:
+  title: Growth OS Plus Bridge
+  version: 1.0.0
+  description: Read pending Growth OS planning requests and write structured plans back to the app.
+servers:
+  - url: https://YOUR_VERCEL_DOMAIN
+security:
+  - bearerAuth: []
+paths:
+  /api/bridge/latest:
+    get:
+      operationId: getLatestGrowthPlanRequest
+      summary: Get the latest Growth OS planning request
+      description: Use this when the user asks to process the latest planning request and does not provide an id.
+      responses:
+        '200':
+          description: Latest planning request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestEnvelope'
+        '404':
+          description: No request exists
+  /api/bridge/get:
+    get:
+      operationId: getGrowthPlanRequest
+      summary: Get a Growth OS planning request by id
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Request id such as GROWTH-20260704-ABC123
+      responses:
+        '200':
+          description: Planning request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestEnvelope'
+        '404':
+          description: Request not found
+  /api/bridge/result:
+    post:
+      operationId: saveGrowthPlanResult
+      summary: Save a completed structured growth plan
+      description: Call this after generating the plan. Preserve the selected shell and core skills from the request.
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [id, plan]
+              properties:
+                id:
+                  type: string
+                summary:
+                  type: string
+                  description: A brief Chinese summary of the plan and major design decisions.
+                plan:
+                  $ref: '#/components/schemas/GrowthPlan'
+      responses:
+        '200':
+          description: Result saved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  id:
+                    type: string
+                  status:
+                    type: string
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    RequestEnvelope:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        request:
+          type: object
+          required: [id, status, context]
+          properties:
+            id:
+              type: string
+            status:
+              type: string
+            createdAt:
+              type: string
+            updatedAt:
+              type: string
+            context:
+              type: object
+              additionalProperties: true
+    GrowthPlan:
+      type: object
+      additionalProperties: false
+      required:
+        - title
+        - purpose
+        - shell
+        - realUser
+        - problem
+        - availableTime
+        - coreSkills
+        - supportSkills
+        - maintenanceSkills
+        - outputs
+        - materials
+        - safety
+        - rationale
+        - steps
+      properties:
+        title:
+          type: string
+        purpose:
+          type: string
+        shell:
+          type: string
+        realUser:
+          type: string
+        problem:
+          type: string
+        availableTime:
+          type: integer
+        coreSkills:
+          type: array
+          items:
+            type: string
+        supportSkills:
+          type: array
+          items:
+            type: string
+        maintenanceSkills:
+          type: array
+          items:
+            type: string
+        outputs:
+          type: array
+          items:
+            type: string
+        materials:
+          type: array
+          items:
+            type: string
+        safety:
+          type: string
+        rationale:
+          type: string
+        steps:
+          type: array
+          minItems: 6
+          maxItems: 8
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - phase
+              - title
+              - purpose
+              - child
+              - parent
+              - elder
+              - duration
+              - evidence
+              - standard
+              - skills
+              - skillTraining
+            properties:
+              phase:
+                type: string
+              title:
+                type: string
+              purpose:
+                type: string
+              child:
+                type: string
+              parent:
+                type: string
+              elder:
+                type: string
+              duration:
+                type: integer
+              evidence:
+                type: string
+              standard:
+                type: string
+              skills:
+                type: array
+                items:
+                  type: string
+              skillTraining:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [skill, role, action]
+                  properties:
+                    skill:
+                      type: string
+                    role:
+                      type: string
+                      enum: [核心训练, 重要支撑, 基础维护]
+                    action:
+                      type: string
