@@ -10,7 +10,7 @@
 <body>
 <div class="app">
 <header>
-  <div class="row between"><div><h1 id="pageTitle">成长OS</h1><div class="sub" id="pageSub">让每个真实任务都长出能力</div></div><span class="version">V2.2 · 动态编译修复</span></div>
+  <div class="row between"><div><h1 id="pageTitle">成长OS</h1><div class="sub" id="pageSub">让每个真实任务都长出能力</div></div><span class="version">V3 · AI双引擎</span></div>
 </header>
 
 <section id="home" class="page active">
@@ -59,7 +59,7 @@
   <div class="field"><label>3. 真实使用者</label><input id="realUser" value="妹妹和爷爷奶奶"/></div>
   <div class="field"><label>4. 家庭当前真实问题或期待</label><textarea id="realProblem">家里的科幻书比较多，希望家人可以快速找到，也希望孩子学会整理和维护。</textarea></div>
   <div class="field"><label>5. 每天可用时间</label><select id="availableTime"><option value="20">约20分钟</option><option value="35" selected>约35分钟</option><option value="60">约60分钟</option></select></div>
-  <button class="btn full" onclick="generateTask()">编译真实任务与完整工作流</button>
+  <button class="btn full" onclick="generateTask()">生成因材施教任务与完整工作流</button>
   <div id="generatedTask"></div>
 </section>
 
@@ -99,5 +99,6 @@
 </div>
 <div id="modal" class="modal" onclick="if(event.target===this)closeModal()"><div class="sheet" id="sheet"></div></div>
 <script src="app.js?v=2.2" defer></script>
+<script src="ai.js?v=3.0" defer></script>
 </body>
 </html>
