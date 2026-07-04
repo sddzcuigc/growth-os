@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" content="#5B67F1"/>
+<title>成长OS｜因材施教任务引擎</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+<header><h1 id="pageTitle">成长OS</h1><div class="sub" id="pageSub">让每个真实任务都长出能力</div></header>
+<section id="home" class="page active">
+  <div class="card hero"><div class="row between"><span class="pill" style="background:rgba(255,255,255,.18);color:#fff" id="childBadge">哥哥 · 9岁</span><span>本周</span></div><h2 id="currentTaskTitle" style="font-size:21px;margin:20px 0 8px"></h2><div id="taskProgressText" style="font-size:13px;margin-bottom:9px"></div><div class="progress" style="background:rgba(255,255,255,.28)"><div id="taskProgressBar" class="bar" style="width:0;background:#fff"></div></div></div>
+  <div class="section-title">今天最重要的一步</div><div class="card"><span class="pill green">真实结果</span><h3 id="todayStep" style="margin:13px 0 6px"></h3><div class="small">只推进这一小步，不额外增加无关任务。</div><div class="row" style="margin-top:14px"><button class="btn" onclick="go('workflow')">进入工作流</button><button class="btn ghost" onclick="openGuide()">家长怎么教</button></div></div>
+  <div class="section-title">本月优先成长</div><div class="card" id="homeSkills"></div>
+  <div class="grid2"><div class="card"><span class="pill orange">家长今晚</span><p class="strong">只示范最小样例</p><div class="small">不替孩子完成全部。</div></div><div class="card"><span class="pill green">老人白天</span><p class="strong">提醒一次</p><div class="small">不会或危险画★。</div></div></div>
+</section>
+<section id="profile" class="page"><div class="card"><div class="row"><div style="width:62px;height:62px;border-radius:50%;background:#dde1ff;display:grid;place-items:center;color:var(--primary);font-size:24px;font-weight:800">哥</div><div><h2 style="margin:0" id="profileName"></h2><div class="small" id="profileAge"></div></div></div></div><div class="section-title">兴趣与熟悉外壳</div><div class="card"><div id="profileInterests" class="row wrap"></div><button class="btn secondary" style="margin-top:12px" onclick="editProfile()">编辑画像</button></div><div class="section-title">当前成长重点</div><div id="profileFocus"></div><div class="section-title">家庭资源</div><div class="card"><div id="profileResources" class="small"></div></div></section>
+<section id="skills" class="page"><div class="notice">技能不是“学过”，而是从 0 未接触 → 5 能优化并教别人。每次升级都要有真实证据。</div><div class="section-title">未来能力簇</div><div class="card" id="professionSkills"></div><div class="section-title">基础与元能力</div><div class="card" id="skillList"></div></section>
+<section id="generator" class="page"><div class="field"><label>1. 选择孩子熟悉的项目外壳</label><div id="shellTags" class="row wrap"></div></div><div class="field"><label>2. 本次优先补强能力（最多3项）</label><div id="skillTags" class="row wrap"></div></div><div class="field"><label>3. 真实使用者</label><input id="realUser" value="妹妹和爷爷奶奶"/></div><div class="field"><label>4. 家庭当前真实问题或期待</label><textarea id="realProblem">家里的科幻书比较多，希望家人可以快速找到，也希望孩子学会整理和维护。</textarea></div><button class="btn" style="width:100%" onclick="generateTask()">生成真实任务与工作流</button><div id="generatedTask"></div></section>
+<section id="workflow" class="page"><div class="card"><span class="pill purple">真实委托</span><h2 id="wfTitle" style="font-size:20px"></h2><div class="small" id="wfPurpose"></div></div><div id="steps"></div><button class="btn green" style="width:100%" onclick="saveWorkflow()">保存今日进度</button></section>
+<section id="review" class="page"><div class="card"><div class="field"><label>今天的真实反馈</label><textarea id="fb">妹妹按目录没有找到漫画版《三体》。</textarea></div><div class="field"><label>事实总结</label><textarea id="sum">分类时把“系列”和“漫画/文字形式”混在了一起。</textarea></div><div class="field"><label>提炼出的最小方法</label><textarea id="abs">每次只使用一个主分类标准，其他特征作为标签。</textarea></div><div class="field"><label>下次直接应用</label><textarea id="apply">先按作者和系列分类，再标记漫画版或文字版。</textarea></div><div class="field"><label>举一反三：还能用于哪里</label><textarea id="transfer">衣柜分类、电脑文件夹、书包分区。</textarea></div><button class="btn" style="width:100%" onclick="saveReview()">保存复盘并生成技能升级建议</button></div><div id="reviewHistory"></div></section>
+<nav><button data-page="home" class="active" onclick="go('home')"><span>⌂</span>首页</button><button data-page="profile" onclick="go('profile')"><span>◎</span>画像</button><button data-page="skills" onclick="go('skills')"><span>◇</span>技能</button><button data-page="generator" onclick="go('generator')"><span>＋</span>任务</button><button data-page="review" onclick="go('review')"><span>✓</span>复盘</button></nav>
+</div>
+<div id="modal" class="modal" onclick="if(event.target===this)closeModal()"><div class="sheet" id="sheet"></div></div>
+<script src="app.js" defer></script>
+</body>
+</html>
