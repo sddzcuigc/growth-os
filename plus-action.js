@@ -1,5 +1,7 @@
 (() => {
   const BRIDGE_CONFIG_KEY = "growthOSPlusAction";
+  const ACTIVE_REQUEST_KEY = "growthOSPlusActionRequest";
+  const DEFAULT_BACKEND = "https://growth-os-ten-pearl.vercel.app";
   const previousRenderGenerator = renderGenerator;
   const previousGenerateTask = generateTask;
   let pollingTimer = null;
@@ -7,17 +9,23 @@
   function defaultBridgeConfig() {
     return {
       enabled: false,
-      backendBase: "",
+      backendBase: DEFAULT_BACKEND,
       bridgeKey: sessionStorage.getItem("growthOSBridgeKey") || "",
       customGptUrl: "https://chatgpt.com/",
-      autoOpen: true
+      autoOpen: true,
+      autoApply: true
     };
   }
 
   function loadBridgeConfig() {
     try {
       const saved = JSON.parse(localStorage.getItem(BRIDGE_CONFIG_KEY) || "null") || {};
-      return { ...defaultBridgeConfig(), ...saved, bridgeKey: sessionStorage.getItem("growthOSBridgeKey") || "" };
+      return {
+        ...defaultBridgeConfig(),
+        ...saved,
+        backendBase: saved.backendBase || DEFAULT_BACKEND,
+        bridgeKey: sessionStorage.getItem("growthOSBridgeKey") || ""
+      };
     } catch (error) {
       return defaultBridgeConfig();
     }
@@ -42,6 +50,45 @@
     return `${String(base || "").replace(/\/$/, "")}${path}`;
   }
 
+  function generateBridgeKey() {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    const base64 = btoa(String.fromCharCode(...bytes))
+      .replaceAll("+", "-")
+      .replaceAll("/", "_")
+      .replaceAll("=", "");
+    return `gos_${base64}`;
+  }
+
+  function healthSummary(data) {
+    if (data?.ready) return "桥接后端、访问码和Redis均已就绪";
+    const problems = [];
+    if (!data?.authConfigured) problems.push("Vercel未配置 GROWTH_OS_BRIDGE_KEY");
+    else if (data?.authValid === false) problems.push("当前访问码与Vercel不一致");
+    if (!data?.redisConfigured) problems.push("尚未连接Upstash Redis");
+    else if (!data?.redisReachable) problems.push(data?.redisError || "Redis无法连接");
+    return problems.join("；") || data?.error || "桥接尚未就绪";
+  }
+
+  async function fetchJson(url, options = {}) {
+    const response = await fetch(url, options);
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      throw new Error(`服务器返回了无法解析的内容（HTTP ${response.status}）`);
+    }
+    return { response, data };
+  }
+
+  async function checkBridgeHealth(config) {
+    const { response, data } = await fetchJson(joinUrl(config.backendBase, "/api/bridge/health"), {
+      headers: config.bridgeKey ? { "X-Growth-OS-Code": config.bridgeKey } : {}
+    });
+    if (!response.ok && !data) throw new Error(`健康检查失败：HTTP ${response.status}`);
+    return data;
+  }
+
   function injectBridgeCard() {
     const anchor = el("aiControlCard") || el("profileSignal");
     if (!anchor) return;
@@ -55,11 +102,16 @@
     }
 
     const config = loadBridgeConfig();
+    const hasKey = Boolean(config.bridgeKey);
+    const statusText = config.enabled
+      ? (hasKey ? "已启用，等待连接测试" : "已启用，但缺少访问码")
+      : "尚未启用";
+
     card.innerHTML = `
       <div class="row between">
         <div>
-          <span class="pill ${config.enabled ? "green" : "gray"}">Plus Action自动桥接</span>
-          <h3 style="margin-bottom:3px">${config.enabled ? "已启用" : "尚未启用"}</h3>
+          <span class="pill ${config.enabled && hasKey ? "green" : "gray"}">Plus Action自动桥接</span>
+          <h3 style="margin-bottom:3px">${escapeHtml(statusText)}</h3>
           <div class="small">发布请求、打开自定义GPT、等待Action写回并自动导入。</div>
         </div>
         <button type="button" class="btn ghost small-btn" id="openBridgeSettingsBtn">设置</button>
@@ -72,6 +124,49 @@
     injectBridgeCard();
   };
 
+  function formConfig() {
+    return {
+      enabled: Boolean(el("bridgeEnabledInput")?.checked),
+      backendBase: el("bridgeBackendInput")?.value.trim() || DEFAULT_BACKEND,
+      bridgeKey: el("bridgeKeyInput")?.value || "",
+      customGptUrl: el("customGptUrlInput")?.value.trim() || "https://chatgpt.com/",
+      autoOpen: Boolean(el("bridgeAutoOpenInput")?.checked),
+      autoApply: Boolean(el("bridgeAutoApplyInput")?.checked)
+    };
+  }
+
+  function renderHealthResult(data) {
+    const box = el("bridgeHealthResult");
+    if (!box) return;
+    const ready = Boolean(data?.ready);
+    box.innerHTML = `
+      <div class="notice">
+        <b>${ready ? "连接成功" : "尚未就绪"}</b><br>
+        ${escapeHtml(healthSummary(data))}<br>
+        <span class="small">认证：${data?.authConfigured ? (data?.authValid === false ? "访问码错误" : "已配置") : "未配置"}；Redis：${data?.redisReachable ? "已连接" : data?.redisConfigured ? "连接失败" : "未配置"}</span>
+      </div>`;
+  }
+
+  async function testBridgeFromSettings() {
+    const button = el("testBridgeBtn");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "正在测试…";
+    }
+    try {
+      const config = formConfig();
+      const data = await checkBridgeHealth(config);
+      renderHealthResult(data);
+    } catch (error) {
+      renderHealthResult({ ready: false, error: error.message });
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "测试连接";
+      }
+    }
+  }
+
   function openBridgeSettings() {
     const config = loadBridgeConfig();
     el("sheet").innerHTML = `
@@ -79,34 +174,44 @@
         <h2>Plus Action自动桥接</h2>
         <button type="button" class="btn ghost" id="closeBridgeSettingsBtn">关闭</button>
       </div>
-      <div class="notice">启用后，成长OS会把本次上下文保存到桥接后端。你只需在自定义GPT里发送一次任务编号，GPT会自动读取、生成并写回。</div>
+      <div class="notice">后端地址已经替你填写。现在只需配置Vercel访问码、Redis和自定义GPT。</div>
       <label class="checkline"><input type="checkbox" id="bridgeEnabledInput" ${config.enabled ? "checked" : ""}> 在Plus模式下启用自动桥接</label>
       <div class="field">
         <label>Vercel后端根地址</label>
-        <input id="bridgeBackendInput" value="${escapeHtml(config.backendBase)}" placeholder="https://你的项目.vercel.app">
+        <input id="bridgeBackendInput" value="${escapeHtml(config.backendBase)}" placeholder="${DEFAULT_BACKEND}">
       </div>
       <div class="field">
         <label>桥接访问码</label>
-        <input id="bridgeKeyInput" type="password" autocomplete="off" value="${escapeHtml(config.bridgeKey)}" placeholder="与 GROWTH_OS_BRIDGE_KEY 相同">
-        <div class="small">访问码仅保存在当前浏览器会话。</div>
+        <input id="bridgeKeyInput" type="password" autocomplete="off" value="${escapeHtml(config.bridgeKey)}" placeholder="与 GROWTH_OS_BRIDGE_KEY 完全相同">
+        <div class="small">访问码仅保存在当前浏览器会话，不写入GitHub。</div>
+        <button type="button" class="btn ghost full" id="generateBridgeKeyBtn" style="margin-top:8px">生成并复制安全访问码</button>
       </div>
       <div class="field">
         <label>你的自定义GPT地址</label>
         <input id="customGptUrlInput" value="${escapeHtml(config.customGptUrl)}" placeholder="https://chatgpt.com/g/g-...">
       </div>
       <label class="checkline"><input type="checkbox" id="bridgeAutoOpenInput" ${config.autoOpen ? "checked" : ""}> 创建任务后自动打开自定义GPT</label>
-      <button type="button" class="btn full" id="saveBridgeSettingsBtn">保存设置</button>`;
+      <label class="checkline"><input type="checkbox" id="bridgeAutoApplyInput" ${config.autoApply ? "checked" : ""}> GPT写回后自动采用方案并进入工作流</label>
+      <div class="grid2" style="margin-top:12px">
+        <button type="button" class="btn secondary" id="testBridgeBtn">测试连接</button>
+        <button type="button" class="btn" id="saveBridgeSettingsBtn">保存设置</button>
+      </div>
+      <div id="bridgeHealthResult" style="margin-top:10px"></div>`;
 
     el("modal").classList.add("open");
     el("closeBridgeSettingsBtn").onclick = closeModal;
-    el("saveBridgeSettingsBtn").onclick = () => {
-      saveBridgeConfig({
-        enabled: el("bridgeEnabledInput").checked,
-        backendBase: el("bridgeBackendInput").value.trim(),
-        bridgeKey: el("bridgeKeyInput").value,
-        customGptUrl: el("customGptUrlInput").value.trim() || "https://chatgpt.com/",
-        autoOpen: el("bridgeAutoOpenInput").checked
+    el("generateBridgeKeyBtn").onclick = async () => {
+      const key = generateBridgeKey();
+      el("bridgeKeyInput").value = key;
+      await copyText(key);
+      renderHealthResult({
+        ready: false,
+        error: "访问码已生成并复制。把它粘贴到Vercel的 GROWTH_OS_BRIDGE_KEY，再粘贴到自定义GPT Action的Bearer API Key。"
       });
+    };
+    el("testBridgeBtn").onclick = testBridgeFromSettings;
+    el("saveBridgeSettingsBtn").onclick = () => {
+      saveBridgeConfig(formConfig());
       closeModal();
       renderGenerator();
     };
@@ -156,12 +261,18 @@
     }
   }
 
+  function clone(value) {
+    return typeof structuredClone === "function"
+      ? structuredClone(value)
+      : JSON.parse(JSON.stringify(value));
+  }
+
   function normalizePlan(plan, context) {
     const selection = context.selection;
     const normalized = {
       ...plan,
       id: makeId(),
-      compilerVersion: "plus-action-bridge-v1",
+      compilerVersion: "plus-action-bridge-v1.1",
       generatedBy: "ChatGPT Plus Action",
       compiledAt: new Date().toISOString(),
       fingerprint: `PLUS-ACTION|${selection.shell}|${selection.coreSkills.join("+")}|${Date.now()}`,
@@ -195,7 +306,16 @@
     return normalized;
   }
 
-  function renderCompletedPlan(plan, summary) {
+  function applyPlan(plan) {
+    state.task = clone(plan);
+    save();
+    renderHome();
+  }
+
+  function renderCompletedPlan(plan, summary, config) {
+    localStorage.removeItem(ACTIVE_REQUEST_KEY);
+    if (config.autoApply) applyPlan(plan);
+
     el("generatedTask").innerHTML = `
       <div class="card">
         <span class="pill green">ChatGPT Plus Action已写回</span>
@@ -205,14 +325,17 @@
         ${summary ? `<div class="notice"><b>GPT摘要</b><br>${escapeHtml(summary)}</div>` : ""}
         ${plan.rationale ? `<div class="notice"><b>为什么这样设计</b><br>${escapeHtml(plan.rationale)}</div>` : ""}
         <p class="small"><b>交付：</b>${plan.outputs.map(escapeHtml).join("、")}<br><b>安全：</b>${escapeHtml(plan.safety || "遵守家庭安全边界")}</p>
-        <button id="useActionPlanBtn" type="button" class="btn green full">使用并进入工作流</button>
+        <button id="useActionPlanBtn" type="button" class="btn green full">${config.autoApply ? "已自动采用，进入工作流" : "使用并进入工作流"}</button>
       </div>`;
+
     el("useActionPlanBtn").onclick = () => {
-      state.task = typeof structuredClone === "function" ? structuredClone(plan) : JSON.parse(JSON.stringify(plan));
-      save();
-      renderHome();
+      if (!config.autoApply) applyPlan(plan);
       go("workflow");
     };
+
+    if (config.autoApply) {
+      setTimeout(() => go("workflow"), 900);
+    }
   }
 
   function renderWaiting(requestId, command, config) {
@@ -226,34 +349,35 @@
           <button type="button" class="btn secondary" id="copyBridgeCommandBtn">复制命令</button>
           <button type="button" class="btn ghost" id="openCustomGptBtn">打开自定义GPT</button>
         </div>
-        <button type="button" class="btn ghost full" id="cancelBridgePollingBtn" style="margin-top:10px">停止等待</button>
+        <button type="button" class="btn ghost full" id="cancelBridgePollingBtn" style="margin-top:10px">暂停查询</button>
       </div>`;
     el("copyBridgeCommandBtn").onclick = () => copyText(command).then(() => alert("任务命令已复制"));
     el("openCustomGptBtn").onclick = () => window.open(config.customGptUrl || "https://chatgpt.com/", "_blank", "noopener");
     el("cancelBridgePollingBtn").onclick = () => {
       if (pollingTimer) clearTimeout(pollingTimer);
       pollingTimer = null;
-      el("bridgePollingText").textContent = "已停止等待。请求仍保留，可以稍后继续查询。";
+      const text = el("bridgePollingText");
+      if (text) text.textContent = "已暂停查询。刷新页面后会自动继续等待。";
     };
   }
 
   async function pollResult(config, requestId, context, startedAt) {
-    if (Date.now() - startedAt > 15 * 60 * 1000) {
+    if (Date.now() - startedAt > 60 * 60 * 1000) {
       const text = el("bridgePollingText");
-      if (text) text.textContent = "等待超过15分钟。请求仍保留，可重新生成或稍后查询。";
+      if (text) text.textContent = "持续等待超过1小时。任务仍保留7天，可刷新页面继续查询。";
       return;
     }
 
     try {
-      const response = await fetch(joinUrl(config.backendBase, `/api/bridge/status?id=${encodeURIComponent(requestId)}`), {
-        headers: { "X-Growth-OS-Code": config.bridgeKey }
-      });
-      const data = await response.json();
+      const { response, data } = await fetchJson(
+        joinUrl(config.backendBase, `/api/bridge/status?id=${encodeURIComponent(requestId)}`),
+        { headers: { "X-Growth-OS-Code": config.bridgeKey } }
+      );
       if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
 
       if (data.status === "complete" && data.plan) {
         const plan = normalizePlan(data.plan, context);
-        renderCompletedPlan(plan, data.summary || "");
+        renderCompletedPlan(plan, data.summary || "", config);
         pollingTimer = null;
         return;
       }
@@ -271,8 +395,21 @@
   async function startBridge() {
     const config = loadBridgeConfig();
     if (!chosenSkills.length) return alert("至少选择1项核心培养技能");
-    if (!config.backendBase || !config.bridgeKey) {
+    if (!config.bridgeKey) {
       openBridgeSettings();
+      return;
+    }
+
+    el("generatedTask").innerHTML = `<div class="card"><span class="pill purple">正在检查桥接</span><h3>正在验证Vercel、访问码和Redis……</h3></div>`;
+
+    try {
+      const health = await checkBridgeHealth(config);
+      if (!health.ready || health.authValid === false) {
+        throw new Error(healthSummary(health));
+      }
+    } catch (error) {
+      el("generatedTask").innerHTML = `<div class="card"><span class="pill orange">桥接尚未就绪</span><h3>${escapeHtml(error.message)}</h3><button type="button" class="btn full" id="openBridgeFixBtn">打开桥接设置</button></div>`;
+      el("openBridgeFixBtn").onclick = openBridgeSettings;
       return;
     }
 
@@ -280,10 +417,10 @@
     let customGptWindow = null;
     if (config.autoOpen) customGptWindow = window.open("about:blank", "_blank");
 
-    el("generatedTask").innerHTML = `<div class="card"><span class="pill purple">正在发布请求</span><h3>正在把成长上下文发送到安全桥接后端……</h3></div>`;
+    el("generatedTask").innerHTML = `<div class="card"><span class="pill purple">正在发布请求</span><h3>正在把成长上下文发送到桥接后端……</h3></div>`;
 
     try {
-      const response = await fetch(joinUrl(config.backendBase, "/api/bridge/create"), {
+      const { response, data } = await fetchJson(joinUrl(config.backendBase, "/api/bridge/create"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -291,16 +428,41 @@
         },
         body: JSON.stringify({ context })
       });
-      const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+
+      const activeRequest = {
+        id: data.id,
+        command: data.command,
+        context,
+        startedAt: Date.now()
+      };
+      localStorage.setItem(ACTIVE_REQUEST_KEY, JSON.stringify(activeRequest));
 
       await copyText(data.command);
       if (customGptWindow) customGptWindow.location.href = config.customGptUrl || "https://chatgpt.com/";
       renderWaiting(data.id, data.command, config);
-      pollResult(config, data.id, context, Date.now());
+      pollResult(config, data.id, context, activeRequest.startedAt);
     } catch (error) {
       if (customGptWindow) customGptWindow.close();
-      el("generatedTask").innerHTML = `<div class="card"><span class="pill orange">桥接失败</span><h3>${escapeHtml(error.message)}</h3><div class="small">检查Vercel地址、桥接访问码和Redis环境变量。</div></div>`;
+      el("generatedTask").innerHTML = `<div class="card"><span class="pill orange">桥接失败</span><h3>${escapeHtml(error.message)}</h3><div class="small">打开桥接设置并重新测试连接。</div></div>`;
+    }
+  }
+
+  function resumePendingBridge() {
+    const config = loadBridgeConfig();
+    if (!config.enabled || loadAiMode() !== "plus" || !config.bridgeKey) return;
+
+    try {
+      const pending = JSON.parse(localStorage.getItem(ACTIVE_REQUEST_KEY) || "null");
+      if (!pending?.id || !pending?.context) return;
+      if (Date.now() - Number(pending.startedAt || 0) > 7 * 24 * 60 * 60 * 1000) {
+        localStorage.removeItem(ACTIVE_REQUEST_KEY);
+        return;
+      }
+      renderWaiting(pending.id, pending.command || `处理成长规划任务 ${pending.id}`, config);
+      pollResult(config, pending.id, pending.context, Date.now());
+    } catch (error) {
+      console.warn("无法恢复Plus Action任务", error);
     }
   }
 
@@ -312,5 +474,8 @@
     return previousGenerateTask();
   };
 
-  window.addEventListener("DOMContentLoaded", injectBridgeCard);
+  window.addEventListener("DOMContentLoaded", () => {
+    injectBridgeCard();
+    resumePendingBridge();
+  });
 })();
