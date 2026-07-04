@@ -2,89 +2,105 @@
 
 一个以“孩子画像 → 技能树 → 真实项目外壳 → 工作流 → 证据反馈 → 迁移升级”为核心的因材施教移动端网页。
 
-## 当前版本：V4 Plus与多模型
+## 当前版本：V4.1 Plus Action自动桥接
 
-成长OS保留四种运行方式：
+成长OS保留五种运行方式：
 
-1. **ChatGPT Plus桥接**
-   - 由前端生成完整规划请求。
-   - 打开你自己的ChatGPT或自定义GPT。
-   - 发送请求后，将返回的JSON粘贴回成长OS。
-   - 不消耗API模型额度，但需要手动发送和粘贴一次。
+1. ChatGPT Plus手工桥接
+2. ChatGPT Plus自定义GPT Action自动桥接
+3. 多供应商API
+4. 本地Ollama
+5. 动态模板回退
 
-2. **多供应商API**
-   - OpenAI
-   - DeepSeek
-   - Kimi / Moonshot
-   - 智谱GLM
-   - GPUStack
-   - 其他OpenAI兼容接口
+## Plus Action自动桥接的真实流程
 
-3. **本地Ollama**
-   - 直接调用本机或局域网中的Ollama。
-   - 不上传孩子上下文到云端模型。
+成长OS不能代替用户在ChatGPT界面自动发送消息。当前最自动化的官方方式是：
 
-4. **模板回退**
-   - API或Ollama失败时可自动使用本地动态模板编译器。
+1. 成长OS创建规划请求并复制任务编号。
+2. 自动打开用户自己的自定义GPT。
+3. 用户发送一句“处理成长规划任务 <编号>”。
+4. 自定义GPT通过Action读取完整孩子上下文。
+5. GPT完成规划后通过Action把JSON写回桥接后端。
+6. 成长OS持续轮询，收到结果后自动展示并导入。
 
-## Plus桥接使用方法
+## Vercel桥接后端环境变量
 
-1. 打开成长OS的“任务”页面。
-2. 在“AI内核设置”中选择“ChatGPT Plus桥接”。
-3. 选择项目外壳、核心技能、真实使用者、家庭问题和时间。
-4. 点击“生成因材施教任务与完整工作流”。
-5. 点击“复制请求”和“打开ChatGPT”。
-6. 将请求发送给ChatGPT。
-7. 将ChatGPT返回的JSON粘贴回成长OS。
-8. 点击“导入Plus生成的方案”。
+必须配置：
+
+- `GROWTH_OS_BRIDGE_KEY`：自定义的长随机访问码；同时用于成长OS前端和自定义GPT Action认证
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
+- `ALLOWED_ORIGINS`：例如 `https://sddzcuigc.github.io,https://你的项目.vercel.app`
+
+可在Vercel Marketplace给项目安装Upstash Redis，或在Upstash控制台创建数据库后复制REST URL和Token。
+
+## 自定义GPT Action配置
+
+仓库包含两个配置文件：
+
+- `custom-gpt-instructions.md`：粘贴到自定义GPT的Instructions
+- `gpt-action-openapi.yaml`：粘贴到Actions的Schema
+
+配置步骤：
+
+1. 创建一个自定义GPT，名称建议“成长OS因材施教规划师”。
+2. 将 `custom-gpt-instructions.md` 的全部内容复制到Instructions。
+3. 在Configure中添加Action。
+4. 将 `gpt-action-openapi.yaml` 里的 `https://YOUR_VERCEL_DOMAIN` 替换成实际Vercel域名。
+5. 把替换后的YAML粘贴到Action Schema。
+6. Authentication选择API Key。
+7. Auth Type选择Bearer。
+8. API Key填写与Vercel环境变量 `GROWTH_OS_BRIDGE_KEY` 完全相同的值。
+9. 用Action测试按钮测试：
+   - `getLatestGrowthPlanRequest`
+   - `getGrowthPlanRequest`
+   - `saveGrowthPlanResult`
+10. 保存自定义GPT，仅限自己使用即可。
+
+## 成长OS前端配置
+
+1. 刷新成长OS，确认顶部显示 `V4.1 · Plus Action`。
+2. 打开“任务”。
+3. AI内核选择 `ChatGPT Plus桥接`。
+4. 打开“Plus Action自动桥接”设置。
+5. 填写：
+   - Vercel后端根地址，例如 `https://growth-os.vercel.app`
+   - 桥接访问码，与 `GROWTH_OS_BRIDGE_KEY` 相同
+   - 自定义GPT地址
+6. 勾选“在Plus模式下启用自动桥接”。
+7. 选择任务参数并点击生成。
+
+## 桥接API
+
+- `POST /api/bridge/create`：成长OS创建规划请求
+- `GET /api/bridge/get?id=...`：自定义GPT按编号读取请求
+- `GET /api/bridge/latest`：自定义GPT读取最新请求
+- `POST /api/bridge/result`：自定义GPT写回方案
+- `GET /api/bridge/status?id=...`：成长OS轮询结果
+
+请求默认保存7天。
 
 ## 多供应商后端
 
 云端API密钥不能写入GitHub Pages前端，必须放在Vercel等服务端环境变量中。
 
-公共环境变量：
+供应商支持：
 
-- `GROWTH_OS_ACCESS_CODE`
-- `ALLOWED_ORIGINS`
-
-供应商变量：
-
-### OpenAI
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL`，默认 `gpt-5-mini`
-
-### DeepSeek
-- `DEEPSEEK_API_KEY`
-- `DEEPSEEK_MODEL`，默认 `deepseek-chat`
-- `DEEPSEEK_BASE_URL`，可选
-
-### Kimi / Moonshot
-- `MOONSHOT_API_KEY`
-- `KIMI_MODEL`
-- `KIMI_BASE_URL`，可选
-
-### 智谱GLM
-- `ZHIPU_API_KEY`
-- `GLM_MODEL`
-- `GLM_BASE_URL`，可选
-
-### GPUStack
-- `GPUSTACK_BASE_URL`
-- `GPUSTACK_MODEL`
-- `GPUSTACK_API_KEY`，按部署情况填写
-
-### 其他OpenAI兼容接口
-- `CUSTOM_OPENAI_BASE_URL`
-- `CUSTOM_OPENAI_MODEL`
-- `CUSTOM_OPENAI_API_KEY`
+- OpenAI
+- DeepSeek
+- Kimi / Moonshot
+- 智谱GLM
+- GPUStack
+- 其他OpenAI兼容接口
 
 ## 安全设计
 
-- 云端模型密钥只放在服务端环境变量中。
-- 个人访问码只保存在当前浏览器会话，不长期写入本地存储。
 - Plus桥接不会读取或转发ChatGPT Cookie、登录令牌。
-- AI失败时可以自动回退模板。
+- Action通过Bearer API Key访问桥接后端。
+- 云端模型密钥只放在服务端环境变量中。
+- 桥接访问码只保存在当前浏览器会话。
 - 孩子画像、任务和进度默认保存在浏览器本地。
+- 桥接请求7天自动过期。
 
 ## 页面地址
 
