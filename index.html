@@ -4,14 +4,14 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <meta name="theme-color" content="#5B67F1"/>
-<title>成长OS｜先理解孩子，再规划成长</title>
+<title>成长OS｜多情境理解孩子，再规划成长</title>
 <link rel="stylesheet" href="styles.css">
-<link rel="stylesheet" href="discovery-v2.css?v=2.0">
+<link rel="stylesheet" href="discovery-v3.css?v=3.0">
 </head>
 <body>
 <div class="app">
 <header>
-  <div class="row between"><div><h1 id="pageTitle">聊孩子</h1><div class="sub" id="pageSub">先理解，再判断，再培养</div></div><span class="version">V5.0 · 对话发现</span></div>
+  <div class="row between"><div><h1 id="pageTitle">全面了解</h1><div class="sub" id="pageSub">多选行为观察，而不是单选性格测试</div></div><span class="version">V5.1 · 结构化访谈</span></div>
 </header>
 
 <section id="home" class="page active">
@@ -55,12 +55,12 @@
 
 <section id="generator" class="page">
   <div class="card profile-signal" id="profileSignal"></div>
-  <div class="field"><label>1. 选择孩子熟悉的项目外壳</label><div id="shellTags" class="row wrap"></div></div>
-  <div class="field"><label>2. 本次核心补强能力（最多3项）</label><div id="skillTags" class="row wrap"></div></div>
-  <div class="field"><label>3. 真实使用者</label><input id="realUser" value="妹妹和爷爷奶奶"/></div>
-  <div class="field"><label>4. 家庭当前真实问题或期待</label><textarea id="realProblem">家里的科幻书比较多，希望家人可以快速找到，也希望孩子学会整理和维护。</textarea></div>
-  <div class="field"><label>5. 每天可用时间</label><select id="availableTime"><option value="20">约20分钟</option><option value="35" selected>约35分钟</option><option value="60">约60分钟</option></select></div>
-  <button class="btn full" onclick="generateTask()">生成因材施教任务与完整工作流</button>
+  <div class="field"><label>选择孩子熟悉的项目外壳</label><div id="shellTags" class="row wrap"></div></div>
+  <div class="field"><label>核心补强能力（最多3项）</label><div id="skillTags" class="row wrap"></div></div>
+  <div class="field"><label>真实使用者</label><input id="realUser" value="家人"/></div>
+  <div class="field"><label>当前真实问题</label><textarea id="realProblem"></textarea></div>
+  <div class="field"><label>每天可用时间</label><select id="availableTime"><option value="20">约20分钟</option><option value="35" selected>约35分钟</option><option value="60">约60分钟</option></select></div>
+  <button class="btn full" onclick="generateTask()">生成完整工作流</button>
   <div id="generatedTask"></div>
 </section>
 
@@ -91,7 +91,7 @@
 </section>
 
 <nav>
-<button data-page="home" class="active" onclick="go('home')"><span>◌</span>聊孩子</button>
+<button data-page="home" class="active" onclick="go('home')"><span>◌</span>了解</button>
 <button data-page="profile" onclick="go('profile')"><span>◎</span>发现</button>
 <button data-page="skills" onclick="go('skills')"><span>◇</span>路线</button>
 <button data-page="generator" onclick="go('generator')"><span>＋</span>项目</button>
@@ -103,7 +103,6 @@
 <script src="kernel-v3.js?v=3.0" defer></script>
 <script src="ai-v4.js?v=4.0" defer></script>
 <script src="plus-action.js?v=1.1" defer></script>
-<script src="discovery-v2.js?v=2.0" defer></script>
-<script src="discovery-v2-fix.js?v=1.0" defer></script>
+<script src="discovery-v3.js?v=3.0" defer></script>
 </body>
 </html>
