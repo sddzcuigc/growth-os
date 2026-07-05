@@ -4,14 +4,32 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <meta name="theme-color" content="#5B67F1"/>
-<title>成长OS｜多情境理解孩子，再规划成长</title>
+<title>成长OS｜双孩AI语音成长系统</title>
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="discovery-v3.css?v=3.0">
+<link rel="stylesheet" href="family-ai.css?v=1.0">
+<script>
+try {
+  if (!localStorage.getItem('growthOSFamilyV1')) {
+    const legacy = {
+      state: localStorage.getItem('growthOS'),
+      assessment: localStorage.getItem('growthOSDiscoveryV3'),
+      savedAt: new Date().toISOString()
+    };
+    localStorage.setItem('growthOSLegacyBeforeFamily', JSON.stringify(legacy));
+    localStorage.removeItem('growthOS');
+    localStorage.removeItem('growthOSDiscoveryV3');
+  }
+} catch (error) {
+  console.warn('无法准备双孩样例数据', error);
+}
+</script>
+<script src="family-bootstrap.js?v=1.0"></script>
 </head>
 <body>
 <div class="app">
 <header>
-  <div class="row between"><div><h1 id="pageTitle">全面了解</h1><div class="sub" id="pageSub">多选行为观察，而不是单选性格测试</div></div><span class="version">V5.1 · 结构化访谈</span></div>
+  <div class="row between"><div><h1 id="pageTitle">全面了解</h1><div class="sub" id="pageSub">语音描述，多情境理解两个孩子</div></div><span class="version">V5.2 · 双孩AI语音</span></div>
 </header>
 
 <section id="home" class="page active">
@@ -104,5 +122,6 @@
 <script src="ai-v4.js?v=4.0" defer></script>
 <script src="plus-action.js?v=1.1" defer></script>
 <script src="discovery-v3.js?v=3.0" defer></script>
+<script src="family-ai.js?v=1.0" defer></script>
 </body>
 </html>
