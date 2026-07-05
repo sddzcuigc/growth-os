@@ -4,13 +4,14 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <meta name="theme-color" content="#5B67F1"/>
-<title>成长OS｜因材施教任务引擎</title>
+<title>成长OS｜先理解孩子，再规划成长</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="discovery-v2.css?v=2.0">
 </head>
 <body>
 <div class="app">
 <header>
-  <div class="row between"><div><h1 id="pageTitle">成长OS</h1><div class="sub" id="pageSub">让每个真实任务都长出能力</div></div><span class="version">V4.3 · 决策内核</span></div>
+  <div class="row between"><div><h1 id="pageTitle">聊孩子</h1><div class="sub" id="pageSub">先理解，再判断，再培养</div></div><span class="version">V5.0 · 对话发现</span></div>
 </header>
 
 <section id="home" class="page active">
@@ -90,11 +91,11 @@
 </section>
 
 <nav>
-<button data-page="home" class="active" onclick="go('home')"><span>⌂</span>首页</button>
-<button data-page="profile" onclick="go('profile')"><span>◎</span>画像</button>
-<button data-page="skills" onclick="go('skills')"><span>◇</span>技能</button>
-<button data-page="generator" onclick="go('generator')"><span>＋</span>任务</button>
-<button data-page="review" onclick="go('review')"><span>✓</span>复盘</button>
+<button data-page="home" class="active" onclick="go('home')"><span>◌</span>聊孩子</button>
+<button data-page="profile" onclick="go('profile')"><span>◎</span>发现</button>
+<button data-page="skills" onclick="go('skills')"><span>◇</span>路线</button>
+<button data-page="generator" onclick="go('generator')"><span>＋</span>项目</button>
+<button data-page="workflow" onclick="go('workflow')"><span>✓</span>执行</button>
 </nav>
 </div>
 <div id="modal" class="modal" onclick="if(event.target===this)closeModal()"><div class="sheet" id="sheet"></div></div>
@@ -102,5 +103,6 @@
 <script src="kernel-v3.js?v=3.0" defer></script>
 <script src="ai-v4.js?v=4.0" defer></script>
 <script src="plus-action.js?v=1.1" defer></script>
+<script src="discovery-v2.js?v=2.0" defer></script>
 </body>
 </html>
