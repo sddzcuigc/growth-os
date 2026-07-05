@@ -32,6 +32,7 @@ const PROVIDERS = {
   deepseek: { kind: "chat", keyEnv: "DEEPSEEK_API_KEY", modelEnv: "DEEPSEEK_MODEL", defaultModel: "deepseek-chat", baseEnv: "DEEPSEEK_BASE_URL", defaultBase: "https://api.deepseek.com" },
   kimi: { kind: "chat", keyEnv: "MOONSHOT_API_KEY", modelEnv: "KIMI_MODEL", baseEnv: "KIMI_BASE_URL", defaultBase: "https://api.moonshot.cn/v1" },
   glm: { kind: "chat", keyEnv: "ZHIPU_API_KEY", modelEnv: "GLM_MODEL", baseEnv: "GLM_BASE_URL", defaultBase: "https://open.bigmodel.cn/api/paas/v4" },
+  siliconflow: { kind: "chat", keyEnv: "SILICONFLOW_API_KEY", modelEnv: "SILICONFLOW_MODEL", defaultModel: "deepseek-ai/DeepSeek-V4-Flash", baseEnv: "SILICONFLOW_BASE_URL", defaultBase: "https://api.siliconflow.cn/v1" },
   gpustack: { kind: "chat", keyEnv: "GPUSTACK_API_KEY", modelEnv: "GPUSTACK_MODEL", baseEnv: "GPUSTACK_BASE_URL" },
   custom: { kind: "chat", keyEnv: "CUSTOM_OPENAI_API_KEY", modelEnv: "CUSTOM_OPENAI_MODEL", baseEnv: "CUSTOM_OPENAI_BASE_URL" }
 };
