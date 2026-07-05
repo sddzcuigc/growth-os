@@ -2,7 +2,7 @@
   const previousRenderHome = window.renderHome;
   const previousGo = window.go;
   const MODE_KEY = "growthOSV6HomeMode";
-  const REFERENCE = "data:image/webp;base64," + (window.MC6_REFERENCE || "");
+  const REFERENCE = "growth-os-v6.svg?v=1";
 
   function byId(id) { return document.getElementById(id); }
   function activeChild() {
