@@ -4,7 +4,7 @@
   const initialHome = document.getElementById("home");
   const legacyHomeMarkup = initialHome ? initialHome.innerHTML : "";
   const MODE_KEY = "growthOSV6HomeMode";
-  const REFERENCE = "growth-os-v6.svg?v=6.3";
+  const REFERENCE = "growth-os-v6.svg?v=6.4";
 
   function byId(id) { return document.getElementById(id); }
   function activeChild() {
@@ -158,6 +158,14 @@
   }
 
   window.renderHome = function growthOSV6Home() {
+    const home = byId("home");
+    const userIsOnHome = Boolean(home?.classList.contains("active"));
+    const dashboardIsVisible = document.body.classList.contains("mc6-mode");
+
+    // app.js 会在勾选任务、升级技能时调用 renderHome() 刷新后台数据。
+    // 用户不在首页时不得抢走当前页面，也不得打开访谈页。
+    if (!userIsOnHome && !dashboardIsVisible) return;
+
     if (sessionStorage.getItem(MODE_KEY) === "detail") openDetailedInterview();
     else renderDashboard();
   };
