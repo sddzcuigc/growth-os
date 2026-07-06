@@ -4,7 +4,7 @@
   const initialHome = document.getElementById("home");
   const legacyHomeMarkup = initialHome ? initialHome.innerHTML : "";
   const MODE_KEY = "growthOSV6HomeMode";
-  const REFERENCE = "growth-os-v6.svg?v=6.4";
+  const REFERENCE = window.GROWTH_OS_RENDER || "growth-os-v6.svg?v=6.5";
 
   function byId(id) { return document.getElementById(id); }
   function activeChild() {
@@ -29,12 +29,8 @@
     const current = steps.find(step => !step.done) || steps[steps.length - 1] || { title: "阅读 30 分钟" };
     return {
       title: current.title || task.title || "阅读 30 分钟",
-      desc: Array.isArray(task.coreSkills) && task.coreSkills.length
-        ? `培养${task.coreSkills.slice(0, 2).join("与")}`
-        : "培养专注力与理解力",
       done,
-      total,
-      percent: Math.max(8, Math.round(done / total * 100))
+      total
     };
   }
 
@@ -76,7 +72,7 @@
     home.innerHTML = `
       <main class="mc6-shell" aria-label="成长OS方块世界首页">
         <div class="mc6-canvas">
-          <img class="mc6-reference" src="${REFERENCE}" alt="成长OS方块世界首页视觉" draggable="false" />
+          <img class="mc6-reference" src="${REFERENCE}" alt="成长OS方块世界首页" draggable="false" />
           <button type="button" class="mc6-hotspot mc6-settings" aria-label="打开设置"></button>
           <button type="button" class="mc6-hotspot mc6-child mc6-child-brother ${activeId === "brother" ? "is-active" : ""}" data-child="brother" aria-label="切换到哥哥"></button>
           <button type="button" class="mc6-hotspot mc6-child mc6-child-sister ${activeId === "sister" ? "is-active" : ""}" data-child="sister" aria-label="切换到妹妹"></button>
@@ -90,11 +86,6 @@
           <button type="button" class="mc6-hotspot mc6-nav mc6-nav-3" data-target="skills" aria-label="路线"></button>
           <button type="button" class="mc6-hotspot mc6-nav mc6-nav-4" data-target="generator" aria-label="项目"></button>
           <button type="button" class="mc6-hotspot mc6-nav mc6-nav-5" data-target="workflow" aria-label="执行"></button>
-          <section class="mc6-live-task" aria-label="当前真实任务">
-            <div class="mc6-live-title">${safeText(task.title)}</div>
-            <div class="mc6-live-desc">${safeText(task.desc)}</div>
-            <div class="mc6-live-progress"><i style="width:${task.percent}%"></i><span>${task.done} / ${task.total} 步</span></div>
-          </section>
           <div class="mc6-screen-reader" aria-live="polite">当前孩子：${safeText(child?.name || "哥哥")}；当前任务：${safeText(task.title)}；完成 ${task.done} / ${task.total} 步。</div>
         </div>
       </main>`;
@@ -162,8 +153,6 @@
     const userIsOnHome = Boolean(home?.classList.contains("active"));
     const dashboardIsVisible = document.body.classList.contains("mc6-mode");
 
-    // app.js 会在勾选任务、升级技能时调用 renderHome() 刷新后台数据。
-    // 用户不在首页时不得抢走当前页面，也不得打开访谈页。
     if (!userIsOnHome && !dashboardIsVisible) return;
 
     if (sessionStorage.getItem(MODE_KEY) === "detail") openDetailedInterview();
