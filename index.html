@@ -4,12 +4,15 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <meta name="theme-color" content="#65ad22"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<meta http-equiv="Pragma" content="no-cache"/>
+<meta http-equiv="Expires" content="0"/>
 <title>成长OS｜方块世界双孩AI成长系统</title>
-<link rel="stylesheet" href="styles.css">
-<link rel="stylesheet" href="discovery-v3.css?v=3.0">
-<link rel="stylesheet" href="family-ai.css?v=1.0">
-<link rel="stylesheet" href="minecraft-theme.css?v=1.0">
-<link rel="stylesheet" href="minecraft-v6.css?v=6.0">
+<link rel="stylesheet" href="styles.css?v=6.2">
+<link rel="stylesheet" href="discovery-v3.css?v=6.2">
+<link rel="stylesheet" href="family-ai.css?v=6.2">
+<link rel="stylesheet" href="minecraft-theme.css?v=6.2">
+<link rel="stylesheet" href="minecraft-v6.css?v=6.2">
 <script>
 try {
   if (!localStorage.getItem('growthOSFamilyV1')) {
@@ -26,12 +29,12 @@ try {
   console.warn('无法准备双孩样例数据', error);
 }
 </script>
-<script src="family-bootstrap.js?v=1.0"></script>
+<script src="family-bootstrap.js?v=6.2"></script>
 </head>
 <body>
 <div class="app">
 <header>
-  <div class="row between"><div><h1 id="pageTitle">全面了解</h1><div class="sub" id="pageSub">语音描述，多情境理解两个孩子</div></div><span class="version">V6.0 · 高保真方块世界</span></div>
+  <div class="row between"><div><h1 id="pageTitle">全面了解</h1><div class="sub" id="pageSub">语音描述，多情境理解两个孩子</div></div><span class="version">V6.2 · 稳定交互版</span></div>
 </header>
 
 <section id="home" class="page active">
@@ -96,9 +99,9 @@ try {
     <div class="field"><label>证据类型</label><select id="evidenceType"><option value="">请选择</option><option>照片/作品</option><option>视频/语音讲解</option><option>数据记录</option><option>真实用户反馈</option><option>家长观察记录</option></select></div>
     <div class="field"><label>独立程度</label><select id="independence"><option value="0">0 成人基本代办</option><option value="1">1 多次提示后完成</option><option value="2" selected>2 少量提示，主要自己完成</option><option value="3">3 独立完成并主动修正</option></select></div>
     <div class="check-grid">
-      <label><input type="checkbox" id="userTest"> 有真实使用者测试</label>
-      <label><input type="checkbox" id="revised"> 根据反馈至少修改一次</label>
-      <label><input type="checkbox" id="taught"> 已经教给别人或带别人完成</label>
+      <label><input type="checkbox" id="userTest"/> 有真实使用者测试</label>
+      <label><input type="checkbox" id="revised"/> 根据反馈至少修改一次</label>
+      <label><input type="checkbox" id="taught"/> 已经教给别人或带别人完成</label>
     </div>
     <div class="field"><label>今天的真实反馈</label><textarea id="fb" placeholder="谁用了？哪里不方便？发生了什么？"></textarea></div>
     <div class="field"><label>事实总结</label><textarea id="sum" placeholder="我做了什么？最难的步骤是什么？结果怎样？"></textarea></div>
@@ -119,13 +122,13 @@ try {
 </nav>
 </div>
 <div id="modal" class="modal" onclick="if(event.target===this)closeModal()"><div class="sheet" id="sheet"></div></div>
-<script src="app.js?v=2.2" defer></script>
-<script src="kernel-v3.js?v=3.0" defer></script>
-<script src="ai-v4.js?v=4.1" defer></script>
-<script src="plus-action.js?v=1.1" defer></script>
-<script src="discovery-v3.js?v=3.0" defer></script>
-<script src="family-ai.js?v=1.0" defer></script>
-<script src="minecraft-theme.js?v=1.0" defer></script>
-<script src="minecraft-v6.js?v=6.0" defer></script>
+<script src="app.js?v=6.2" defer></script>
+<script src="kernel-v3.js?v=6.2" defer></script>
+<script src="ai-v4.js?v=6.2" defer></script>
+<script src="plus-action.js?v=6.2" defer></script>
+<script src="discovery-v3.js?v=6.2" defer></script>
+<script src="family-ai.js?v=6.2" defer></script>
+<script src="minecraft-theme.js?v=6.2" defer></script>
+<script src="minecraft-v6.js?v=6.2" defer></script>
 </body>
 </html>
