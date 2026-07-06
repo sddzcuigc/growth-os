@@ -1,21 +1,28 @@
 (() => {
   const legacyRenderHome = typeof window.renderHome === "function" ? window.renderHome : null;
   const legacyGo = typeof window.go === "function" ? window.go : null;
+  const initialHome = document.getElementById("home");
+  const legacyHomeMarkup = initialHome ? initialHome.innerHTML : "";
   const MODE_KEY = "growthOSV6HomeMode";
-  const REFERENCE = "growth-os-v6.svg?v=6.2";
+  const REFERENCE = "growth-os-v6.svg?v=6.3";
 
   function byId(id) { return document.getElementById(id); }
   function activeChild() {
     try { return window.GrowthFamily?.getActiveChild?.() || null; } catch { return null; }
   }
+  function appState() {
+    try {
+      if (typeof state !== "undefined") return state;
+    } catch {}
+    return window.state || null;
+  }
   function safeText(value, fallback = "") {
     const text = String(value ?? fallback);
-    return typeof window.escapeHtml === "function"
-      ? window.escapeHtml(text)
-      : text.replace(/[&<>"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char]));
+    return text.replace(/[&<>"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char]));
   }
   function taskInfo() {
-    const task = window.state?.task || {};
+    const currentState = appState();
+    const task = currentState?.task || {};
     const steps = Array.isArray(task.steps) ? task.steps : [];
     const done = steps.filter(step => step.done).length;
     const total = Math.max(1, steps.length);
@@ -114,19 +121,30 @@
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }
 
+  function restoreLegacyHome() {
+    const home = byId("home");
+    if (!home) return null;
+    home.innerHTML = legacyHomeMarkup;
+    return home;
+  }
+
   function openDetailedInterview() {
     document.body.classList.remove("mc6-mode");
     sessionStorage.setItem(MODE_KEY, "detail");
 
-    if (legacyRenderHome) legacyRenderHome();
-    const home = byId("home");
+    const home = restoreLegacyHome();
     if (!home) return;
 
     document.querySelectorAll(".page").forEach(node => node.classList.remove("active"));
     home.classList.add("active");
 
-    const existingBack = home.querySelector(".mc6-detail-back");
-    if (!existingBack) {
+    try {
+      legacyRenderHome?.();
+    } catch (error) {
+      console.error("恢复AI访谈页失败", error);
+    }
+
+    if (!home.querySelector(".mc6-detail-back")) {
       const back = document.createElement("button");
       back.type = "button";
       back.className = "mc6-detail-back";
