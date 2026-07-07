@@ -5,8 +5,7 @@
   const legacyHomeMarkup = initialHome ? initialHome.innerHTML : "";
   const ROUTE_KEY = "growthOSV6Route";
   const VALID_PAGES = new Set(["home", "profile", "skills", "generator", "workflow", "review"]);
-  const REFERENCE = window.GROWTH_OS_RENDER || "growth-os-v6.svg?v=6.6";
-  let transitionLocked = false;
+  const REFERENCE = window.GROWTH_OS_RENDER || "growth-os-v6.svg?v=6.7";
 
   function byId(id) { return document.getElementById(id); }
   function activeChild() {
@@ -49,16 +48,6 @@
     window.GrowthThemeRefresh?.();
   }
 
-  function withTransition(action) {
-    if (transitionLocked) return;
-    transitionLocked = true;
-    try {
-      action();
-    } finally {
-      setTimeout(() => { transitionLocked = false; }, 120);
-    }
-  }
-
   function showLegacyPage(page) {
     if (!VALID_PAGES.has(page) || page === "home") {
       renderDashboard();
@@ -79,10 +68,8 @@
   }
 
   function navigate(page) {
-    withTransition(() => {
-      if (page === "home") renderDashboard();
-      else showLegacyPage(page);
-    });
+    if (page === "home") renderDashboard();
+    else showLegacyPage(page);
   }
 
   function renderDashboard() {
@@ -131,7 +118,7 @@
     home.querySelector(".mc6-mic")?.addEventListener("click", event => {
       event.preventDefault();
       event.stopPropagation();
-      withTransition(openDetailedInterview);
+      openDetailedInterview();
     });
 
     home.querySelectorAll("[data-child]").forEach(button => {
