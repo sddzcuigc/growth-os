@@ -11,7 +11,7 @@
       "mc6Mode": true,
       "activeChild": "brother",
       "modalOpen": false,
-      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
       "version": "V6.6 · 稳定导航版"
     },
     {
@@ -23,7 +23,7 @@
       "mc6Mode": true,
       "activeChild": "brother",
       "modalOpen": true,
-      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
       "version": "V6.6 · 稳定导航版"
     },
     {
@@ -35,7 +35,7 @@
       "mc6Mode": false,
       "activeChild": "brother",
       "modalOpen": false,
-      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
       "version": "V6.6 · 稳定导航版"
     },
     {
@@ -47,7 +47,7 @@
       "mc6Mode": false,
       "activeChild": "brother",
       "modalOpen": false,
-      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
       "version": "V6.6 · 稳定导航版"
     },
     {
@@ -59,7 +59,7 @@
       "mc6Mode": false,
       "activeChild": "brother",
       "modalOpen": false,
-      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
       "version": "V6.6 · 稳定导航版"
     },
     {
@@ -71,7 +71,7 @@
       "mc6Mode": true,
       "activeChild": "brother",
       "modalOpen": false,
-      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
       "version": "V6.6 · 稳定导航版"
     },
     {
@@ -83,7 +83,7 @@
       "mc6Mode": false,
       "activeChild": "brother",
       "modalOpen": false,
-      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
       "version": "V6.6 · 稳定导航版"
     },
     {
@@ -95,7 +95,7 @@
       "mc6Mode": false,
       "activeChild": "brother",
       "modalOpen": false,
-      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
       "version": "V6.6 · 稳定导航版"
     },
     {
@@ -107,7 +107,7 @@
       "mc6Mode": false,
       "activeChild": "sister",
       "modalOpen": false,
-      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
       "version": "V6.6 · 稳定导航版"
     },
     {
@@ -119,7 +119,7 @@
       "mc6Mode": false,
       "activeChild": "sister",
       "modalOpen": false,
-      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
       "version": "V6.6 · 稳定导航版"
     },
     {
@@ -131,7 +131,7 @@
       "mc6Mode": false,
       "activeChild": "sister",
       "modalOpen": false,
-      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
       "version": "V6.6 · 稳定导航版"
     },
     {
@@ -143,7 +143,7 @@
       "mc6Mode": true,
       "activeChild": "sister",
       "modalOpen": false,
-      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
       "version": "V6.6 · 稳定导航版"
     },
     {
@@ -155,11 +155,95 @@
       "mc6Mode": false,
       "activeChild": "sister",
       "modalOpen": false,
-      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
       "version": "V6.6 · 稳定导航版"
     },
     {
       "label": "inner-nav-profile",
+      "route": "profile",
+      "activePages": [
+        "profile"
+      ],
+      "mc6Mode": false,
+      "activeChild": "sister",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "return-home",
+      "route": "home",
+      "activePages": [
+        "home"
+      ],
+      "mc6Mode": true,
+      "activeChild": "sister",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "profile-card",
+      "route": "profile",
+      "activePages": [
+        "profile"
+      ],
+      "mc6Mode": false,
+      "activeChild": "sister",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "return-home",
+      "route": "home",
+      "activePages": [
+        "home"
+      ],
+      "mc6Mode": true,
+      "activeChild": "sister",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "interview",
+      "route": "interview",
+      "activePages": [
+        "home"
+      ],
+      "mc6Mode": false,
+      "activeChild": "sister",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "interview-after-reload",
+      "route": "interview",
+      "activePages": [
+        "home"
+      ],
+      "mc6Mode": false,
+      "activeChild": "sister",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "interview-back-home",
+      "route": "home",
+      "activePages": [
+        "home"
+      ],
+      "mc6Mode": true,
+      "activeChild": "sister",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "rapid-double-route",
       "route": "generator",
       "activePages": [
         "generator"
@@ -167,10 +251,10 @@
       "mc6Mode": false,
       "activeChild": "sister",
       "modalOpen": false,
-      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410851889",
       "version": "V6.6 · 稳定导航版"
     }
   ],
   "errors": [],
-  "failure": "Error: Expected route profile, got generator\nstate={\"label\":\"inner-nav-profile\",\"route\":\"generator\",\"activePages\":[\"generator\"],\"mc6Mode\":false,\"activeChild\":\"sister\",\"modalOpen\":false,\"href\":\"https://growth-os-ten-pearl.vercel.app/?qa=1783410716011\",\"version\":\"V6.6 · 稳定导航版\"}\n    at fail (file:///home/runner/work/growth-os/growth-os/tests/live-nav-e2e.mjs:47:9)\n    at expectRoute (file:///home/runner/work/growth-os/growth-os/tests/live-nav-e2e.mjs:52:30)\n    at async file:///home/runner/work/growth-os/growth-os/tests/live-nav-e2e.mjs:119:3"
+  "failure": "Error: Expected route skills, got generator\nstate={\"label\":\"rapid-double-route\",\"route\":\"generator\",\"activePages\":[\"generator\"],\"mc6Mode\":false,\"activeChild\":\"sister\",\"modalOpen\":false,\"href\":\"https://growth-os-ten-pearl.vercel.app/?qa=1783410851889\",\"version\":\"V6.6 · 稳定导航版\"}\n    at fail (file:///home/runner/work/growth-os/growth-os/tests/live-nav-e2e.mjs:47:9)\n    at expectRoute (file:///home/runner/work/growth-os/growth-os/tests/live-nav-e2e.mjs:52:30)\n    at async file:///home/runner/work/growth-os/growth-os/tests/live-nav-e2e.mjs:141:3"
 }
