@@ -1,0 +1,176 @@
+{
+  "ok": false,
+  "baseUrl": "https://growth-os-ten-pearl.vercel.app/",
+  "steps": [
+    {
+      "label": "initial-home",
+      "route": "home",
+      "activePages": [
+        "home"
+      ],
+      "mc6Mode": true,
+      "activeChild": "brother",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "settings-modal",
+      "route": "home",
+      "activePages": [
+        "home"
+      ],
+      "mc6Mode": true,
+      "activeChild": "brother",
+      "modalOpen": true,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "task-to-workflow",
+      "route": "workflow",
+      "activePages": [
+        "workflow"
+      ],
+      "mc6Mode": false,
+      "activeChild": "brother",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "workflow-after-background-render",
+      "route": "workflow",
+      "activePages": [
+        "workflow"
+      ],
+      "mc6Mode": false,
+      "activeChild": "brother",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "workflow-after-reload",
+      "route": "workflow",
+      "activePages": [
+        "workflow"
+      ],
+      "mc6Mode": false,
+      "activeChild": "brother",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "return-home",
+      "route": "home",
+      "activePages": [
+        "home"
+      ],
+      "mc6Mode": true,
+      "activeChild": "brother",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "skills-card",
+      "route": "skills",
+      "activePages": [
+        "skills"
+      ],
+      "mc6Mode": false,
+      "activeChild": "brother",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "skills-before-child-switch",
+      "route": "skills",
+      "activePages": [
+        "skills"
+      ],
+      "mc6Mode": false,
+      "activeChild": "brother",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "skills-after-child-switch",
+      "route": "skills",
+      "activePages": [
+        "skills"
+      ],
+      "mc6Mode": false,
+      "activeChild": "sister",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "child-switch-result",
+      "route": "skills",
+      "activePages": [
+        "skills"
+      ],
+      "mc6Mode": false,
+      "activeChild": "sister",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "skills-after-reload",
+      "route": "skills",
+      "activePages": [
+        "skills"
+      ],
+      "mc6Mode": false,
+      "activeChild": "sister",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "return-home",
+      "route": "home",
+      "activePages": [
+        "home"
+      ],
+      "mc6Mode": true,
+      "activeChild": "sister",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "project-card",
+      "route": "generator",
+      "activePages": [
+        "generator"
+      ],
+      "mc6Mode": false,
+      "activeChild": "sister",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "version": "V6.6 · 稳定导航版"
+    },
+    {
+      "label": "inner-nav-profile",
+      "route": "generator",
+      "activePages": [
+        "generator"
+      ],
+      "mc6Mode": false,
+      "activeChild": "sister",
+      "modalOpen": false,
+      "href": "https://growth-os-ten-pearl.vercel.app/?qa=1783410716011",
+      "version": "V6.6 · 稳定导航版"
+    }
+  ],
+  "errors": [],
+  "failure": "Error: Expected route profile, got generator\nstate={\"label\":\"inner-nav-profile\",\"route\":\"generator\",\"activePages\":[\"generator\"],\"mc6Mode\":false,\"activeChild\":\"sister\",\"modalOpen\":false,\"href\":\"https://growth-os-ten-pearl.vercel.app/?qa=1783410716011\",\"version\":\"V6.6 · 稳定导航版\"}\n    at fail (file:///home/runner/work/growth-os/growth-os/tests/live-nav-e2e.mjs:47:9)\n    at expectRoute (file:///home/runner/work/growth-os/growth-os/tests/live-nav-e2e.mjs:52:30)\n    at async file:///home/runner/work/growth-os/growth-os/tests/live-nav-e2e.mjs:119:3"
+}
