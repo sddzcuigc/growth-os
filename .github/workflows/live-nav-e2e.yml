@@ -1,0 +1,47 @@
+name: Live navigation E2E
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/live-nav-e2e.yml"
+      - "tests/live-nav-e2e.mjs"
+      - "minecraft-v6.js"
+      - "minecraft-v6.css"
+      - "index.html"
+
+permissions:
+  contents: read
+
+jobs:
+  live-nav-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Playwright
+        run: |
+          npm init -y
+          npm install playwright@1.53.2
+          npx playwright install --with-deps chromium
+
+      - name: Test production in real Chromium
+        env:
+          GROWTH_OS_URL: https://growth-os-ten-pearl.vercel.app/
+        run: node tests/live-nav-e2e.mjs
+
+      - name: Upload screenshots and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: growth-os-live-nav-e2e
+          path: artifacts/live-nav-e2e
+          if-no-files-found: error
+          retention-days: 14
