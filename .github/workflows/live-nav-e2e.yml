@@ -11,7 +11,7 @@ on:
       - "index.html"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   live-nav-e2e:
@@ -33,6 +33,8 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Test production in real Chromium
+        id: e2e
+        continue-on-error: true
         env:
           GROWTH_OS_URL: https://growth-os-ten-pearl.vercel.app/
         run: node tests/live-nav-e2e.mjs
@@ -45,3 +47,20 @@ jobs:
           path: artifacts/live-nav-e2e
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish latest QA report to repository
+        if: always()
+        run: |
+          mkdir -p qa
+          cp artifacts/live-nav-e2e/report.json qa/live-nav-latest.json
+          git config user.name "growth-os-qa-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add qa/live-nav-latest.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Update live navigation QA report [skip ci]"
+            git push
+          fi
+
+      - name: Fail workflow when browser test failed
+        if: steps.e2e.outcome == 'failure'
+        run: exit 1
