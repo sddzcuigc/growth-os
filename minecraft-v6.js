@@ -3,8 +3,10 @@
   const legacyGo = typeof window.go === "function" ? window.go : null;
   const initialHome = document.getElementById("home");
   const legacyHomeMarkup = initialHome ? initialHome.innerHTML : "";
-  const MODE_KEY = "growthOSV6HomeMode";
-  const REFERENCE = window.GROWTH_OS_RENDER || "growth-os-v6.svg?v=6.5";
+  const ROUTE_KEY = "growthOSV6Route";
+  const VALID_PAGES = new Set(["home", "profile", "skills", "generator", "workflow", "review"]);
+  const REFERENCE = window.GROWTH_OS_RENDER || "growth-os-v6.svg?v=6.6";
+  let transitionLocked = false;
 
   function byId(id) { return document.getElementById(id); }
   function activeChild() {
@@ -34,33 +36,61 @@
     };
   }
 
+  function readRoute() {
+    const route = sessionStorage.getItem(ROUTE_KEY) || "home";
+    return route === "interview" || VALID_PAGES.has(route) ? route : "home";
+  }
+
+  function writeRoute(route) {
+    sessionStorage.setItem(ROUTE_KEY, route);
+  }
+
   function refreshThemeSoon() {
     window.GrowthThemeRefresh?.();
   }
 
-  function navigate(page) {
-    sessionStorage.setItem(MODE_KEY, page === "home" ? "dashboard" : "detail");
-    if (page === "home") {
+  function withTransition(action) {
+    if (transitionLocked) return;
+    transitionLocked = true;
+    try {
+      action();
+    } finally {
+      setTimeout(() => { transitionLocked = false; }, 120);
+    }
+  }
+
+  function showLegacyPage(page) {
+    if (!VALID_PAGES.has(page) || page === "home") {
       renderDashboard();
       return;
     }
 
+    writeRoute(page);
     document.body.classList.remove("mc6-mode");
+
     if (legacyGo) {
       legacyGo(page);
     } else {
       document.querySelectorAll(".page").forEach(node => node.classList.remove("active"));
       byId(page)?.classList.add("active");
     }
+
     refreshThemeSoon();
+  }
+
+  function navigate(page) {
+    withTransition(() => {
+      if (page === "home") renderDashboard();
+      else showLegacyPage(page);
+    });
   }
 
   function renderDashboard() {
     const home = byId("home");
     if (!home) return;
 
+    writeRoute("home");
     document.body.classList.add("mc6-mode");
-    sessionStorage.setItem(MODE_KEY, "dashboard");
 
     document.querySelectorAll(".page").forEach(node => node.classList.remove("active"));
     home.classList.add("active");
@@ -90,23 +120,38 @@
         </div>
       </main>`;
 
-    home.querySelector(".mc6-settings")?.addEventListener("click", () => {
+    home.querySelector(".mc6-settings")?.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
       const familyTools = byId("familyToolsBtn");
       if (familyTools) familyTools.click();
       else navigate("profile");
     });
 
-    home.querySelector(".mc6-mic")?.addEventListener("click", openDetailedInterview);
+    home.querySelector(".mc6-mic")?.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      withTransition(openDetailedInterview);
+    });
 
     home.querySelectorAll("[data-child]").forEach(button => {
-      button.addEventListener("click", () => {
+      button.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
         const id = button.dataset.child;
-        if (id && id !== activeId) window.GrowthFamily?.switchTo?.(id);
+        if (id && id !== activeId) {
+          writeRoute("home");
+          window.GrowthFamily?.switchTo?.(id);
+        }
       });
     });
 
     home.querySelectorAll("[data-target]").forEach(button => {
-      button.addEventListener("click", () => navigate(button.dataset.target));
+      button.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        navigate(button.dataset.target);
+      });
     });
 
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -120,11 +165,11 @@
   }
 
   function openDetailedInterview() {
-    document.body.classList.remove("mc6-mode");
-    sessionStorage.setItem(MODE_KEY, "detail");
-
     const home = restoreLegacyHome();
     if (!home) return;
+
+    writeRoute("interview");
+    document.body.classList.remove("mc6-mode");
 
     document.querySelectorAll(".page").forEach(node => node.classList.remove("active"));
     home.classList.add("active");
@@ -140,7 +185,10 @@
       back.type = "button";
       back.className = "mc6-detail-back";
       back.textContent = "← 返回方块世界大厅";
-      back.addEventListener("click", renderDashboard);
+      back.addEventListener("click", event => {
+        event.preventDefault();
+        renderDashboard();
+      });
       home.prepend(back);
     }
 
@@ -148,15 +196,33 @@
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }
 
+  function restoreRoute() {
+    const route = readRoute();
+    if (route === "interview") openDetailedInterview();
+    else if (route === "home") renderDashboard();
+    else showLegacyPage(route);
+  }
+
+  window.GrowthRoute = {
+    get: readRoute,
+    go: navigate,
+    beforeReload() {},
+    restore: restoreRoute
+  };
+
   window.renderHome = function growthOSV6Home() {
     const home = byId("home");
     const userIsOnHome = Boolean(home?.classList.contains("active"));
     const dashboardIsVisible = document.body.classList.contains("mc6-mode");
 
+    // app.js 会把 renderHome() 当作后台数据刷新函数调用。
+    // 用户位于其他页面时，绝不能因此抢走当前路由。
     if (!userIsOnHome && !dashboardIsVisible) return;
 
-    if (sessionStorage.getItem(MODE_KEY) === "detail") openDetailedInterview();
-    else renderDashboard();
+    const route = readRoute();
+    if (route === "interview") openDetailedInterview();
+    else if (route === "home" || dashboardIsVisible) renderDashboard();
+    else showLegacyPage(route);
   };
 
   window.go = function growthOSV6Go(page) {
@@ -164,8 +230,8 @@
   };
 
   if (document.readyState === "loading") {
-    window.addEventListener("DOMContentLoaded", renderDashboard, { once: true });
+    window.addEventListener("DOMContentLoaded", restoreRoute, { once: true });
   } else {
-    renderDashboard();
+    restoreRoute();
   }
 })();
