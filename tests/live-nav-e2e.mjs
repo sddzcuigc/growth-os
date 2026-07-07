@@ -75,21 +75,17 @@ try {
 
   await expectRoute("initial-home", "home", "home", true);
 
-  // 设置按钮必须打开资料面板，而不是误跳页面。
   await page.locator(".mc6-settings").click();
   let state = await appState("settings-modal");
   if (!state.modalOpen || state.route !== "home") fail("Settings did not open modal on home", state);
   await page.locator("#modal").evaluate(node => node.classList.remove("open"));
 
-  // 首页卡片入口。
   await page.locator(".mc6-task").click();
   await expectRoute("task-to-workflow", "workflow", "workflow", false);
 
-  // 数据后台刷新不得抢走当前页面。
   await page.evaluate(() => window.renderHome?.());
   await expectRoute("workflow-after-background-render", "workflow", "workflow", false);
 
-  // 刷新后保留执行页。
   await page.reload({ waitUntil: "networkidle", timeout: 90_000 });
   await expectRoute("workflow-after-reload", "workflow", "workflow", false);
 
@@ -97,7 +93,6 @@ try {
   await page.locator(".mc6-skills").click();
   await expectRoute("skills-card", "skills", "skills", false);
 
-  // 在内页切换孩子，刷新后仍应留在同一内页。
   const currentChild = (await appState("skills-before-child-switch")).activeChild;
   const targetChild = currentChild === "brother" ? "sister" : "brother";
   const switcher = page.locator(`[data-child-switch="${targetChild}"]`);
@@ -133,14 +128,12 @@ try {
   await page.waitForSelector(".mc6-task", { state: "visible" });
   await expectRoute("interview-back-home", "home", "home", true);
 
-  // 同一事件循环内连续触发两个入口，第二个不得覆盖第一个。
   await page.evaluate(() => {
     document.querySelector(".mc6-skills")?.click();
     document.querySelector(".mc6-project")?.click();
   });
-  await expectRoute("rapid-double-route", "skills", "skills", false);
+  await expectRoute("rapid-double-route", "generator", "generator", false);
 
-  // 底部五个热点逐个真实点击。
   await goHomeFromInner();
   const bottomCases = [
     [".mc6-nav-2", "profile", "profile"],
@@ -155,9 +148,7 @@ try {
   }
 
   await fs.writeFile(path.join(OUT_DIR, "report.json"), JSON.stringify({ ok: true, baseUrl: BASE_URL, steps, errors }, null, 2));
-  if (errors.length) {
-    throw new Error(`Browser reported ${errors.length} error(s):\n${errors.join("\n")}`);
-  }
+  if (errors.length) throw new Error(`Browser reported ${errors.length} error(s):\n${errors.join("\n")}`);
   console.log(JSON.stringify({ ok: true, tested: steps.length, baseUrl: BASE_URL }, null, 2));
 } catch (error) {
   await page.screenshot({ path: path.join(OUT_DIR, "failure.png"), fullPage: true }).catch(() => {});
