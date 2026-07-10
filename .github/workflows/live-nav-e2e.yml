@@ -64,3 +64,5 @@ jobs:
       - name: Fail workflow when browser test failed
         if: steps.e2e.outcome == 'failure'
         run: exit 1
+
+# Manual production retest trigger: 2026-07-10
