@@ -7,6 +7,7 @@ on:
       - "index.html"
       - "coach-v1.js"
       - "coach-v1.css"
+      - "coach-workflow-v1.js"
       - "tests/coach-e2e.mjs"
       - ".github/workflows/coach-e2e.yml"
 
@@ -64,3 +65,5 @@ jobs:
       - name: Fail when E2E failed
         if: steps.e2e.outcome == 'failure'
         run: exit 1
+
+# Fresh regression trigger: V7.1
