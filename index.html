@@ -9,8 +9,8 @@
 <meta http-equiv="Expires" content="0"/>
 <title>成长OS｜AI儿童成长教练</title>
 <meta name="description" content="根据孩子的真实兴趣、天赋迹象、当前能力和家庭条件，每天推荐最适合的成长任务。"/>
-<link rel="stylesheet" href="styles.css?v=7.0">
-<link rel="stylesheet" href="coach-v1.css?v=7.0">
+<link rel="stylesheet" href="styles.css?v=7.1">
+<link rel="stylesheet" href="coach-v1.css?v=7.1">
 <script>
 try {
   if (!localStorage.getItem('growthOSFamilyV1')) {
@@ -27,19 +27,18 @@ try {
   console.warn('无法准备双孩样例数据', error);
 }
 </script>
-<script src="family-bootstrap.js?v=7.0"></script>
+<script src="family-bootstrap.js?v=7.1"></script>
 </head>
 <body>
 <div class="app">
 <header>
   <div class="row between">
     <div><h1 id="pageTitle">今日推荐</h1><div class="sub" id="pageSub">AI根据兴趣、天赋迹象和当前能力推荐任务</div></div>
-    <span class="version">V7.0 · AI成长教练</span>
+    <span class="version">V7.1 · AI成长教练</span>
   </div>
 </header>
 
 <section id="home" class="page active" aria-label="今日智能推荐"></section>
-
 <section id="profile" class="page" aria-label="动态孩子画像"></section>
 
 <section id="skills" class="page" aria-label="能力证据">
@@ -95,8 +94,9 @@ try {
 </nav>
 </div>
 <div id="modal" class="modal" onclick="if(event.target===this)document.getElementById('modal').classList.remove('open')"><div class="sheet" id="sheet"></div></div>
-<script src="app.js?v=7.0" defer></script>
-<script src="kernel-v3.js?v=7.0" defer></script>
-<script src="coach-v1.js?v=7.0" defer></script>
+<script src="app.js?v=7.1" defer></script>
+<script src="kernel-v3.js?v=7.1" defer></script>
+<script src="coach-v1.js?v=7.1" defer></script>
+<script src="coach-workflow-v1.js?v=7.1" defer></script>
 </body>
 </html>
