@@ -3,16 +3,14 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<meta name="theme-color" content="#65ad22"/>
+<meta name="theme-color" content="#2f8f4e"/>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>成长OS｜方块世界双孩AI成长系统</title>
-<link rel="stylesheet" href="styles.css?v=6.7">
-<link rel="stylesheet" href="discovery-v3.css?v=6.7">
-<link rel="stylesheet" href="family-ai.css?v=6.7">
-<link rel="stylesheet" href="minecraft-theme.css?v=6.7">
-<link rel="stylesheet" href="minecraft-v6.css?v=6.7">
+<title>成长OS｜AI儿童成长教练</title>
+<meta name="description" content="根据孩子的真实兴趣、天赋迹象、当前能力和家庭条件，每天推荐最适合的成长任务。"/>
+<link rel="stylesheet" href="styles.css?v=7.0">
+<link rel="stylesheet" href="coach-v1.css?v=7.0">
 <script>
 try {
   if (!localStorage.getItem('growthOSFamilyV1')) {
@@ -29,71 +27,46 @@ try {
   console.warn('无法准备双孩样例数据', error);
 }
 </script>
-<script src="family-bootstrap.js?v=6.7"></script>
+<script src="family-bootstrap.js?v=7.0"></script>
 </head>
 <body>
 <div class="app">
 <header>
-  <div class="row between"><div><h1 id="pageTitle">全面了解</h1><div class="sub" id="pageSub">语音描述，多情境理解两个孩子</div></div><span class="version">V6.7 · 实机验证导航版</span></div>
+  <div class="row between">
+    <div><h1 id="pageTitle">今日推荐</h1><div class="sub" id="pageSub">AI根据兴趣、天赋迹象和当前能力推荐任务</div></div>
+    <span class="version">V7.0 · AI成长教练</span>
+  </div>
 </header>
 
-<section id="home" class="page active">
-  <div class="card hero">
-    <div class="row between"><span class="pill glass" id="childBadge">哥哥 · 9岁</span><span>本周任务</span></div>
-    <h2 id="currentTaskTitle"></h2>
-    <div id="taskProgressText" class="hero-meta"></div>
-    <div class="progress glass-track"><div id="taskProgressBar" class="bar white-bar"></div></div>
-  </div>
-  <div class="section-title">今天最重要的一步</div>
-  <div class="card">
-    <span class="pill green">真实结果</span>
-    <h3 id="todayStep"></h3>
-    <div class="small" id="todayStandard"></div>
-    <div class="row action-row"><button class="btn" onclick="go('workflow')">进入工作流</button><button class="btn ghost" onclick="openGuide()">家长怎么教</button></div>
-  </div>
-  <div class="section-title">这个项目怎样全面培养</div>
-  <div class="card" id="homeMatrix"></div>
-  <div class="section-title">本月优先成长</div>
-  <div class="card" id="homeSkills"></div>
-  <div class="grid2">
-    <div class="card mini-card"><span class="pill orange">家长今晚</span><p class="strong">只示范最小样例</p><div class="small">不替孩子完成整体项目。</div></div>
-    <div class="card mini-card"><span class="pill green">老人白天</span><p class="strong">提醒一次</p><div class="small">只守流程和安全，不讲复杂方法。</div></div>
-  </div>
-</section>
+<section id="home" class="page active" aria-label="今日智能推荐"></section>
 
-<section id="profile" class="page">
-  <div class="card profile-head"><div class="avatar">哥</div><div><h2 id="profileName"></h2><div class="small" id="profileAge"></div></div></div>
-  <div class="notice">画像不是档案展示，而是任务引擎的输入：兴趣决定外壳，困难决定工作流颗粒度，家庭资源决定可执行性。</div>
-  <div class="section-title">兴趣与熟悉外壳</div><div class="card"><div id="profileInterests" class="row wrap"></div></div>
-  <div class="section-title">当前成长重点</div><div id="profileFocus"></div>
-  <div class="section-title">家庭资源</div><div class="card"><div id="profileResources" class="small"></div></div>
-  <button id="editProfileBtn" class="btn secondary full" type="button">编辑孩子画像与资源</button>
-</section>
+<section id="profile" class="page" aria-label="动态孩子画像"></section>
 
-<section id="skills" class="page">
-  <div class="notice">技能升级不再靠“点一次复盘加一级”。必须有完成证据、真实用户、修改、独立程度和跨时间复现。</div>
+<section id="skills" class="page" aria-label="能力证据">
+  <div class="notice">能力升级必须有真实任务证据。系统会记录投入、独立程度、实际难度和迁移表现，而不是只靠一次测试。</div>
   <div class="section-title">未来专业能力簇</div><div class="card" id="professionSkills"></div>
   <div class="section-title">技能树节点</div><div id="skillList"></div>
 </section>
 
-<section id="generator" class="page">
+<section id="generator" class="page" aria-label="任务实验室">
+  <div class="notice">智能推荐是默认入口；这里保留给家长手动发起一个真实家庭项目。</div>
   <div class="card profile-signal" id="profileSignal"></div>
   <div class="field"><label>选择孩子熟悉的项目外壳</label><div id="shellTags" class="row wrap"></div></div>
   <div class="field"><label>核心补强能力（最多3项）</label><div id="skillTags" class="row wrap"></div></div>
   <div class="field"><label>真实使用者</label><input id="realUser" value="家人"/></div>
-  <div class="field"><label>当前真实问题</label><textarea id="realProblem"></textarea></div>
+  <div class="field"><label>当前真实问题</label><textarea id="realProblem" placeholder="例如：家里的书总是找不到；妹妹想学会拍球；周末想设计一条低成本路线。"></textarea></div>
   <div class="field"><label>每天可用时间</label><select id="availableTime"><option value="20">约20分钟</option><option value="35" selected>约35分钟</option><option value="60">约60分钟</option></select></div>
   <button class="btn full" onclick="generateTask()">生成完整工作流</button>
   <div id="generatedTask"></div>
 </section>
 
-<section id="workflow" class="page">
-  <div class="card"><span class="pill purple">真实委托</span><h2 id="wfTitle"></h2><div class="small" id="wfPurpose"></div><div id="wfMatrix"></div></div>
+<section id="workflow" class="page" aria-label="任务执行">
+  <div class="card"><span class="pill purple">真实任务</span><h2 id="wfTitle"></h2><div class="small" id="wfPurpose"></div><div id="wfMatrix"></div></div>
   <div id="steps"></div>
   <button class="btn green full" onclick="saveWorkflow()">保存今日进度</button>
 </section>
 
-<section id="review" class="page">
+<section id="review" class="page" aria-label="成长证据">
   <div class="notice" id="reviewGate"></div>
   <div class="card">
     <div class="field"><label>证据类型</label><select id="evidenceType"><option value="">请选择</option><option>照片/作品</option><option>视频/语音讲解</option><option>数据记录</option><option>真实用户反馈</option><option>家长观察记录</option></select></div>
@@ -108,47 +81,22 @@ try {
     <div class="field"><label>提炼出的最小方法</label><textarea id="abs" placeholder="真正起作用的规则是什么？"></textarea></div>
     <div class="field"><label>下次直接应用</label><textarea id="apply" placeholder="下次遇到类似情况，第一步做什么？"></textarea></div>
     <div class="field"><label>举一反三：还能用于哪里</label><textarea id="transfer" placeholder="至少写两个新场景，并说明是否需要调整。"></textarea></div>
-    <button class="btn full" onclick="saveReview()">提交证据并生成升级建议</button>
+    <button class="btn full" onclick="saveReview()">提交证据</button>
   </div>
   <div id="reviewResult"></div><div id="reviewHistory"></div>
 </section>
 
-<nav>
-<button data-page="home" class="active" onclick="go('home')"><span>◌</span>了解</button>
-<button data-page="profile" onclick="go('profile')"><span>◎</span>发现</button>
-<button data-page="skills" onclick="go('skills')"><span>◇</span>路线</button>
-<button data-page="generator" onclick="go('generator')"><span>＋</span>项目</button>
-<button data-page="workflow" onclick="go('workflow')"><span>✓</span>执行</button>
+<nav aria-label="主要导航">
+  <button data-page="home" class="active" onclick="go('home')"><span>✦</span>推荐</button>
+  <button data-page="profile" onclick="go('profile')"><span>◎</span>画像</button>
+  <button data-page="skills" onclick="go('skills')"><span>◇</span>能力</button>
+  <button data-page="generator" onclick="go('generator')"><span>＋</span>任务</button>
+  <button data-page="workflow" onclick="go('workflow')"><span>✓</span>执行</button>
 </nav>
 </div>
-<div id="modal" class="modal" onclick="if(event.target===this)closeModal()"><div class="sheet" id="sheet"></div></div>
-<script src="app.js?v=6.7" defer></script>
-<script src="kernel-v3.js?v=6.7" defer></script>
-<script src="ai-v4.js?v=6.7" defer></script>
-<script src="plus-action.js?v=6.7" defer></script>
-<script src="discovery-v3.js?v=6.7" defer></script>
-<script src="family-ai.js?v=6.7" defer></script>
-<script src="minecraft-theme.js?v=6.7" defer></script>
-<script src="growth-os-render-part1.js?v=6.7" defer></script>
-<script src="growth-os-render-part2.js?v=6.7" defer></script>
-<script src="growth-os-render-part3.js?v=6.7" defer></script>
-<script src="growth-os-render-part4a.js?v=6.7" defer></script>
-<script src="growth-os-render-part4b1.js?v=6.7" defer></script>
-<script src="growth-os-render-part4b2.js?v=6.7" defer></script>
-<script src="growth-os-render-part4b3.js?v=6.7" defer></script>
-<script src="growth-os-render-part4c.js?v=6.7" defer></script>
-<script src="growth-os-render-part5a.js?v=6.7" defer></script>
-<script src="growth-os-render-part5b.js?v=6.7" defer></script>
-<script src="growth-os-render-part5c.js?v=6.7" defer></script>
-<script src="growth-os-render-part6a.js?v=6.7" defer></script>
-<script src="growth-os-render-part6b.js?v=6.7" defer></script>
-<script src="growth-os-render-part6c.js?v=6.7" defer></script>
-<script src="growth-os-render-part7a.js?v=6.7" defer></script>
-<script src="growth-os-render-part7b.js?v=6.7" defer></script>
-<script src="growth-os-render-part7c1.js?v=6.7" defer></script>
-<script src="growth-os-render-part7c2.js?v=6.7" defer></script>
-<script src="growth-os-render-part8.js?v=6.7" defer></script>
-<script src="growth-os-render-loader.js?v=6.7" defer></script>
-<script src="minecraft-v6.js?v=6.7" defer></script>
+<div id="modal" class="modal" onclick="if(event.target===this)document.getElementById('modal').classList.remove('open')"><div class="sheet" id="sheet"></div></div>
+<script src="app.js?v=7.0" defer></script>
+<script src="kernel-v3.js?v=7.0" defer></script>
+<script src="coach-v1.js?v=7.0" defer></script>
 </body>
 </html>
