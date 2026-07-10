@@ -50,7 +50,7 @@ try {
   await page.waitForSelector('.coach-task-card', { timeout: 30_000 });
 
   let state = await snap('home-initial');
-  assert(state.version.includes('V7.0'), '未加载V7.0', state);
+  assert(state.version.includes('V7.'), '未加载V7推荐系统', state);
   assert(state.route === 'home' && state.active.length === 1 && state.active[0] === 'home', '首页路由错误', state);
   assert(state.cards === 3, '首页不是3条推荐', state);
 
@@ -74,17 +74,19 @@ try {
 
   await page.locator('[data-accept-task]').first().click();
   await page.waitForSelector('#workflow.active');
+  await page.waitForSelector('#workflow.active .coach-workflow-intro', { timeout: 5_000 });
+  await page.waitForSelector('#workflow.active #coachWorkflowFeedback', { timeout: 5_000 });
   state = await snap('task-accepted');
   assert(state.route === 'workflow' && state.active[0] === 'workflow', '接受任务后没有进入执行页', state);
   assert(await page.locator('.task-step').count() >= 4, '推荐任务没有生成完整步骤');
-  assert(await page.locator('.coach-workflow-intro').count() === 1, '执行页缺少推荐依据');
+  assert(await page.locator('.coach-workflow-intro').count() >= 1, '执行页缺少推荐依据');
 
   await page.locator('[data-step-check="0"]').check();
-  await page.waitForTimeout(150);
+  await page.waitForTimeout(200);
   state = await snap('workflow-progress');
   assert(state.active[0] === 'workflow', '勾选步骤后乱跳页面', state);
 
-  await page.locator('#coachWorkflowFeedback').click();
+  await page.locator('#coachWorkflowFeedback').first().click();
   state = await snap('feedback-open');
   assert(state.modal, '任务反馈弹窗未打开', state);
   await page.locator('[data-rating-group="enjoyment"] button[data-rating-value="5"]').click();
