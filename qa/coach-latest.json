@@ -9,70 +9,14 @@
         "home"
       ],
       "cards": 3,
-      "version": "V7.0 · AI成长教练",
+      "version": "V7.1 · AI成长教练",
       "child": "brother",
       "taskTitle": "故事侦探：找出人物真正的选择",
       "modal": false,
       "profileComplete": false,
-      "completedFeedback": 0
-    },
-    {
-      "label": "recommendation-explanation",
-      "route": "home",
-      "active": [
-        "home"
-      ],
-      "cards": 3,
-      "version": "V7.0 · AI成长教练",
-      "child": "brother",
-      "taskTitle": "故事侦探：找出人物真正的选择",
-      "modal": false,
-      "profileComplete": false,
-      "completedFeedback": 0
-    },
-    {
-      "label": "onboarding-open",
-      "route": "home",
-      "active": [
-        "home"
-      ],
-      "cards": 3,
-      "version": "V7.0 · AI成长教练",
-      "child": "brother",
-      "taskTitle": "故事侦探：找出人物真正的选择",
-      "modal": true,
-      "profileComplete": false,
-      "completedFeedback": 0
-    },
-    {
-      "label": "onboarding-saved",
-      "route": "home",
-      "active": [
-        "home"
-      ],
-      "cards": 3,
-      "version": "V7.0 · AI成长教练",
-      "child": "brother",
-      "taskTitle": "故事侦探：找出人物真正的选择",
-      "modal": false,
-      "profileComplete": true,
-      "completedFeedback": 0
-    },
-    {
-      "label": "task-accepted",
-      "route": "workflow",
-      "active": [
-        "workflow"
-      ],
-      "cards": 3,
-      "version": "V7.0 · AI成长教练",
-      "child": "brother",
-      "taskTitle": "故事侦探：找出人物真正的选择",
-      "modal": false,
-      "profileComplete": true,
       "completedFeedback": 0
     }
   ],
   "errors": [],
-  "failure": "Error: 执行页缺少推荐依据\nstate={}\n    at assert (file:///home/runner/work/growth-os/growth-os/tests/coach-e2e.mjs:43:25)\n    at file:///home/runner/work/growth-os/growth-os/tests/coach-e2e.mjs:80:3"
+  "failure": "Error: 未加载V7.0\nstate={\"route\":\"home\",\"active\":[\"home\"],\"cards\":3,\"version\":\"V7.1 · AI成长教练\",\"child\":\"brother\",\"taskTitle\":\"故事侦探：找出人物真正的选择\",\"modal\":false,\"profileComplete\":false,\"completedFeedback\":0}\n    at assert (file:///home/runner/work/growth-os/growth-os/tests/coach-e2e.mjs:43:25)\n    at file:///home/runner/work/growth-os/growth-os/tests/coach-e2e.mjs:53:3"
 }
