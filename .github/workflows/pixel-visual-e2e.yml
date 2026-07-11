@@ -1,0 +1,65 @@
+name: Pixel visual E2E
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "index.html"
+      - "coach-pixel-v72.css"
+      - "tests/pixel-visual-e2e.mjs"
+      - ".github/workflows/pixel-visual-e2e.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  pixel-visual-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Playwright
+        run: |
+          npm init -y
+          npm install playwright@1.53.2
+          npx playwright install --with-deps chromium
+
+      - name: Test production pixel UI
+        id: pixel
+        continue-on-error: true
+        env:
+          GROWTH_OS_URL: https://growth-os-ten-pearl.vercel.app/
+        run: node tests/pixel-visual-e2e.mjs
+
+      - name: Upload visual screenshots and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: growth-os-pixel-visual-e2e
+          path: artifacts/pixel-visual-e2e
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish latest visual QA report
+        if: always()
+        run: |
+          mkdir -p qa
+          cp artifacts/pixel-visual-e2e/report.json qa/pixel-latest.json
+          git config user.name "growth-os-qa-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add qa/pixel-latest.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Update pixel visual QA report [skip ci]"
+            git push
+          fi
+
+      - name: Fail when visual test failed
+        if: steps.pixel.outcome == 'failure'
+        run: exit 1
