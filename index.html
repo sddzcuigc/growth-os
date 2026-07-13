@@ -3,15 +3,18 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<meta name="theme-color" content="#365a23"/>
+<meta name="theme-color" content="#6657f6"/>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>成长OS｜方块世界AI儿童成长教练</title>
-<meta name="description" content="根据孩子的真实兴趣、天赋迹象、当前能力和家庭条件，每天推荐最适合的成长任务。"/>
+<title>成长OS｜孩子的成长世界</title>
+<meta name="description" content="孩子自己选择真实冒险，一次推进一关，用作品、反馈和修改点亮终身能力。"/>
 <link rel="stylesheet" href="styles.css?v=7.2">
 <link rel="stylesheet" href="coach-v1.css?v=7.2">
 <link rel="stylesheet" href="coach-pixel-v72.css?v=7.2">
+<link rel="stylesheet" href="world-v8-core.css?v=8.0">
+<link rel="stylesheet" href="world-v8-mission.css?v=8.0">
+<link rel="stylesheet" href="world-v8-profile.css?v=8.0">
 <script>
 try {
   if (!localStorage.getItem('growthOSFamilyV1')) {
@@ -34,22 +37,22 @@ try {
 <div class="app">
 <header>
   <div class="row between">
-    <div><h1 id="pageTitle">今日任务板</h1><div class="sub" id="pageSub">方块世界AI根据兴趣、天赋迹象和当前能力推荐任务</div></div>
-    <span class="version">V7.2 · 方块世界</span>
+    <div><h1 id="pageTitle">成长世界</h1><div class="sub" id="pageSub">孩子自己选择，真实作品点亮能力</div></div>
+    <span class="version">V8.0 · 成长世界</span>
   </div>
 </header>
 
-<section id="home" class="page active" aria-label="今日智能推荐"></section>
-<section id="profile" class="page" aria-label="动态孩子画像"></section>
+<section id="home" class="page active" aria-label="孩子的成长世界"></section>
+<section id="profile" class="page" aria-label="作品与动态档案"></section>
 
-<section id="skills" class="page" aria-label="能力证据">
+<section id="skills" class="page" aria-label="能力星图">
   <div class="notice">能力升级必须有真实任务证据。系统会记录投入、独立程度、实际难度和迁移表现，而不是只靠一次测试。</div>
   <div class="section-title">未来专业能力簇</div><div class="card" id="professionSkills"></div>
   <div class="section-title">技能树节点</div><div id="skillList"></div>
 </section>
 
-<section id="generator" class="page" aria-label="任务实验室">
-  <div class="notice">智能推荐是默认入口；这里保留给家长手动发起一个真实家庭项目。</div>
+<section id="generator" class="page" aria-label="冒险大厅">
+  <div class="notice">系统只提供有限选择；家长手动项目编译器退出孩子主流程。</div>
   <div class="card profile-signal" id="profileSignal"></div>
   <div class="field"><label>选择孩子熟悉的项目外壳</label><div id="shellTags" class="row wrap"></div></div>
   <div class="field"><label>核心补强能力（最多3项）</label><div id="skillTags" class="row wrap"></div></div>
@@ -60,13 +63,13 @@ try {
   <div id="generatedTask"></div>
 </section>
 
-<section id="workflow" class="page" aria-label="任务执行">
+<section id="workflow" class="page" aria-label="当前真实任务">
   <div class="card"><span class="pill purple">真实任务</span><h2 id="wfTitle"></h2><div class="small" id="wfPurpose"></div><div id="wfMatrix"></div></div>
   <div id="steps"></div>
   <button class="btn green full" onclick="saveWorkflow()">保存今日进度</button>
 </section>
 
-<section id="review" class="page" aria-label="成长证据">
+<section id="review" class="page" aria-label="成长作品馆">
   <div class="notice" id="reviewGate"></div>
   <div class="card">
     <div class="field"><label>证据类型</label><select id="evidenceType"><option value="">请选择</option><option>照片/作品</option><option>视频/语音讲解</option><option>数据记录</option><option>真实用户反馈</option><option>家长观察记录</option></select></div>
@@ -87,11 +90,11 @@ try {
 </section>
 
 <nav aria-label="主要导航">
-  <button data-page="home" class="active" onclick="go('home')"><span>✦</span>任务板</button>
-  <button data-page="profile" onclick="go('profile')"><span>☺</span>角色档案</button>
-  <button data-page="skills" onclick="go('skills')"><span>◆</span>能力树</button>
-  <button data-page="generator" onclick="go('generator')"><span>▣</span>任务工坊</button>
-  <button data-page="workflow" onclick="go('workflow')"><span>✓</span>任务卷轴</button>
+  <button data-page="home" class="active" onclick="go('home')"><span>✦</span>世界</button>
+  <button data-page="profile" onclick="go('profile')"><span>☺</span>我的</button>
+  <button data-page="skills" onclick="go('skills')"><span>◆</span>星图</button>
+  <button data-page="generator" onclick="go('generator')"><span>▣</span>冒险</button>
+  <button data-page="workflow" onclick="go('workflow')"><span>✓</span>当前</button>
 </nav>
 </div>
 <div id="modal" class="modal" onclick="if(event.target===this)document.getElementById('modal').classList.remove('open')"><div class="sheet" id="sheet"></div></div>
@@ -99,5 +102,6 @@ try {
 <script src="kernel-v3.js?v=7.2" defer></script>
 <script src="coach-v1.js?v=7.2" defer></script>
 <script src="coach-workflow-v1.js?v=7.2" defer></script>
+<script src="world-v8.js?v=8.0" defer></script>
 </body>
 </html>
