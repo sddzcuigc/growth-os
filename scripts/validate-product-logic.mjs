@@ -181,7 +181,7 @@ for (const term of ["CREATE TABLE IF NOT EXISTS idea_resurfacings", "/api/idea-r
   if (!serverSource.includes(term)) failures.push(`idea resurfacing backend missing ${term}`);
 }
 for (const term of ["CREATE TABLE IF NOT EXISTS growth_goals", "/api/goals/shape", "handleShapeGoal", "handleCreateGoal", "handleUpdateGoal", "handleDeleteGoal", "goalRows", "同时保留三个方向就够了", "goal_id AS goalId", "matchingGoalId", "goalTitle"]) if (!serverSource.includes(term)) failures.push(`growth goals server missing ${term}`);
-for (const term of ["我的成长方向", "帮我变清楚", "这就是我想要的", "开始第一个实验", "shapeGrowthGoal", "confirmGrowthGoal", "startGoalExperiment", "growthDirections", "capture-goal-link", "daily-goal-link"]) if (!appSourceText.includes(term)) failures.push(`growth goals UI missing ${term}`);
+for (const term of ["我的成长方向", "生成SMART目标", "采用这个目标", "安排第一个行动", "shapeGrowthGoal", "confirmGrowthGoal", "startGoalExperiment", "growthDirections", "capture-goal-link", "daily-goal-link"]) if (!appSourceText.includes(term)) failures.push(`growth goals UI missing ${term}`);
 for (const term of ["CREATE TABLE IF NOT EXISTS self_coach_answers", "/api/self-coach/ask", "handleAskSelfCoach", "selfCoachEvidence", "rankSelfCoachEvidence", "entry.shareWithAi", "只能根据提供的evidence回答", "allowedRefs", "证据不足就明确说还不知道", "handleSelfCoachFeedback", "handleDeleteSelfCoach"]) if (!serverSource.includes(term)) failures.push(`self coach server missing ${term}`);
 for (const term of ["问问我的成长档案", "只根据我的证据回答", "askSelfCoach", "feedbackSelfCoach", "deleteSelfCoachAnswer", "查看${item.evidence.length}条来源", "这对我有帮助", "这不像我"]) if (!appSourceText.includes(term)) failures.push(`self coach UI missing ${term}`);
 for (const term of ["CREATE TABLE IF NOT EXISTS action_decisions", "not_before", "defer_count", "/negotiate", "/defer", "handleNegotiateAction", "handleDeferAction", "孩子有权延期、缩小或放下一件事", "也不是失败", "status = \"someday\"", "status = \"dropped\""]) if (!serverSource.includes(term)) failures.push(`action negotiation server missing ${term}`);
@@ -224,6 +224,8 @@ for (const term of ["/api/capture/parse", "handleParseCapture", "fallbackCapture
 for (const term of ["要做的事、突然的灵感、今天的感悟都可以", "灵感火花", "成长感悟", "放进灵感池", "capture-ai-context", "capture_confirmed"]) if (!appSourceText.includes(term)) failures.push(`unified capture UI missing ${term}`);
 for (const term of ["生成一个问题", "第2步", "在这里回答AI的问题", "写一句后可继续问", "保存回答", "if (state.journalMode !== \"self\") await requestJournalPrompt(false)"]) if (!appSourceText.includes(term)) failures.push(`guided journal flow missing ${term}`);
 for (const term of ["clearContextAnswer", "edit-context-answer", ">修改</button>"]) if (!appSourceText.includes(term)) failures.push(`editable context answers missing ${term}`);
+for (const term of ["onboardingQuestionIds", "renderProfileOnboarding", "finishProfileOnboarding", "AI先认识我", "建立路线，进入今天", "needsProfileOnboarding", "growth-loop-guide"]) if (!appSourceText.includes(term)) failures.push(`guided profile onboarding missing ${term}`);
+for (const term of [">今天</b>", ">灵感</b>", ">能力</b>", ">计划</b>", ">记录</b>"]) if (!htmlSource.includes(term)) failures.push(`workflow navigation missing ${term}`);
 if (appSourceText.includes('<div class="action-quick-add"')) failures.push("legacy multi-field quick-add is still rendered");
 for (const term of ["/api/auth/recovery/rotate", "/api/auth/recovery/reset", "recoveryCode", "normalizeRecoveryCode", "dummyRecoveryHash", "consumeRecoveryAttempt", "DELETE FROM sessions WHERE user_id", "recovery_hash", "recovery_updated_at"]) {
   if (!serverSource.includes(term)) failures.push(`account recovery security missing ${term}`);
@@ -327,6 +329,12 @@ for (const term of ["tutorial-overlay", "next-tutorial", "skip-tutorial"]) {
 for (const term of ["tutorialSteps", "openTutorial", "finishTutorial", "talent-os-tutorial-complete", "重看新手引导"]) {
   if (!appSourceText.includes(term)) failures.push(`tutorial logic missing ${term}`);
 }
+
+for (const term of ["realProfile ? 1", "bonus-rewards", "renderGemStore", "buy-gem-item", "spentGems", "奖励同步收回", "data-theme"]) {
+  if (!appSourceText.includes(term) && !htmlSource.includes(term) && !readFileSync("onboarding.css", "utf8").includes(term)) failures.push(`real economy missing ${term}`);
+}
+for (const term of ["personal-friction", "/api/onboarding/question", "smart", "keyResults", "weeklyPlan", "SMART目标", "OKR", "keyResultTitle"]) if (!appSourceText.includes(term) && !serverSource.includes(term)) failures.push(`SMART/OKR workflow missing ${term}`);
+for (const term of ["surpriseRewardRoll", "surprise-rolls", "chance: 0.35", "dailyCap: 2", "不能反复重抽"]) if (!appSourceText.includes(term)) failures.push(`bounded surprise reward missing ${term}`);
 
 if (failures.length) {
   console.error(failures.map((failure) => `- ${failure}`).join("\n"));

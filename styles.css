@@ -2819,8 +2819,10 @@ body {
   width: 34px;
   height: 34px;
   flex: 0 0 34px;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
+  padding: 2px;
+  background: #625943;
   border: 2px solid #7e6136;
   border-radius: 4px;
   image-rendering: pixelated;

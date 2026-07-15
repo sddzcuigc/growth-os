@@ -129,6 +129,41 @@
   line-height: 1.4;
 }
 
+.goal-draft .smart-grid {
+  grid-template-columns:1fr 1fr;
+  gap:5px;
+  border-left-color:#397d91;
+  background:#e7f2d3;
+}
+
+.smart-grid span {
+  display:grid;
+  gap:2px;
+  min-width:0;
+  padding:5px;
+  border:2px solid #78905c;
+  background:#f7f4cf;
+}
+
+.smart-grid span:last-child { grid-column:1 / -1; }
+.smart-grid span small { color:#3d6e74; font-size:7px; font-weight:1000; }
+.smart-grid span strong { overflow-wrap:anywhere; color:#3b4327; font-size:8px; line-height:1.35; }
+
+.goal-draft .okr-preview,
+.goal-card .okr-preview {
+  display:grid;
+  gap:4px;
+  padding:7px;
+  border-left:4px solid #d0922e;
+  background:#fff0bd;
+}
+
+.okr-preview > small { color:#8b5c1f; font-size:8px; font-weight:1000; }
+.okr-preview p { display:flex; align-items:center; gap:5px; padding:4px 0; border-bottom:1px dashed #b89a5d; color:#4f422c; font-size:8px; }
+.okr-preview p:last-child { border-bottom:0; }
+.okr-preview b { flex:0 0 auto; color:#2f7432; }
+.okr-preview em { margin-left:auto; color:#85642f; font-size:7px; font-style:normal; white-space:nowrap; }
+
 .goal-list {
   display: grid;
   gap: 8px;

@@ -80,6 +80,7 @@ ensureColumn("actions", "defer_count", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("actions", "last_defer_reason", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("users", "recovery_hash", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("users", "recovery_updated_at", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("growth_goals", "plan_json", "TEXT NOT NULL DEFAULT '{}'");
 const skillNameToId = {
   自我调节: "self-regulation",
   会学会想: "metacognition",
@@ -148,6 +149,7 @@ async function requestHandler(request, response) {
     if (request.method === "POST" && url.pathname === "/api/action-inbox/parse") return handleParseActionInbox(request, response);
     if (request.method === "POST" && url.pathname === "/api/capture/parse") return handleParseCapture(request, response);
     if (request.method === "GET" && url.pathname === "/api/goals") return handleListGoals(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/onboarding/question") return handleOnboardingQuestion(request, response);
     if (request.method === "POST" && url.pathname === "/api/goals/shape") return handleShapeGoal(request, response);
     if (request.method === "POST" && url.pathname === "/api/goals") return handleCreateGoal(request, response);
     if (request.method === "PATCH" && /^\/api\/goals\/\d+$/.test(url.pathname)) return handleUpdateGoal(request, response, url);
@@ -739,7 +741,8 @@ function goalRows(profileIdValue) {
     const artifactCount = Number(db.prepare("SELECT COUNT(*) AS count FROM artifacts JOIN actions ON artifacts.task_key=('action:' || actions.id) WHERE artifacts.profile_id=? AND actions.goal_id=?").get(profileIdValue, row.id)?.count || 0);
     const evidenceCount = Number(actionStats?.done || 0) + Number(ideaStats?.done || 0) + artifactCount;
     const activeSteps = Number(actionStats?.active || 0) + Number(ideaStats?.active || 0);
-    return { id: Number(row.id), title: row.title, why: row.why_text, successSignal: row.success_signal, firstExperiment: row.first_experiment, skill: row.skill, horizon: row.horizon, status: row.status, evidenceCount, activeSteps, progress: row.status === "done" ? 100 : Math.min(90, evidenceCount * 20 + activeSteps * 5), createdAt: row.created_at, updatedAt: row.updated_at };
+    const plan = parseStoredJson(row.plan_json, {});
+    return { id: Number(row.id), title: row.title, why: row.why_text, successSignal: row.success_signal, firstExperiment: row.first_experiment, skill: row.skill, horizon: row.horizon, status: row.status, smart: plan.smart || {}, objective: plan.objective || row.title, keyResults: Array.isArray(plan.keyResults) ? plan.keyResults : [], weeklyPlan: Array.isArray(plan.weeklyPlan) ? plan.weeklyPlan : [], evidenceCount, activeSteps, progress: row.status === "done" ? 100 : Math.min(90, evidenceCount * 20 + activeSteps * 5), createdAt: row.created_at, updatedAt: row.updated_at };
   });
 }
 function ownedGoal(userId, id) {
@@ -754,7 +757,71 @@ function handleListGoals(request, response, url) {
 function fallbackGoalDraft(text) {
   const skill = /讲|表达|分享|写作/.test(text) ? "communication" : /整理|坚持|按时|习惯|专心/.test(text) ? "self-regulation" : /数据|计算|统计/.test(text) ? "data-reasoning" : /AI|人工智能|模型/.test(text) ? "ai-literacy" : /运动|睡眠|情绪|健康/.test(text) ? "wellbeing" : "creation";
   const title = text.replace(/^(我想|我希望|我要)/, "").replace(/[。！？!?]+$/g, "").trim().slice(0, 80) || "尝试一个新方向";
-  return { title, why: "这是我现在愿意投入时间探索的方向", successSignal: `我能展示或说清楚「${title}」的一次真实进步`, firstExperiment: `用10分钟做一个关于「${title}」的最小版本`, skill, horizon: "one_month" };
+  const why = "这是我现在愿意投入时间探索的方向";
+  const successSignal = `四周内完成3次练习，并展示或说清楚「${title}」的一次真实进步`;
+  const firstExperiment = `用10分钟做一个关于「${title}」的最小版本`;
+  return {
+    title, why, successSignal, firstExperiment, skill, horizon: "one_month",
+    smart: { specific: title, measurable: "完成3次可记录练习并留下1件成果", achievable: "每次只做5到15分钟", relevant: why, timeBound: "四周内完成第一轮" },
+    objective: `我想通过喜欢的方式，让「${title}」变成看得见的能力`,
+    keyResults: [
+      { id: "kr1", title: "完成3次小练习", target: 3, unit: "次" },
+      { id: "kr2", title: "留下1件可以展示的成果", target: 1, unit: "件" },
+      { id: "kr3", title: "完成2次复盘并找到有效方法", target: 2, unit: "次" }
+    ],
+    weeklyPlan: ["第1周：做最小版本", "第2周：重复一次并改进", "第3周：解决一个卡点", "第4周：展示成果并复盘"]
+  };
+}
+
+function normalizeGoalPlan(json, fallback) {
+  const smart = json?.smart || {};
+  const rawResults = Array.isArray(json?.keyResults) ? json.keyResults : fallback.keyResults;
+  return {
+    smart: {
+      specific: String(smart.specific || fallback.smart.specific).slice(0, 160),
+      measurable: String(smart.measurable || fallback.smart.measurable).slice(0, 180),
+      achievable: String(smart.achievable || fallback.smart.achievable).slice(0, 160),
+      relevant: String(smart.relevant || fallback.smart.relevant).slice(0, 180),
+      timeBound: String(smart.timeBound || fallback.smart.timeBound).slice(0, 120)
+    },
+    objective: String(json?.objective || fallback.objective).slice(0, 180),
+    keyResults: rawResults.slice(0, 3).map((item, index) => ({ id: `kr${index + 1}`, title: String(item.title || fallback.keyResults[index]?.title || "完成一个关键结果").slice(0, 140), target: Math.max(1, Math.min(20, Number(item.target || fallback.keyResults[index]?.target || 1))), unit: String(item.unit || fallback.keyResults[index]?.unit || "次").slice(0, 12) })),
+    weeklyPlan: (Array.isArray(json?.weeklyPlan) ? json.weeklyPlan : fallback.weeklyPlan).slice(0, 4).map((item) => String(item).slice(0, 160))
+  };
+}
+
+function fallbackPersonalQuestion(answers, questionId) {
+  const wish = answers["growth-wish"] || "变得更好";
+  const interest = answers["current-interest"] || "喜欢的事情";
+  if (questionId === "personal-friction") return { id: questionId, title: `当你想“${wish}”时，最常被什么挡住？`, why: "找到真正卡点，目标才会适合你。", options: ["不知道怎么开始", "做到一半容易停", "担心做不好", "常被别的事打断"] };
+  return { id: questionId, title: `如果用“${interest}”练习，一个月后你最想看到什么？`, why: "你认同的结果，才值得成为目标。", options: ["我能自己开始", "我能坚持做完", "我有作品能展示", "我能讲清学会了什么"] };
+}
+
+async function handleOnboardingQuestion(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  const body = await readBodyJson(request);
+  const profileIdValue = String(body.profileId || "");
+  const profile = ownedProfile(user.id, profileIdValue);
+  if (!profile) return sendJson(response, 404, { error: "角色不存在" });
+  const questionId = ["personal-friction", "success-picture"].includes(body.questionId) ? body.questionId : "personal-friction";
+  const answers = body.answers && typeof body.answers === "object" ? body.answers : {};
+  const fallback = fallbackPersonalQuestion(answers, questionId);
+  let question = fallback;
+  let provider = "local";
+  if (apiKey) {
+    try {
+      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(9000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.55, max_tokens: 260, response_format: { type: "json_object" }, messages: [
+        { role: "system", content: "你为6-12岁孩子设计一个个性化追问，帮助形成SMART成长目标。问题必须基于已有答案、口语化、一次只问一件事，不诊断、不贴标签、不索取隐私。给4个互斥且儿童能懂的选项。只返回JSON。" },
+        { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, questionPurpose: questionId === "personal-friction" ? "识别实现愿望时的主要阻碍" : "识别孩子认同的可观察成功画面", answers, output: { title: "一个带问号的问题", why: "一句为什么问", options: ["四个短选项"] } }) }
+      ] }) });
+      if (!apiResponse.ok) throw new Error(`onboarding question ${apiResponse.status}`);
+      const json = parseJsonContent((await apiResponse.json()).choices?.[0]?.message?.content || "{}");
+      const options = Array.isArray(json.options) ? json.options.map((item) => String(item).slice(0, 40)).filter(Boolean).slice(0, 4) : [];
+      if (options.length === 4) question = { id: questionId, title: String(json.title || fallback.title).slice(0, 120), why: String(json.why || fallback.why).slice(0, 140), options };
+      provider = "siliconflow";
+    } catch (error) { console.warn("Onboarding question used local fallback:", error.message); }
+  }
+  sendJson(response, 200, { question, provider });
 }
 async function handleShapeGoal(request, response) {
   const user = requireUser(request, response); if (!user) return;
@@ -771,12 +838,12 @@ async function handleShapeGoal(request, response) {
     try {
       const existing = goalRows(profileIdValue).filter((goal) => goal.status !== "done").map(({ title, why, successSignal, skill }) => ({ title, why, successSignal, skill }));
       const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(12000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.35, max_tokens: 420, response_format: { type: "json_object" }, messages: [
-        { role: "system", content: "你帮助6-12岁孩子把一个愿望整理成可探索的成长方向。保留孩子原意，不把愿望改造成成人KPI，不承诺结果，不评价天赋。给一个4周内可观察但非考试化的成功信号，以及10分钟可开始的第一个实验。只返回JSON。" },
-        { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, text, existingDirections: existing, output: { title: "孩子第一人称能认同的短方向", why: "一句保留内在动机的理由", successSignal: "一个看得见或说得清的进步信号", firstExperiment: "10分钟内能开始的小实验", skill: "self-regulation/metacognition/communication/data-reasoning/ai-literacy/creation/ethics-collaboration/wellbeing", horizon: "one_month或three_months" } }) }
+        { role: "system", content: "你帮助6-12岁孩子把愿望和画像整理成一条儿童友好的SMART目标和OKR。保留孩子原意，不做成人绩效管理，不评价天赋。目标要具体、可观察、可达到、与内在动机相关、有4周时限；一个Objective配3个Key Results，每个KR都能用次数或作品计量，并给4周节奏及10分钟第一步。只返回JSON。" },
+        { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, text, answers: body.context || {}, existingDirections: existing, output: { title: "孩子第一人称短目标", why: "内在动机", successSignal: "四周内可观察信号", firstExperiment: "10分钟第一步", skill: "能力id", horizon: "one_month", smart: { specific: "具体做什么", measurable: "如何量化", achievable: "为何做得到", relevant: "与本人有什么关系", timeBound: "时间边界" }, objective: "鼓舞但具体的一句话", keyResults: [{ title: "关键结果", target: 3, unit: "次" }], weeklyPlan: ["四周各一步"] } }) }
       ] }) });
       if (!apiResponse.ok) throw new Error(`goal shape ${apiResponse.status}`);
       const json = parseJsonContent((await apiResponse.json()).choices?.[0]?.message?.content || "{}");
-      draft = { title: String(json.title || fallback.title).trim().slice(0, 100), why: String(json.why || fallback.why).trim().slice(0, 220), successSignal: String(json.successSignal || fallback.successSignal).trim().slice(0, 240), firstExperiment: String(json.firstExperiment || fallback.firstExperiment).trim().slice(0, 220), skill: normalizeSkillId(json.skill || fallback.skill), horizon: ["one_month", "three_months"].includes(json.horizon) ? json.horizon : fallback.horizon };
+      draft = { title: String(json.title || fallback.title).trim().slice(0, 100), why: String(json.why || fallback.why).trim().slice(0, 220), successSignal: String(json.successSignal || fallback.successSignal).trim().slice(0, 240), firstExperiment: String(json.firstExperiment || fallback.firstExperiment).trim().slice(0, 220), skill: normalizeSkillId(json.skill || fallback.skill), horizon: ["one_month", "three_months"].includes(json.horizon) ? json.horizon : fallback.horizon, ...normalizeGoalPlan(json, fallback) };
       provider = "siliconflow";
     } catch (error) { console.warn("Goal shape used local fallback:", error.message); }
   }
@@ -793,7 +860,9 @@ async function handleCreateGoal(request, response) {
   if (title.length < 2) return sendJson(response, 400, { error: "方向名称太短了" });
   if (goalRows(profileIdValue).some((goal) => goal.status !== "done" && (normalizedTitle(goal.title) === normalizedTitle(title) || serverTitleSimilarity(goal.title, title) >= 0.82))) return sendJson(response, 409, { error: "这个方向已经点亮了，可以继续原来的旅程" });
   const now = nowIso();
-  const result = db.prepare("INSERT INTO growth_goals(profile_id,title,why_text,success_signal,first_experiment,skill,horizon,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)").run(profileIdValue, title, String(body.why || "").slice(0, 220), String(body.successSignal || "").slice(0, 240), String(body.firstExperiment || "").slice(0, 220), normalizeSkillId(body.skill || "creation"), ["one_month", "three_months"].includes(body.horizon) ? body.horizon : "one_month", "active", now, now);
+  const fallback = fallbackGoalDraft(title);
+  const plan = normalizeGoalPlan(body, fallback);
+  const result = db.prepare("INSERT INTO growth_goals(profile_id,title,why_text,success_signal,first_experiment,skill,horizon,status,created_at,updated_at,plan_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)").run(profileIdValue, title, String(body.why || "").slice(0, 220), String(body.successSignal || "").slice(0, 240), String(body.firstExperiment || "").slice(0, 220), normalizeSkillId(body.skill || "creation"), ["one_month", "three_months"].includes(body.horizon) ? body.horizon : "one_month", "active", now, now, JSON.stringify(plan));
   recordEvent(user.id, profileIdValue, "goal_created", { skill: normalizeSkillId(body.skill || "creation"), horizon: body.horizon || "one_month" });
   sendJson(response, 201, goalRows(profileIdValue).find((goal) => goal.id === Number(result.lastInsertRowid)));
 }
@@ -2060,7 +2129,7 @@ function dailyPlanCandidates(profileIdValue, checkin, excluded = [], swapContext
     if (swapContext.reason === "not_interesting" && swapContext.previousSourceType === "action") score -= 80;
     const goal = goalsById.get(Number(action.goalId || 0));
     if (goal) score += 18;
-    candidates.push({ ref, sourceType: "action", sourceId: Number(action.id), goalId: goal?.id || 0, goalTitle: goal?.title || "", title: action.title, detail: action.detail, minutes: Math.min(available, Number(action.estimateMinutes || 10)), energy: action.energy, score, firstStep: action.steps[0] || "先准备需要的东西，只开始第一小步", whyHint: goal ? `它正在推进「${goal.title}」` : action.status === "doing" ? "这是已经开始的事情" : dueHours <= 24 ? "它临近时间了" : "它适合现在的时间和精力" });
+    candidates.push({ ref, sourceType: "action", sourceId: Number(action.id), goalId: goal?.id || 0, goalTitle: goal?.title || "", keyResultTitle: goal?.keyResults?.[0]?.title || "", title: action.title, detail: action.detail, minutes: Math.min(available, Number(action.estimateMinutes || 10)), energy: action.energy, score, firstStep: action.steps[0] || "先准备需要的东西，只开始第一小步", whyHint: goal ? `它正在推进「${goal.title}」的第一个关键结果` : action.status === "doing" ? "这是已经开始的事情" : dueHours <= 24 ? "它临近时间了" : "它适合现在的时间和精力" });
   }
   for (const habit of habitRows(profileIdValue).filter((item) => item.dueToday && item.todayStatus === "pending")) {
     const ref = `habit:${habit.id}`;
@@ -2071,7 +2140,7 @@ function dailyPlanCandidates(profileIdValue, checkin, excluded = [], swapContext
     const ref = `idea:${idea.id}`;
     if (excludedSet.has(ref)) continue;
     const goal = goalsById.get(Number(idea.goalId || 0));
-    candidates.push({ ref, sourceType: "idea", sourceId: Number(idea.id), goalId: goal?.id || 0, goalTitle: goal?.title || "", title: idea.title, detail: idea.nextStep, minutes: Math.min(available, 10), energy: "normal", score: 38 + (checkin.intent === "create" ? 42 : 0) + (checkin.intent === "recharge" ? -18 : 0) + (goal ? 18 : 0) + (decisionCalibration.preferShort ? 8 : 0) + (decisionCalibration.preferLowEnergy ? -5 : 0) + (decisionCalibration.preferClearStep && idea.nextStep ? 8 : 0) + (feedbackCalibration.preferTiny ? 8 : 0) + (feedbackCalibration.preferClear && idea.nextStep ? 10 : 0) + (feedbackCalibration.avoidedSourceTypes.includes("idea") ? -10 : 0) + (swapContext.reason === "unclear" && idea.nextStep ? 18 : 0) + (swapContext.reason === "not_interesting" && swapContext.previousSourceType === "idea" ? -80 : 0), firstStep: idea.nextStep || "先写下这个想法最想解决的问题", whyHint: goal ? `它是「${goal.title}」方向的一颗灵感` : "它来自你自己保存的灵感" });
+    candidates.push({ ref, sourceType: "idea", sourceId: Number(idea.id), goalId: goal?.id || 0, goalTitle: goal?.title || "", keyResultTitle: goal?.keyResults?.[0]?.title || "", title: idea.title, detail: idea.nextStep, minutes: Math.min(available, 10), energy: "normal", score: 38 + (checkin.intent === "create" ? 42 : 0) + (checkin.intent === "recharge" ? -18 : 0) + (goal ? 18 : 0) + (decisionCalibration.preferShort ? 8 : 0) + (decisionCalibration.preferLowEnergy ? -5 : 0) + (decisionCalibration.preferClearStep && idea.nextStep ? 8 : 0) + (feedbackCalibration.preferTiny ? 8 : 0) + (feedbackCalibration.preferClear && idea.nextStep ? 10 : 0) + (feedbackCalibration.avoidedSourceTypes.includes("idea") ? -10 : 0) + (swapContext.reason === "unclear" && idea.nextStep ? 18 : 0) + (swapContext.reason === "not_interesting" && swapContext.previousSourceType === "idea" ? -80 : 0), firstStep: idea.nextStep || "先写下这个想法最想解决的问题", whyHint: goal ? `它正在推进「${goal.title}」的关键结果` : "它来自你自己保存的灵感" });
   }
   const rechargeRef = "recharge:today";
   if (!excludedSet.has(rechargeRef)) candidates.push({ ref: rechargeRef, sourceType: "recharge", sourceId: 0, title: checkin.energy === "low" ? "两分钟恢复能量" : "活动一下再出发", detail: "喝水、伸展、看看远处", minutes: Math.min(5, available), energy: "low", score: (checkin.intent === "recharge" ? 110 : checkin.energy === "low" ? 78 : 12) + (feedbackCalibration.preferTiny ? 10 : 0) + (feedbackCalibration.avoidedSourceTypes.includes("recharge") ? -10 : 0) + (swapContext.reason === "too_big" ? 34 : 0) + (swapContext.reason === "not_interesting" && swapContext.previousSourceType === "recharge" ? -80 : 0), firstStep: "先喝几口水，再慢慢伸展肩膀", whyHint: checkin.intent === "recharge" ? "这是你刚刚主动选择的恢复时间" : "照顾状态也是今天的重要一步" });
@@ -2130,7 +2199,7 @@ async function handleGenerateDailyPlan(request, response) {
     } catch (error) { console.warn("Daily plan used local fallback:", error.message); }
   }
   const source = candidates.find((candidate) => candidate.ref === selected.ref) || fallback;
-  const plan = { ...selected, sourceType: source.sourceType, sourceId: source.sourceId, goalId: source.goalId || 0, goalTitle: source.goalTitle || "", decisionSignals: decisionCalibration.activeSignals, recommendationSignals: recommendationCalibration.activeSignals };
+  const plan = { ...selected, sourceType: source.sourceType, sourceId: source.sourceId, goalId: source.goalId || 0, goalTitle: source.goalTitle || "", keyResultTitle: source.keyResultTitle || "", decisionSignals: decisionCalibration.activeSignals, recommendationSignals: recommendationCalibration.activeSignals };
   const now = nowIso();
   db.prepare("INSERT INTO daily_plans(profile_id,plan_date,checkin_json,plan_json,excluded_json,status,feedback,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(profile_id,plan_date) DO UPDATE SET checkin_json=excluded.checkin_json,plan_json=excluded.plan_json,excluded_json=excluded.excluded_json,status='ready',feedback='',updated_at=excluded.updated_at").run(profileIdValue, serverDateKey(), JSON.stringify(checkin), JSON.stringify(plan), JSON.stringify(excluded), "ready", "", now, now);
   recordEvent(user.id, profileIdValue, swap ? "daily_plan_swapped" : lighter ? "daily_plan_lightened" : "daily_plan_generated", { sourceType: plan.sourceType, minutes: plan.minutes, provider: plan.provider, energy: checkin.energy, intent: checkin.intent, swapReason: swapReason || undefined });
@@ -2634,6 +2703,11 @@ function parseJsonContent(content) {
       return {};
     }
   }
+}
+
+function parseStoredJson(content, fallback) {
+  try { return JSON.parse(content || ""); }
+  catch { return fallback; }
 }
 
 async function readBodyJson(request) {
