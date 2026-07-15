@@ -1,0 +1,29 @@
+.family-brief-card {
+  padding: 9px;
+  border: 3px solid #70502a;
+  border-radius: 5px;
+  background: #fff2c7;
+  box-shadow: inset 0 0 0 2px #e0bd68, 0 3px 0 #4b3520;
+}
+
+.family-brief-card.shared { border-color: #3d7147; box-shadow: inset 0 0 0 2px #8dc076, 0 3px 0 #31553a; }
+.family-brief-card header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.family-brief-card header span { color: #38713e; font-size: 10px; font-weight: 900; }
+.family-brief-card header small { color: #7b6948; text-align: right; font-size: 8px; }
+.family-brief-card h4 { margin: 8px 0; color: #382810; font-size: 15px; line-height: 1.35; }
+.family-brief-card > div { margin-top: 7px; padding: 7px; border: 2px solid #c9a85f; background: #fff9e2; }
+.family-brief-card > div small { display: block; color: #6b8248; font-size: 8px; font-weight: 900; }
+.family-brief-card > div p { margin: 3px 0 0; color: #45361f; font-size: 10px; line-height: 1.5; }
+.family-brief-card .family-less-nag { border-color: #6e9a72; background: #e6f0d8; }
+.family-less-nag strong { display: block; margin-top: 4px; color: #2f5637; font-size: 11px; line-height: 1.5; }
+.family-brief-card blockquote { margin: 8px 0; padding: 6px 8px; border-left: 4px solid #d39c32; background: #fff8df; color: #65491e; font-size: 10px; line-height: 1.45; }
+.family-boundary { margin: 7px 0; color: #74684f; font-size: 8px; line-height: 1.45; }
+.family-brief-card footer { display: grid; grid-template-columns: 1.5fr 1fr; gap: 6px; }
+.family-brief-card footer button { min-height: 34px; border-width: 2px; background: #4da748; color: #fff; font-size: 10px; }
+.family-brief-card footer button:last-child { background: #e5d6b6; color: #5b4d36; }
+.family-parent-view .family-brief-card { margin-top: 8px; }
+
+@media (max-width: 420px) {
+  .family-brief-card header { align-items: flex-start; flex-direction: column; gap: 2px; }
+  .family-brief-card header small { text-align: left; }
+}

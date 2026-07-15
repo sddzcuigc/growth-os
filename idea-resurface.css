@@ -1,0 +1,80 @@
+.idea-resurface-zone {
+  margin: 12px 0 16px;
+  padding: 10px;
+  border: 3px solid #6f4a24;
+  border-radius: 6px;
+  background: #fff3c9;
+  box-shadow: inset 0 0 0 2px #d5a958, 0 3px 0 #3c2a19;
+}
+
+.idea-wake-button {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  border: 3px solid #285d24;
+  border-radius: 5px;
+  background: #4fae39;
+  color: #fff;
+  font: 800 15px/1.2 inherit;
+  text-shadow: 0 2px #285d24;
+  box-shadow: inset 0 0 0 2px #86d45d, 0 3px 0 #23451f;
+}
+
+.idea-wake-button:disabled { opacity: .72; }
+
+.idea-wake-note {
+  display: block;
+  margin-top: 8px;
+  color: #695333;
+  text-align: center;
+  line-height: 1.45;
+}
+
+.idea-resurface-card header,
+.idea-resurface-card .resurface-actions,
+.dismissed-ideas p {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.idea-resurface-card header span {
+  color: #28702c;
+  font-weight: 900;
+}
+
+.idea-resurface-card header small { color: #806a47; }
+.idea-resurface-card h3 { margin: 10px 0 4px; font-size: 20px; color: #392510; }
+.idea-resurface-card > strong { display: block; margin: 10px 0; font-size: 17px; line-height: 1.45; color: #172d18; }
+.resurface-why, .resurface-angle { margin: 5px 0; color: #5f4a2d; line-height: 1.5; }
+.resurface-step { margin: 10px 0; padding: 9px; border-left: 5px solid #54a93b; background: #fffbe8; line-height: 1.45; }
+.resurface-step span { display: block; color: #367429; font-size: 12px; font-weight: 800; }
+
+.idea-resurface-card .resurface-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.resurface-actions button,
+.dismissed-ideas button {
+  min-height: 36px;
+  border: 2px solid #5b4425;
+  border-radius: 4px;
+  background: #f5c34e;
+  color: #38260f;
+  font-weight: 800;
+}
+
+.resurface-actions .quiet { background: #eee2c7; color: #655844; }
+.dismissed-ideas { margin-top: 12px; color: #67583e; }
+.dismissed-ideas summary { cursor: pointer; font-weight: 800; }
+.dismissed-ideas p { margin: 8px 0 0; padding-top: 8px; border-top: 1px dashed #af9770; }
+.dismissed-ideas p span { min-width: 0; overflow-wrap: anywhere; }
+.dismissed-ideas button { flex: 0 0 auto; min-height: 32px; background: #e9dfc9; }
+
+@media (max-width: 420px) {
+  .idea-resurface-card h3 { font-size: 18px; }
+  .idea-resurface-card > strong { font-size: 15px; }
+  .resurface-actions button { flex: 1 1 calc(50% - 8px); }
+}

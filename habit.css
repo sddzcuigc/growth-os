@@ -1,0 +1,22 @@
+.habit-rhythm { border-color: #4f7444; }
+.habit-create { display: grid; grid-template-columns: minmax(0, 1fr) 68px 68px; grid-template-areas: "title minutes frequency" "cue cue add"; gap: 5px; margin: 8px 0; }
+.habit-create > * { min-width: 0; min-height: 33px; border: 2px solid #77613f; background: #fff5d1; font-size: 9px; }
+.habit-create #habit-title { grid-area: title; padding: 6px; }
+.habit-create #habit-cue { grid-area: cue; padding: 6px; }
+.habit-create #habit-minutes { grid-area: minutes; }
+.habit-create #habit-frequency { grid-area: frequency; }
+.habit-create button { grid-area: add; color: #fff; background: #478f3b; font-weight: 900; }
+.habit-list { display: grid; gap: 6px; }
+.habit-list article { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 7px; padding: 8px; border: 2px solid #8b7650; background: #fff3cb; }
+.habit-list article.done { border-color: #4e873f; background: #e3f0ca; }
+.habit-list article.skip { border-style: dashed; background: #e9e2cf; }
+.habit-mark { width: 30px; height: 30px; display: grid; place-items: center; color: #fff; border: 3px solid #4f422e; background: #a58a57; font-size: 18px; font-weight: 900; }
+.habit-list article.done .habit-mark { background: #4ba13c; }
+.habit-list article.skip .habit-mark { background: #8b8370; }
+.habit-list article > div:nth-child(2) { min-width: 0; }
+.habit-list strong { display: block; font-size: 11px; }
+.habit-list small, .habit-list span { display: block; margin-top: 2px; color: #796747; font-size: 8px; line-height: 1.35; }
+.habit-list footer { grid-column: 1 / -1; display: flex; gap: 5px; }
+.habit-list footer button { min-height: 27px; padding: 3px 7px; border: 2px solid #675337; background: #d9c38e; font-size: 8px; font-weight: 900; }
+.habit-list footer button:first-child { color: #fff; background: #4a963c; }
+.habit-list footer .habit-delete { width: 27px; margin-left: auto; padding: 0; color: #664c34; background: #d5bf8c; font-size: 15px; }

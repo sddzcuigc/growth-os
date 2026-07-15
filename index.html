@@ -1,107 +1,216 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<meta name="theme-color" content="#6657f6"/>
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
-<meta http-equiv="Pragma" content="no-cache"/>
-<meta http-equiv="Expires" content="0"/>
-<title>成长OS｜孩子的成长世界</title>
-<meta name="description" content="孩子自己选择真实冒险，一次推进一关，用作品、反馈和修改点亮终身能力。"/>
-<link rel="stylesheet" href="styles.css?v=7.2">
-<link rel="stylesheet" href="coach-v1.css?v=7.2">
-<link rel="stylesheet" href="coach-pixel-v72.css?v=7.2">
-<link rel="stylesheet" href="world-v8-core.css?v=8.0">
-<link rel="stylesheet" href="world-v8-mission.css?v=8.0">
-<link rel="stylesheet" href="world-v8-profile.css?v=8.0">
-<script>
-try {
-  if (!localStorage.getItem('growthOSFamilyV1')) {
-    const legacy = {
-      state: localStorage.getItem('growthOS'),
-      assessment: localStorage.getItem('growthOSDiscoveryV3'),
-      savedAt: new Date().toISOString()
-    };
-    localStorage.setItem('growthOSLegacyBeforeFamily', JSON.stringify(legacy));
-    localStorage.removeItem('growthOS');
-    localStorage.removeItem('growthOSDiscoveryV3');
-  }
-} catch (error) {
-  console.warn('无法准备双孩样例数据', error);
-}
-</script>
-<script src="family-bootstrap.js?v=7.2"></script>
-</head>
-<body>
-<div class="app">
-<header>
-  <div class="row between">
-    <div><h1 id="pageTitle">成长世界</h1><div class="sub" id="pageSub">孩子自己选择，真实作品点亮能力</div></div>
-    <span class="version">V8.0 · 成长世界</span>
-  </div>
-</header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>天赋任务OS</title>
+    <script>
+      if (location.hostname.endsWith("github.io")) {
+        location.replace(`https://growth-os-ten-pearl.vercel.app${location.pathname.replace(/^\/growth-os\/?/, "/")}${location.search}${location.hash}`);
+      }
+    </script>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="live.css?v=2" />
+    <link rel="stylesheet" href="action.css?v=1" />
+    <link rel="stylesheet" href="habit.css?v=1" />
+    <link rel="stylesheet" href="focus.css?v=1" />
+    <link rel="stylesheet" href="review.css?v=1" />
+    <link rel="stylesheet" href="feedback.css?v=1" />
+    <link rel="stylesheet" href="artifact.css?v=1" />
+    <link rel="stylesheet" href="daily.css?v=1" />
+    <link rel="stylesheet" href="inbox.css?v=1" />
+    <link rel="stylesheet" href="recovery.css?v=1" />
+    <link rel="stylesheet" href="strategy.css?v=1" />
+    <link rel="stylesheet" href="goal.css?v=1" />
+    <link rel="stylesheet" href="self-coach.css?v=1" />
+    <link rel="stylesheet" href="idea-resurface.css?v=1" />
+    <link rel="stylesheet" href="family-brief.css?v=1" />
+  </head>
+  <body>
+    <main class="phone" aria-label="成长OS HTML5 App">
+      <section class="screen">
+        <header class="status-bar">
+          <span>9:41</span>
+          <div class="signals" aria-hidden="true">
+            <span class="bars"></span>
+            <span class="wifi"></span>
+            <span class="battery"></span>
+          </div>
+        </header>
 
-<section id="home" class="page active" aria-label="孩子的成长世界"></section>
-<section id="profile" class="page" aria-label="作品与动态档案"></section>
+        <section class="hero" aria-label="应用首页">
+          <img class="hero-scene" src="assets/voxel-hero.jpg" alt="像素村庄与成长冒险家" />
+          <div class="top-actions">
+            <button class="gem-button" type="button" data-action="open-settings" aria-label="查看宝石与等级规则">
+              <span class="gem"></span>
+              <span>1280</span>
+              <strong>+</strong>
+            </button>
+            <button class="gear-button" type="button" data-action="open-settings" aria-label="设置"><span aria-hidden="true">⚙</span></button>
+          </div>
+          <div class="logo">
+            <span>成长</span><strong>OS</strong>
+          </div>
+          <p class="subtitle">AI驱动的儿童成长规划系统</p>
+        </section>
 
-<section id="skills" class="page" aria-label="能力星图">
-  <div class="notice">能力升级必须有真实任务证据。系统会记录投入、独立程度、实际难度和迁移表现，而不是只靠一次测试。</div>
-  <div class="section-title">未来专业能力簇</div><div class="card" id="professionSkills"></div>
-  <div class="section-title">技能树节点</div><div id="skillList"></div>
-</section>
+        <section class="child-switcher" id="child-switcher" aria-label="选择孩子">
+          <button class="child-card active" type="button" data-child="brother">
+            <span class="face boy"></span>
+            <b>哥哥</b>
+            <span>9岁3个月</span>
+            <i>✓</i>
+          </button>
+          <button class="child-card" type="button" data-child="sister">
+            <span class="face girl"></span>
+            <b>妹妹</b>
+            <span>6岁4个月</span>
+            <i></i>
+          </button>
+          <button class="child-card add-child-card" type="button" data-action="open-profile-creator" aria-label="新建成长角色">
+            <strong>+</strong><span>新建角色</span>
+          </button>
+        </section>
 
-<section id="generator" class="page" aria-label="冒险大厅">
-  <div class="notice">系统只提供有限选择；家长手动项目编译器退出孩子主流程。</div>
-  <div class="card profile-signal" id="profileSignal"></div>
-  <div class="field"><label>选择孩子熟悉的项目外壳</label><div id="shellTags" class="row wrap"></div></div>
-  <div class="field"><label>核心补强能力（最多3项）</label><div id="skillTags" class="row wrap"></div></div>
-  <div class="field"><label>真实使用者</label><input id="realUser" value="家人"/></div>
-  <div class="field"><label>当前真实问题</label><textarea id="realProblem" placeholder="例如：家里的书总是找不到；妹妹想学会拍球；周末想设计一条低成本路线。"></textarea></div>
-  <div class="field"><label>每天可用时间</label><select id="availableTime"><option value="20">约20分钟</option><option value="35" selected>约35分钟</option><option value="60">约60分钟</option></select></div>
-  <button class="btn full" onclick="generateTask()">生成完整工作流</button>
-  <div id="generatedTask"></div>
-</section>
+        <section class="content" id="app-content" tabindex="-1"></section>
 
-<section id="workflow" class="page" aria-label="当前真实任务">
-  <div class="card"><span class="pill purple">真实任务</span><h2 id="wfTitle"></h2><div class="small" id="wfPurpose"></div><div id="wfMatrix"></div></div>
-  <div id="steps"></div>
-  <button class="btn green full" onclick="saveWorkflow()">保存今日进度</button>
-</section>
+        <section class="level-panel" id="level-panel">
+          <span class="face boy large" id="level-face"></span>
+          <div class="level-copy">
+            <div class="level-title-row">
+              <strong id="level-value">Lv.12</strong>
+              <span id="level-label">经验值</span>
+              <span class="hearts" id="level-hearts">♥♥♥♥♥♥♥♡</span>
+            </div>
+            <div class="xp-row">
+              <div class="xp-track"><span id="xp-bar" style="width: 72%"></span></div>
+              <span class="xp-number" id="xp-number">860 / 1200</span>
+            </div>
+          </div>
+          <button class="archive-button" type="button" data-action="open-insights"><img src="assets/pixel/skill-book.png" alt="" />成长档案</button>
+        </section>
 
-<section id="review" class="page" aria-label="成长作品馆">
-  <div class="notice" id="reviewGate"></div>
-  <div class="card">
-    <div class="field"><label>证据类型</label><select id="evidenceType"><option value="">请选择</option><option>照片/作品</option><option>视频/语音讲解</option><option>数据记录</option><option>真实用户反馈</option><option>家长观察记录</option></select></div>
-    <div class="field"><label>独立程度</label><select id="independence"><option value="0">0 成人基本代办</option><option value="1">1 多次提示后完成</option><option value="2" selected>2 少量提示，主要自己完成</option><option value="3">3 独立完成并主动修正</option></select></div>
-    <div class="check-grid">
-      <label><input type="checkbox" id="userTest"/> 有真实使用者测试</label>
-      <label><input type="checkbox" id="revised"/> 根据反馈至少修改一次</label>
-      <label><input type="checkbox" id="taught"/> 已经教给别人或带别人完成</label>
-    </div>
-    <div class="field"><label>今天的真实反馈</label><textarea id="fb" placeholder="谁用了？哪里不方便？发生了什么？"></textarea></div>
-    <div class="field"><label>事实总结</label><textarea id="sum" placeholder="我做了什么？最难的步骤是什么？结果怎样？"></textarea></div>
-    <div class="field"><label>提炼出的最小方法</label><textarea id="abs" placeholder="真正起作用的规则是什么？"></textarea></div>
-    <div class="field"><label>下次直接应用</label><textarea id="apply" placeholder="下次遇到类似情况，第一步做什么？"></textarea></div>
-    <div class="field"><label>举一反三：还能用于哪里</label><textarea id="transfer" placeholder="至少写两个新场景，并说明是否需要调整。"></textarea></div>
-    <button class="btn full" onclick="saveReview()">提交证据</button>
-  </div>
-  <div id="reviewResult"></div><div id="reviewHistory"></div>
-</section>
+        <nav class="tabbar" aria-label="主导航">
+          <button class="tab active" type="button" data-page="profile">
+            <img src="assets/pixel/nav-home.png" alt="" />
+            <b>了解</b>
+          </button>
+          <button class="tab" type="button" data-page="discover">
+            <img src="assets/pixel/nav-discover.png" alt="" />
+            <b>发现</b>
+          </button>
+          <button class="tab" type="button" data-page="skills">
+            <img src="assets/pixel/nav-map.png" alt="" />
+            <b>路线</b>
+          </button>
+          <button class="tab" type="button" data-page="plan">
+            <img src="assets/pixel/nav-project.png" alt="" />
+            <b>项目</b>
+          </button>
+          <button class="tab" type="button" data-page="execute">
+            <img src="assets/pixel/nav-execute.png" alt="" />
+            <b>执行</b>
+          </button>
+        </nav>
 
-<nav aria-label="主要导航">
-  <button data-page="home" class="active" onclick="go('home')"><span>✦</span>世界</button>
-  <button data-page="profile" onclick="go('profile')"><span>☺</span>我的</button>
-  <button data-page="skills" onclick="go('skills')"><span>◆</span>星图</button>
-  <button data-page="generator" onclick="go('generator')"><span>▣</span>冒险</button>
-  <button data-page="workflow" onclick="go('workflow')"><span>✓</span>当前</button>
-</nav>
-</div>
-<div id="modal" class="modal" onclick="if(event.target===this)document.getElementById('modal').classList.remove('open')"><div class="sheet" id="sheet"></div></div>
-<script src="app.js?v=7.2" defer></script>
-<script src="kernel-v3.js?v=7.2" defer></script>
-<script src="coach-v1.js?v=7.2" defer></script>
-<script src="coach-workflow-v1.js?v=7.2" defer></script>
-<script src="world-v8.js?v=8.0" defer></script>
-</body>
+        <section class="settings-overlay" id="settings-overlay" hidden aria-label="设置">
+          <div class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <div class="settings-head">
+              <h2 id="settings-title">成长OS设置</h2>
+              <button type="button" data-action="close-settings" aria-label="关闭设置">×</button>
+            </div>
+            <div class="settings-body" id="settings-content"></div>
+          </div>
+        </section>
+
+        <section class="tutorial-overlay" id="tutorial-overlay" hidden aria-label="新手引导">
+          <div class="tutorial-dialog" role="dialog" aria-modal="true" aria-labelledby="tutorial-title">
+            <div class="tutorial-progress" id="tutorial-progress" aria-label="引导进度"></div>
+            <div class="tutorial-visual" id="tutorial-visual" aria-hidden="true"></div>
+            <p class="tutorial-kicker" id="tutorial-kicker"></p>
+            <h2 id="tutorial-title"></h2>
+            <p class="tutorial-copy" id="tutorial-copy"></p>
+            <div class="tutorial-actions">
+              <button class="tutorial-skip" type="button" data-action="skip-tutorial">跳过</button>
+              <button class="tutorial-next" type="button" data-action="next-tutorial">下一步</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="auth-overlay" id="auth-overlay" hidden aria-label="账户登录">
+          <div class="auth-dialog" role="dialog" aria-modal="true">
+            <img src="assets/pixel/skill-ai.png" alt="" />
+            <p>成长OS云端档案</p>
+            <h2>让每一次成长都被记住</h2>
+            <div id="auth-login-fields" class="auth-login-fields">
+              <input id="auth-email" type="email" autocomplete="email" placeholder="邮箱" />
+              <input id="auth-password" type="password" autocomplete="current-password" placeholder="密码（至少8位）" />
+              <button type="button" data-action="login">登录</button>
+              <button class="auth-secondary" type="button" data-action="register">注册新账户</button>
+              <button class="auth-secondary" type="button" data-action="show-recovery">使用恢复码</button>
+            </div>
+            <div id="auth-recovery-fields" class="auth-recovery-fields" hidden>
+              <input id="recovery-email" type="email" autocomplete="email" placeholder="注册邮箱" />
+              <input id="recovery-code" autocomplete="off" spellcheck="false" placeholder="恢复码 XXXX-XXXX-XXXX-XXXX-XXXX" />
+              <input id="recovery-new-password" type="password" autocomplete="new-password" placeholder="设置新密码（至少8位）" />
+              <button type="button" data-action="reset-password">重设密码并登录</button>
+              <button class="auth-secondary" type="button" data-action="hide-recovery">返回密码登录</button>
+            </div>
+            <p class="auth-error" id="auth-error"></p>
+            <small>账户数据按角色隔离，并保存到本机 SQLite 数据库。</small>
+          </div>
+        </section>
+
+        <section class="recovery-code-overlay" id="recovery-code-overlay" hidden aria-label="账户恢复码">
+          <div class="recovery-code-dialog" role="dialog" aria-modal="true" aria-labelledby="recovery-code-title">
+            <img src="assets/pixel/chest.png" alt="" />
+            <small>监护人账户保险箱</small>
+            <h2 id="recovery-code-title">保存这枚恢复码</h2>
+            <p>它只显示这一次。忘记密码时，用它找回全部成长档案。</p>
+            <output id="recovery-code-value"></output>
+            <button type="button" data-action="copy-recovery-code">复制恢复码</button>
+            <button class="auth-secondary" type="button" data-action="close-recovery-code">我已经保存好了</button>
+          </div>
+        </section>
+
+        <section class="profile-overlay" id="profile-overlay" hidden aria-label="新建角色">
+          <div class="profile-dialog" role="dialog" aria-modal="true">
+            <h2>新建成长角色</h2>
+            <label>角色名字<input id="profile-name" maxlength="20" placeholder="例如：小宇" /></label>
+            <label>年龄<input id="profile-age" maxlength="20" placeholder="例如：8岁2个月" /></label>
+            <label>角色形象<select id="profile-avatar"><option value="boy">冒险少年</option><option value="girl">创造少女</option></select></label>
+            <label>起始路线<select id="profile-template"><option value="brother">探索与项目</option><option value="sister">表达与创造</option></select></label>
+            <label class="consent-check"><input id="profile-consent" type="checkbox" />我是家长或监护人，同意为这个孩子创建成长档案，并保存任务、复盘和作品证据。开启AI个性化的内容可能发送给已配置的AI服务；每篇私人日记可以单独关闭此权限。</label>
+            <p class="auth-error" id="profile-error"></p>
+            <div><button type="button" data-action="close-profile-creator">取消</button><button type="button" data-action="create-profile">创建角色</button></div>
+          </div>
+        </section>
+
+        <section class="insights-overlay" id="insights-overlay" hidden aria-label="成长洞察">
+          <div class="insights-dialog" role="dialog" aria-modal="true" aria-labelledby="insights-title">
+            <div class="settings-head"><h2 id="insights-title">我的成长档案</h2><button type="button" data-action="close-insights" aria-label="关闭成长档案">×</button></div>
+            <div class="insights-body" id="insights-content"></div>
+          </div>
+        </section>
+
+        <section class="focus-overlay" id="focus-overlay" hidden aria-label="专注舱">
+          <div class="focus-dialog" role="dialog" aria-modal="true" aria-labelledby="focus-title">
+            <div class="focus-top"><span>专注舱</span><button type="button" data-action="cancel-focus" aria-label="退出专注">×</button></div>
+            <img src="assets/pixel/skill-check.png" alt="" />
+            <small>现在只做这一件事</small>
+            <h2 id="focus-title"></h2>
+            <div class="focus-clock" id="focus-clock">10:00</div>
+            <div class="focus-track"><i id="focus-progress"></i></div>
+            <p id="focus-message">不用着急，做一个小步骤就好。</p>
+            <button class="focus-stuck-button" type="button" data-action="open-focus-rescue">我卡住了</button>
+            <div class="focus-rescue" id="focus-rescue" hidden></div>
+            <div class="focus-controls"><button type="button" data-action="toggle-focus-pause">暂停</button><button type="button" data-action="finish-focus">只结束专注</button><button type="button" data-action="finish-focus-action">完成行动</button></div>
+          </div>
+        </section>
+
+        <div class="pixel-toast" id="pixel-toast" hidden role="status"></div>
+      </section>
+    </main>
+    <script src="app.js"></script>
+  </body>
 </html>

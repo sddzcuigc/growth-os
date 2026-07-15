@@ -1,0 +1,25 @@
+.weekly-compass > .page-head button { min-height: 31px; padding: 4px 7px; color: #fff; border: 2px solid #315a2c; background: #478f38; font-size: 9px; font-weight: 900; }
+.weekly-compass > .page-head button:disabled { opacity: .68; }
+.review-card { padding: 9px; border: 3px solid #61784c; background: #edf2d3; }
+.review-card.challenged { border-color: #a66a55; background: #f2dac4; }
+.review-card > small { color: #60734e; font-size: 8px; }
+.review-card h4 { margin: 5px 0 8px; color: #2e542b; font-size: 16px; line-height: 1.35; }
+.review-wins { display: grid; gap: 4px; }
+.review-wins p { margin: 0; padding: 5px; border-left: 3px solid #4a943c; background: rgba(255,255,255,.55); font-size: 9px; }
+.review-patterns { display: grid; gap: 5px; margin-top: 8px; }
+.review-patterns > div { display: grid; grid-template-columns: 62px 1fr; gap: 3px 6px; padding: 6px; border: 2px solid #8d805b; background: #fff5cf; }
+.review-patterns span { grid-row: 1 / 3; align-self: center; padding: 3px; text-align: center; color: #fff; background: #6e8c54; font-size: 8px; font-weight: 900; }
+.review-patterns strong { font-size: 10px; }
+.review-patterns small { color: #776846; font-size: 8px; }
+.review-focus { margin-top: 8px; padding: 8px; color: #fff; border: 3px solid #285f74; background: #377d91; }
+.review-focus small { color: #c8edf2; font-size: 8px; }
+.review-focus h5 { margin: 3px 0; font-size: 14px; }
+.review-focus p { margin: 3px 0; font-size: 9px; line-height: 1.4; }
+.review-focus strong { display: block; margin-top: 5px; padding: 5px; color: #23474f; background: #d7eef0; font-size: 9px; }
+.review-card blockquote { margin: 8px 0; padding: 7px; border: 2px dashed #8b744c; background: #fff1c6; font-size: 10px; font-weight: 900; }
+.gentle-reset { margin: 6px 0; color: #67593f; font-size: 9px; line-height: 1.45; }
+.review-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.review-actions button { min-height: 30px; border: 2px solid #6d593a; background: #dfca94; font-size: 8px; font-weight: 900; }
+.review-actions button:first-child { color: #315c29; background: #cde5aa; }
+.review-actions button:last-child { color: #fff; background: #478f38; }
+.review-card > em { display: block; margin-top: 5px; color: #587248; font-size: 8px; font-style: normal; }

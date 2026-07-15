@@ -1,0 +1,308 @@
+.daily-compass {
+  position: relative;
+  overflow: hidden;
+  border-color: #49682e;
+  background: #f5e9b9;
+}
+
+.daily-compass::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 6px;
+  background: repeating-linear-gradient(90deg, #4cab3e 0 18px, #32832f 18px 36px, #d5bd55 36px 45px);
+  content: "";
+}
+
+.daily-kicker,
+.daily-compass.ready header span {
+  color: #2e7b31;
+  font-size: 11px;
+  font-weight: 1000;
+}
+
+.daily-compass.checkin h2,
+.daily-compass.ready h2 {
+  margin: 7px 0 4px;
+  color: #30240f;
+  font-size: 19px;
+  line-height: 1.25;
+}
+
+.daily-compass.checkin > p,
+.daily-compass.ready > p {
+  margin: 0 0 10px;
+  color: #654e2f;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.daily-answer-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.daily-answer-grid button,
+.daily-actions button,
+.daily-back,
+.daily-compass footer button,
+.planning-toggle button {
+  min-width: 0;
+  min-height: 38px;
+  padding: 6px;
+  border: 3px solid #654a28;
+  border-radius: 5px;
+  background: #e7d092;
+  color: #3e2d17;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 1000;
+  box-shadow: 0 3px 0 rgba(50, 35, 12, 0.22);
+}
+
+.daily-answer-grid button:active,
+.daily-actions button:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 rgba(50, 35, 12, 0.22);
+}
+
+.daily-back {
+  width: 100%;
+  min-height: 30px;
+  margin-top: 7px;
+  border-width: 2px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.daily-compass.ready header,
+.daily-compass.ready footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.daily-compass.ready header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.daily-compass.ready header small,
+.daily-compass.ready footer span {
+  color: #786746;
+  font-size: 10px;
+}
+
+.daily-compass.ready header > strong {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border: 2px solid #276d2a;
+  border-radius: 4px;
+  background: #51ad3e;
+  color: white;
+  font-size: 12px;
+}
+
+.daily-first-step {
+  display: grid;
+  gap: 4px;
+  padding: 9px;
+  border: 3px solid #6b7b37;
+  border-radius: 5px;
+  background: #e6efb7;
+}
+
+.daily-goal-link {
+  margin-bottom: 7px;
+  padding: 5px 7px;
+  border: 2px solid #4f7d43;
+  background: #dceab5;
+  color: #36562f;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.daily-rhythm-link {
+  margin-bottom: 7px;
+  padding: 5px 7px;
+  border: 2px solid #8a6e36;
+  background: #f0dda0;
+  color: #64491f;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.daily-first-step small {
+  color: #56703a;
+  font-size: 10px;
+}
+
+.daily-first-step strong {
+  color: #294825;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.daily-compass blockquote {
+  margin: 8px 0;
+  padding: 6px 8px;
+  border-left: 4px solid #d39c32;
+  background: #fff3c8;
+  color: #6a4b21;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.4;
+}
+
+.daily-compass blockquote small {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 2px 4px;
+  background: #dfb956;
+  color: #533916;
+  font-size: 8px;
+}
+
+.daily-actions {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr;
+  gap: 5px;
+}
+
+.daily-actions .daily-primary {
+  border-color: #1f6627;
+  background: #3da83d;
+  color: white;
+}
+
+.daily-actions button:disabled {
+  filter: grayscale(0.8);
+  opacity: 0.55;
+}
+
+.daily-recommendation-link {
+  margin: 6px 0;
+  padding: 5px 7px;
+  border: 2px solid #4d7f63;
+  background: #d9ead8;
+  color: #315a43;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.daily-swap-dialog {
+  margin-top: 8px;
+  padding: 8px;
+  border: 3px solid #70502a;
+  border-radius: 4px;
+  background: #fff0bd;
+  box-shadow: inset 0 0 0 2px #e4c267;
+}
+
+.daily-swap-dialog > strong,
+.daily-swap-dialog > small {
+  display: block;
+}
+
+.daily-swap-dialog > strong { color: #3c2b16; font-size: 13px; }
+.daily-swap-dialog > small { margin: 3px 0 7px; color: #765f3a; font-size: 9px; }
+
+.daily-swap-dialog > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.daily-swap-dialog > div button {
+  min-height: 34px;
+  padding: 4px;
+  border-width: 2px;
+  background: #f1d276;
+  color: #473318;
+  font-size: 10px;
+}
+
+.daily-swap-dialog .daily-swap-cancel {
+  display: block;
+  min-height: 26px;
+  margin: 6px auto 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #6f6046;
+  font-size: 9px;
+}
+
+.recommendation-memory > .page-head > span {
+  padding: 3px 6px;
+  border: 2px solid #4d7f63;
+  background: #d9ead8;
+  color: #315a43;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.recommendation-memory > div:last-child { display: grid; gap: 5px; }
+
+.recommendation-memory article {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border: 2px solid #9b8250;
+  background: #fff4cf;
+}
+
+.recommendation-memory article span,
+.recommendation-memory article time { color: #776442; font-size: 9px; }
+.recommendation-memory article strong { color: #3d301d; font-size: 10px; }
+.recommendation-memory article button { min-height: 25px; padding: 2px 5px; border-width: 2px; background: #ead9b2; box-shadow: none; font-size: 9px; }
+
+.daily-compass.ready footer {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 2px dashed #aa925a;
+}
+
+.daily-compass.ready footer button {
+  min-height: 26px;
+  padding: 3px 6px;
+  border-width: 2px;
+  background: transparent;
+  box-shadow: none;
+  font-size: 10px;
+}
+
+.planning-toggle {
+  display: grid;
+  gap: 6px;
+  padding-top: 9px;
+  padding-bottom: 9px;
+  background: rgba(240, 220, 166, 0.92);
+}
+
+.planning-toggle > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.planning-toggle > div > button:only-child {
+  grid-column: 1 / -1;
+}
+
+.planning-toggle button {
+  min-height: 34px;
+  border-width: 2px;
+  background: #d8c596;
+  box-shadow: none;
+  font-size: 10px;
+}
+
+.planning-toggle small {
+  color: #776342;
+  text-align: center;
+  font-size: 10px;
+}

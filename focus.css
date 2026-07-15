@@ -1,0 +1,37 @@
+.focus-launch { display: grid; grid-template-columns: 82px 1fr; gap: 6px; margin: 8px 0; }
+.focus-launch select, .focus-launch button { min-height: 34px; border: 2px solid #4f422e; font-size: 9px; font-weight: 900; }
+.focus-launch select { background: #fff5cf; }
+.focus-launch button { color: #fff; background: #337e9e; box-shadow: inset 0 3px #5eb1ca; }
+.focus-overlay { position: absolute; inset: 0; z-index: 160; display: grid; place-items: center; padding: 22px; background: rgba(10, 16, 18, .92); }
+.focus-overlay[hidden] { display: none; }
+.focus-dialog { width: 100%; max-height: calc(100vh - 44px); max-height: calc(100dvh - 44px); overflow-y: auto; padding: 15px; text-align: center; color: #f8f2da; border: 5px solid #2c3c3d; border-radius: 7px; background: #263f42 url("assets/pixel/stone-clean.png") center / cover no-repeat; box-shadow: 0 9px 0 rgba(0,0,0,.55), inset 0 0 0 2px rgba(255,255,255,.15); }
+.focus-top { display: flex; align-items: center; justify-content: space-between; color: #9fe17d; font-size: 11px; font-weight: 900; }
+.focus-top button { width: 32px; height: 32px; color: #fff; border: 3px solid #161d1d; background: #596364; font-size: 20px; }
+.focus-dialog > img { width: 72px; margin: 14px auto 6px; image-rendering: pixelated; }
+.focus-dialog > small { display: block; color: #9fc7c4; font-size: 10px; }
+.focus-dialog h2 { min-height: 58px; margin: 7px 0; font-size: 20px; line-height: 1.35; }
+.focus-clock { color: #fff; font-size: 54px; font-weight: 900; font-variant-numeric: tabular-nums; text-shadow: 0 4px #142526; }
+.focus-track { height: 16px; margin: 9px 0; border: 3px solid #152426; background: #182b2d; }
+.focus-track i { display: block; width: 0; height: 100%; background: #67c74c; box-shadow: inset 0 3px #9af17b; }
+.focus-dialog > p { min-height: 40px; margin: 8px 0; color: #c5d8d1; font-size: 11px; line-height: 1.5; }
+.focus-controls { display: grid; grid-template-columns: 72px 1fr 1fr; gap: 6px; }
+.focus-controls button { min-height: 40px; color: #fff; border: 3px solid #172322; background: #567072; font-size: 9px; font-weight: 900; }
+.focus-controls button:last-child { background: #4a9d3c; box-shadow: inset 0 3px #78d65a; }
+.focus-stuck-button { width: 100%; min-height: 34px; margin: 0 0 7px; color: #ffe7a6; border: 2px solid #704d28; background: #8e6030; font-size: 10px; font-weight: 1000; }
+.focus-stuck-button[hidden], .focus-rescue[hidden] { display: none; }
+.focus-dialog.rescue-open .focus-controls { display: none; }
+.focus-dialog.rescue-open > img { width: 46px; margin-top: 7px; }
+.focus-dialog.rescue-open .focus-clock { font-size: 34px; }
+.focus-rescue { display: grid; gap: 7px; margin-top: 7px; padding: 9px; border: 3px solid #8f753a; border-radius: 5px; background: #f0e3ad; color: #322817; text-align: left; }
+.focus-rescue > strong { text-align: center; font-size: 13px; }
+.focus-rescue > small { color: #4f743b; font-size: 9px; font-weight: 1000; }
+.focus-rescue > p, .focus-rescue blockquote { margin: 0; font-size: 10px; line-height: 1.4; }
+.focus-rescue blockquote { padding: 5px 7px; border-left: 3px solid #b87a2f; background: #fff1c7; color: #694822; }
+.rescue-reasons, .rescue-outcomes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+.rescue-reasons button, .rescue-outcomes button, .rescue-back { min-width: 0; min-height: 34px; padding: 4px; border: 2px solid #62502f; border-radius: 4px; background: #d7c181; color: #3b2d16; font: inherit; font-size: 9px; font-weight: 1000; }
+.rescue-outcomes button:first-child { border-color: #2b692b; background: #4ba23d; color: #fff; }
+.rescue-outcomes button:last-child { grid-column: 1 / -1; }
+.rescue-back { width: 100%; min-height: 28px; background: transparent; }
+.rescue-tiny-step { display: grid; gap: 3px; padding: 7px; border-left: 4px solid #4d993d; background: #e5edb7; }
+.rescue-tiny-step small { color: #657248; font-size: 9px; }
+.rescue-tiny-step strong { color: #2d4725; font-size: 11px; line-height: 1.4; }

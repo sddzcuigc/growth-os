@@ -1,7 +1,0 @@
-{
-  "ok": false,
-  "baseUrl": "https://growth-os-ten-pearl.vercel.app/",
-  "steps": [],
-  "errors": [],
-  "failure": "page.waitForSelector: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator('.coach-task-card') to be visible\n\n    at /home/runner/work/growth-os/growth-os/tests/coach-e2e.mjs:50:14"
-}
