@@ -1930,6 +1930,17 @@ button {
   background: #fff3c6;
 }
 
+.context-summary span button {
+  margin-left: 5px;
+  padding: 1px 4px;
+  border: 1px solid #7b633c;
+  border-radius: 3px;
+  background: #ead49a;
+  color: #5b472b;
+  font: inherit;
+  font-size: 9px;
+}
+
 .coach-card.thinking {
   min-height: 150px;
   display: grid;

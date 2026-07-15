@@ -1749,6 +1749,12 @@ function setContextAnswer(questionId, value) {
   });
 }
 
+function clearContextAnswer(questionId) {
+  const profile = { ...getContextProfile() };
+  delete profile[questionId];
+  writeJson(storageKey("context-profile"), profile);
+}
+
 function nextContextQuestion() {
   const profile = getContextProfile();
   return contextQuestions.find((question) => !profile[question.id]);
@@ -3150,7 +3156,7 @@ function renderSelf() {
         </article>
       `}
       <div class="context-summary">
-        ${contextAnswers.length ? contextAnswers.map(({ question, answer }) => `<span>${question.title.replace("？", "")}：${answer}</span>`).join("") : "<span>先回答一个问题，AI才会更懂你</span>"}
+        ${contextAnswers.length ? contextAnswers.map(({ question, answer }) => `<span>${question.title.replace("？", "")}：${escapeHtml(answer)}<button type="button" data-action="edit-context-answer" data-question="${escapeHtml(question.id)}">修改</button></span>`).join("") : "<span>先回答一个问题，AI才会更懂你</span>"}
       </div>
       <div class="context-map">
         ${contextQuestions.map((question) => {
@@ -3973,6 +3979,13 @@ document.addEventListener("click", async (event) => {
   const contextAnswer = event.target.closest("[data-action='answer-context']");
   if (contextAnswer) {
     setContextAnswer(contextAnswer.dataset.question, contextAnswer.dataset.value);
+    clearAiCoachResult();
+    render();
+    return;
+  }
+  const editContextAnswer = event.target.closest("[data-action='edit-context-answer']");
+  if (editContextAnswer) {
+    clearContextAnswer(editContextAnswer.dataset.question);
     clearAiCoachResult();
     render();
     return;
