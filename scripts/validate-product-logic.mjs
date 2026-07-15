@@ -42,7 +42,7 @@ const requiredScienceSources = [
 ];
 
 const context = loadAppContext();
-const serverSource = readFileSync("server.js", "utf8");
+const serverSource = readFileSync("api/server.js", "utf8");
 const scienceSource = readFileSync("SCIENCE.md", "utf8");
 const htmlSource = readFileSync("index.html", "utf8");
 const appSourceText = readFileSync("app.js", "utf8");
