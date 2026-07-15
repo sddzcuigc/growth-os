@@ -2188,7 +2188,7 @@ async function handleJournalPrompt(request, response) {
   if (!apiKey) return sendJson(response, 200, { question: fallbackQuestions[parseInt(stableHash(`${profileIdValue}-${new Date().toISOString().slice(0,10)}`).slice(0,2), 36) % fallbackQuestions.length], source: "local" });
   try {
     const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
-      method: "POST", signal: AbortSignal.timeout(12000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+      method: "POST", signal: AbortSignal.timeout(45000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
       body: JSON.stringify({ model, temperature: 0.7, max_tokens: 220, response_format: { type: "json_object" }, messages: [
         { role: "system", content: "你是6-12岁孩子的成长日记伙伴。只问一个温和、具体、没有标准答案的问题，帮助孩子记录感悟、灵感、困惑或自我发现。如果给了草稿，只追问草稿中尚未说清、但值得孩子自己探索的一点，不总结、不改写、不替孩子下结论。不要诊断，不要说教，不要重复近期问题。只返回JSON。" },
         { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, mode: String(body.mode || "hybrid"), draft: draft || undefined, recentJournal: recent, todayContext: body.todayContext || {}, output: { question: "最多38字", starter: "一个可选的回答开头，最多20字", suggestedTags: ["2-4个短标签"] } }) }
