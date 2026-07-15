@@ -3330,13 +3330,14 @@ function renderReflect() {
       <div class="page-head"><h2 class="panel-title">${pixelIcon("skill-book", "")} 我的成长日记</h2><span class="tag">${state.journals.length}篇</span></div>
       <p class="journal-intro">记下灵感、感悟、困惑，或者今天突然懂了什么。这里没有标准答案。</p>
       <div class="journal-modes" role="group" aria-label="日记方式">
-        ${[["self","我自己写"],["ai","AI问我"],["hybrid","一起写"]].map(([value,label]) => `<button type="button" data-action="set-journal-mode" data-mode="${value}" class="${state.journalMode === value ? "active" : ""}">${label}</button>`).join("")}
+        ${[["self","自由写"],["ai","AI提问"],["hybrid","边写边问"]].map(([value,label]) => `<button type="button" data-action="set-journal-mode" data-mode="${value}" class="${state.journalMode === value ? "active" : ""}">${label}</button>`).join("")}
       </div>
-      ${state.journalMode !== "self" ? `<div class="journal-question-actions"><button class="journal-question-button" type="button" data-action="ask-journal-question" ${state.journalLoading ? "disabled" : ""}>${state.journalLoading ? "AI正在想..." : "AI问我"}</button><button class="journal-followup-button" type="button" data-action="ask-journal-followup" ${state.journalLoading || state.journalDraft.trim().length < 2 ? "disabled" : ""}>根据我写的继续问</button></div>` : ""}
-      ${state.journalPrompt ? `<article class="journal-prompt"><small>${state.journalPrompt.source === "ai" ? "AI根据我的最近经历提问" : "今日灵感问题"}</small><strong>${escapeHtml(state.journalPrompt.question)}</strong>${state.journalPrompt.starter ? `<button type="button" data-action="use-journal-starter" data-starter="${escapeHtml(state.journalPrompt.starter)}">用这个开头：${escapeHtml(state.journalPrompt.starter)}</button>` : ""}</article>` : ""}
-      <textarea id="journal-content" rows="5" maxlength="4000" placeholder="我今天发现…… / 我有一个想法…… / 有件事让我不太明白……">${escapeHtml(state.journalDraft)}</textarea>
+      ${state.journalMode !== "self" ? `<div class="journal-question-actions"><button class="journal-question-button" type="button" data-action="ask-journal-question" ${state.journalLoading ? "disabled" : ""}>${state.journalLoading ? "AI正在想问题..." : state.journalPrompt ? "换一个问题" : "生成一个问题"}</button><button class="journal-followup-button" type="button" data-action="ask-journal-followup" ${state.journalLoading || state.journalDraft.trim().length < 2 ? "disabled" : ""}>${state.journalDraft.trim().length < 2 ? "写一句后可继续问" : "沿着这句继续问"}</button></div>` : ""}
+      ${state.journalPrompt ? `<article class="journal-prompt"><small>第1步 · ${state.journalPrompt.source === "ai" ? "AI根据我的最近经历提问" : "今日灵感问题"}</small><strong>${escapeHtml(state.journalPrompt.question)}</strong>${state.journalPrompt.starter ? `<button type="button" data-action="use-journal-starter" data-starter="${escapeHtml(state.journalPrompt.starter)}">用这个开头：${escapeHtml(state.journalPrompt.starter)}</button>` : ""}</article>` : ""}
+      <label class="journal-answer-label" for="journal-content"><b>${state.journalPrompt ? "第2步" : "写下一句"}</b><span>${state.journalPrompt ? "在下面写下你的回答，没有标准答案" : "灵感、感受和困惑都可以"}</span></label>
+      <textarea id="journal-content" rows="5" maxlength="4000" placeholder="${state.journalPrompt ? "在这里回答AI的问题……" : "我今天发现…… / 我有一个想法…… / 有件事让我不太明白……"}">${escapeHtml(state.journalDraft)}</textarea>
       <label class="journal-ai-consent"><input id="journal-ai-context" type="checkbox" ${state.journalShareWithAi ? "checked" : ""} />允许AI在以后推荐和提问时参考这篇日记</label>
-      <div class="journal-save-row"><input id="journal-tags" maxlength="100" value="${escapeHtml(state.journalTags)}" placeholder="标签：灵感，阅读，朋友" /><button type="button" data-action="save-journal">记下来</button></div>
+      <div class="journal-save-row"><input id="journal-tags" maxlength="100" value="${escapeHtml(state.journalTags)}" placeholder="标签（可不填）" /><button type="button" data-action="save-journal">${state.journalPrompt ? "保存回答" : "记下来"}</button></div>
       <div class="journal-history">${state.journals.slice(0, 6).map((entry) => `<article><div><span>${entry.source === "self" ? "自主记录" : entry.source === "ai" ? "AI提问" : "共同记录"}</span><time>${escapeHtml(new Date(entry.createdAt).toLocaleDateString("zh-CN", { month:"2-digit", day:"2-digit" }))}</time></div>${entry.prompt ? `<small>${escapeHtml(entry.prompt)}</small>` : ""}<p>${escapeHtml(entry.content)}</p><footer>${entry.tags.map((tag) => `<i>${escapeHtml(tag)}</i>`).join("")}<em>${entry.shareWithAi ? "AI可参考" : "仅私人保存"}</em><button type="button" data-action="journal-to-idea" data-journal-id="${entry.id}">变成灵感</button><button type="button" data-action="delete-journal" data-journal-id="${entry.id}" aria-label="删除这篇日记">删除</button></footer></article>`).join("") || `<p class="empty-state">第一篇日记可以很短，只写一句也算。</p>`}</div>
     </section>
 
@@ -3681,11 +3682,22 @@ document.addEventListener("click", async (event) => {
     return;
   }
   const journalModeButton = event.target.closest("[data-action='set-journal-mode']");
-  if (journalModeButton) { state.journalMode = journalModeButton.dataset.mode; state.journalPrompt = null; render(); return; }
+  if (journalModeButton) {
+    state.journalMode = journalModeButton.dataset.mode;
+    state.journalPrompt = null;
+    render();
+    if (state.journalMode !== "self") await requestJournalPrompt(false);
+    return;
+  }
   if (event.target.closest("[data-action='ask-journal-question']")) { requestJournalPrompt(false); return; }
   if (event.target.closest("[data-action='ask-journal-followup']")) { requestJournalPrompt(true); return; }
   const starterButton = event.target.closest("[data-action='use-journal-starter']");
-  if (starterButton) { const area = document.querySelector("#journal-content"); if (area) { area.value = starterButton.dataset.starter || ""; area.focus(); } return; }
+  if (starterButton) {
+    state.journalDraft = starterButton.dataset.starter || "";
+    render();
+    document.querySelector("#journal-content")?.focus();
+    return;
+  }
   if (event.target.closest("[data-action='save-journal']")) { saveJournalEntry(); return; }
   const deleteJournal = event.target.closest("[data-action='delete-journal']");
   if (deleteJournal) {
@@ -4026,7 +4038,10 @@ document.addEventListener("input", (event) => {
   if (event.target?.id === "journal-content") {
     state.journalDraft = event.target.value;
     const followup = document.querySelector("[data-action='ask-journal-followup']");
-    if (followup) followup.disabled = state.journalLoading || state.journalDraft.trim().length < 2;
+    if (followup) {
+      followup.disabled = state.journalLoading || state.journalDraft.trim().length < 2;
+      followup.textContent = state.journalDraft.trim().length < 2 ? "写一句后可继续问" : "沿着这句继续问";
+    }
   }
   if (event.target?.id === "journal-tags") state.journalTags = event.target.value;
 });

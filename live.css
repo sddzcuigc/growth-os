@@ -247,6 +247,9 @@
 .journal-prompt { margin-bottom:8px; padding:9px; border:3px solid #477844; background:#e7f2c9; }
 .journal-prompt small { display:block; color:#47703d; font-size:9px; }.journal-prompt strong { display:block; margin:4px 0; color:#2e4b29; font-size:14px; line-height:1.45; }
 .journal-prompt button { padding:4px 6px; border:2px solid #77613e; background:#f4dfad; font-size:9px; }
+.journal-answer-label { display:flex; align-items:center; gap:7px; margin:2px 0 5px; color:#57452c; font-size:10px; }
+.journal-answer-label b { flex:0 0 auto; padding:2px 5px; border:2px solid #6f5a37; background:#f2d98f; color:#3e3324; font-size:9px; }
+.journal-answer-label span { min-width:0; line-height:1.35; }
 .journal-panel textarea { width:100%; resize:vertical; padding:9px; border:3px solid #80663e; background:#fff8db; font:inherit; font-size:12px; line-height:1.55; }
 .journal-save-row { display:grid; grid-template-columns:1fr 84px; gap:6px; margin-top:6px; }
 .journal-ai-consent { display:flex; align-items:center; gap:6px; margin-top:6px; color:#5d513a; font-size:9px; line-height:1.35; }
