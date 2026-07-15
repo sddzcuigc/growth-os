@@ -654,6 +654,10 @@ const state = {
   selfCoachQuestion: "",
   selfCoachLoading: false,
   goals: [],
+  growthBlueprint: null,
+  growthBlueprintStale: false,
+  growthBlueprintLoading: false,
+  growthBlueprintTimer: null,
   goalText: "",
   goalDraft: null,
   goalLoading: false,
@@ -953,6 +957,38 @@ async function loadGoals() {
     const response = await fetch(`/api/goals?profileId=${encodeURIComponent(state.childId)}`);
     if (response.ok) state.goals = (await response.json()).goals || [];
   } catch {}
+}
+
+async function loadGrowthBlueprint() {
+  if (!currentProfile()) return;
+  try {
+    const response = await fetch(`/api/growth-blueprint?profileId=${encodeURIComponent(state.childId)}`);
+    if (!response.ok) return;
+    const result = await response.json();
+    state.growthBlueprint = result.blueprint || null;
+    state.growthBlueprintStale = Boolean(result.stale);
+  } catch {}
+}
+
+async function refreshGrowthBlueprint(force = false, quiet = false) {
+  if (!currentProfile() || state.growthBlueprintLoading) return;
+  state.growthBlueprintLoading = true;
+  if (!quiet) render();
+  try {
+    const response = await fetch("/api/growth-blueprint/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, force }) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "blueprint");
+    state.growthBlueprint = result.blueprint;
+    state.growthBlueprintStale = false;
+    if (!quiet) showToast(result.blueprint.provider === "siliconflow" ? "AI成长蓝图已根据新证据更新" : "成长蓝图已用本地规则更新");
+  } catch { if (!quiet) showToast("蓝图暂时无法更新，已有计划不会丢失"); }
+  finally { state.growthBlueprintLoading = false; render(); }
+}
+
+function scheduleGrowthBlueprintRefresh() {
+  state.growthBlueprintStale = true;
+  clearTimeout(state.growthBlueprintTimer);
+  state.growthBlueprintTimer = setTimeout(() => refreshGrowthBlueprint(false, true), 1800);
 }
 
 async function loadActions() {
@@ -1320,6 +1356,7 @@ async function updateAction(id, status) {
     const action = await response.json();
     if (!response.ok) throw new Error("update");
     state.actions = state.actions.map((item) => item.id === action.id ? action : item);
+    if (["done", "open"].includes(status)) scheduleGrowthBlueprintRefresh();
     const surprise = status === "done" ? syncSurpriseBonus(`action:${action.id}`, true) : status === "open" ? (syncSurpriseBonus(`action:${action.id}`, false), { bonus: 0 }) : { bonus: 0 };
     showToast(status === "done" ? `完成了 · +${actionReward(action)}经验 +${rewardToGems(actionReward(action))}宝石${surprise.bonus ? ` · 惊喜宝箱+${surprise.bonus}` : ""}` : status === "doing" ? "已经把它放到现在做" : "行动已重新打开，奖励已同步撤回"); render();
   } catch { showToast("暂时无法更新行动"); }
@@ -1473,6 +1510,7 @@ async function saveJournalEntry() {
     state.journalDraft = "";
     state.journalTags = "";
     await loadCloudProgress(state.childId);
+    if (shareWithAi) scheduleGrowthBlueprintRefresh();
     const rewarded = grantBonusReward(`journal:${result.id}`, { xp: 6, gems: 1, label: "留下成长日记" });
     if (!rewarded) showToast("这条想法已经记进成长档案");
     render();
@@ -1534,6 +1572,7 @@ async function loadCloudProgress(profileId) {
   await loadStrategyInsights();
   await loadSelfCoach();
   await loadGoals();
+  await loadGrowthBlueprint();
   await loadIdeas();
   await loadIdeaResurfacing();
   await loadActions();
@@ -2757,6 +2796,18 @@ async function startDailyPlan() {
   }
   if (plan.sourceType === "habit") { state.showPlanningDetails = true; render(); showToast("习惯已经展开，只完成这一次就好"); return; }
   if (plan.sourceType === "idea") { state.page = "discover"; render(); showToast("已经打开这颗灵感，从最小一步开始"); return; }
+  if (plan.sourceType === "blueprint") {
+    try {
+      const response = await fetch("/api/actions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, title: plan.title, detail: `${plan.why}\n第一步：${plan.firstStep}`, estimateMinutes: plan.minutes, energy: "normal", importance: 2 }) });
+      const action = await response.json();
+      if (!response.ok) throw new Error(action.error || "action");
+      state.actions = [action, ...state.actions];
+      await updateAction(action.id, "doing");
+      await startFocus({ ...action, estimateMinutes: plan.minutes });
+      showToast("蓝图实验已变成今天唯一的一步");
+    } catch { showToast("暂时无法开始蓝图实验"); }
+    return;
+  }
 }
 
 function renderDailyCompass() {
@@ -2777,7 +2828,7 @@ function renderDailyCompass() {
       ${stage !== "energy" ? `<button class="daily-back" type="button" data-action="daily-checkin-back" data-stage="${stage}">上一步</button>` : ""}</section>`;
   }
   const plan = daily.plan;
-  const sourceLabels = { action: "来自我的行动", habit: "来自我的节奏", idea: "来自我的灵感", recharge: "来自我的状态" };
+  const sourceLabels = { action: "来自我的行动", habit: "来自我的节奏", idea: "来自我的灵感", blueprint: "来自我的成长蓝图", recharge: "来自我的状态" };
   const rhythmLabels = { no_time: "优先短任务", no_energy: "优先低能量", unclear: "优先明确第一步", not_important: "优先重要事项" };
   const recommendationLabels = { too_big: "最近更需要小任务", not_interesting: "正在增加不同类型", unclear: "最近更需要清楚第一步", not_now: "尊重当下时机" };
   const sourceDone = dailyPlanSourceDone();
@@ -3062,6 +3113,7 @@ function buildCoachPayload() {
     }])),
     planningContext: {
       weeklyPlan: getGrowthPlan(),
+      adaptiveBlueprint: state.growthBlueprint ? { childSummary: state.growthBlueprint.childSummary, priorities: state.growthBlueprint.priorities, fourWeekPath: state.growthBlueprint.fourWeekPath, nextQuestion: state.growthBlueprint.nextQuestion, updatedAt: state.growthBlueprint.updatedAt } : null,
       growthDirections: state.goals.filter((goal) => goal.status === "active").map(({ id, title, why, successSignal, firstExperiment, skill, progress, evidenceCount }) => ({ id, title, why, successSignal, firstExperiment, skill, progress, evidenceCount })),
       upcomingSchedule,
       newsMessages,
@@ -3260,6 +3312,7 @@ function renderGrowthGoals() {
 function renderSkills() {
   const c = child();
   return `
+    ${renderGrowthBlueprint()}
     ${renderGrowthGoals()}
     <section class="panel">
       <div class="page-head">
@@ -3301,6 +3354,22 @@ function renderSkills() {
       </div>
     </section>
   `;
+}
+
+function renderGrowthBlueprint() {
+  const blueprint = state.growthBlueprint;
+  if (!blueprint) return `<section class="panel growth-blueprint empty-blueprint"><div class="page-head"><div><h2 class="panel-title">${pixelIcon("skill-ai", "")} AI成长蓝图</h2><small>画像 × 未来能力 × 真实证据</small></div></div><p>AI会从已确认画像、日记、任务体验和作品中，只挑两个最值得发展的方向。</p><button type="button" data-action="refresh-growth-blueprint" ${state.growthBlueprintLoading ? "disabled" : ""}>${state.growthBlueprintLoading ? "正在生成蓝图..." : "生成我的成长蓝图"}</button></section>`;
+  const priorities = Array.isArray(blueprint.priorities) ? blueprint.priorities : [];
+  const paths = Array.isArray(blueprint.fourWeekPath) ? blueprint.fourWeekPath : [];
+  return `<section class="panel growth-blueprint">
+    <div class="page-head"><div><h2 class="panel-title">${pixelIcon("skill-ai", "")} AI成长蓝图</h2><small>${blueprint.provider === "siliconflow" ? "GLM根据真实证据生成" : "本地证据规则生成"}</small></div><span class="tag">V${blueprint.version || 2}</span></div>
+    ${state.growthBlueprintStale ? `<div class="blueprint-update">日记或行动带来了新证据，蓝图等你确认更新。</div>` : ""}
+    <p class="blueprint-summary">${escapeHtml(blueprint.childSummary)}</p>
+    <div class="blueprint-priorities">${priorities.map((item, index) => `<article><header><span>${escapeHtml(item.role || (index ? "探索" : "底座"))}</span><strong>${escapeHtml(item.name || skillDisplayName(item.skill))}</strong><em>${Math.round(Number(item.confidence || 0.5) * 100)}%线索</em></header><p>${escapeHtml(item.reason)}</p><div class="blueprint-evidence">${item.evidence?.length ? item.evidence.map((value) => `<span>${escapeHtml(value)}</span>`).join("") : `<span>证据还少，先做小实验</span>`}</div><div class="blueprint-practice">${(item.practices || []).map((value) => `<b>${escapeHtml(value)}</b>`).join("")}</div></article>`).join("")}</div>
+    <div class="blueprint-path"><small>未来四周 · SMART + OKR</small>${paths.map((path) => `<article><strong>${escapeHtml(path.objective)}</strong>${(path.keyResults || []).map((kr, index) => `<p><b>KR${index + 1}</b>${escapeHtml(kr)}</p>`).join("")}<footer>今天先做：${escapeHtml(path.firstExperiment)}</footer></article>`).join("")}</div>
+    <div class="blueprint-question"><small>AI下一步想了解</small><strong>${escapeHtml(blueprint.nextQuestion || "最近哪件事最想变得更容易？")}</strong></div>
+    <footer class="blueprint-footer"><span>${escapeHtml(blueprint.adjustment || "孩子的更正始终优先")}</span><button type="button" data-action="refresh-growth-blueprint" ${state.growthBlueprintLoading ? "disabled" : ""}>${state.growthBlueprintLoading ? "更新中..." : state.growthBlueprintStale ? "根据新证据更新" : "重新校准"}</button></footer>
+  </section>`;
 }
 
 function formatScheduleTime(value) {
@@ -3544,6 +3613,7 @@ async function saveArtifact() {
     if (!response.ok) throw new Error(artifact.error || "artifact");
     const revision = Boolean(state.artifactRevision);
     await loadCloudProgress(state.childId);
+    if (shareWithAi) scheduleGrowthBlueprintRefresh();
     const rewarded = grantBonusReward(`artifact:${artifact.id}`, { xp: 15, gems: 3, label: revision ? "完成作品新版本" : "留下真实作品" });
     if (!rewarded) showToast(revision ? "新版本已加入作品轨迹" : "作品已放上成长作品架");
     state.artifactRevision = null;
@@ -3811,6 +3881,7 @@ async function saveReflection() {
     if (!response.ok) throw new Error(result.error || "feedback");
     state.taskFeedback = [result.entry, ...state.taskFeedback.filter((entry) => !(entry.taskKey === result.entry.taskKey && entry.feedbackDate === result.entry.feedbackDate))];
     state.feedbackCalibration = result.calibration || state.feedbackCalibration;
+    scheduleGrowthBlueprintRefresh();
   } catch { showToast("体验已保存在本机，云端暂时离线"); }
   queueCloudSync({ kind: "reflection", summary: `${child().name}完成「${selectedTask.title}」后的复盘：${log.fun}，${log.difficulty}，希望${log.support}，这次的动力是${log.motivation}${log.note ? `。${log.note}` : ""}`, evidence: { ...log, taskKey: selectedTask.key, skill: selectedTask.skill, mode: selectedTask.mode, motivation, shareWithAi: true } });
   trackEvent("reflection_saved", { mood: log.mood, difficulty: log.difficulty, fun: log.fun, motivation, tagCount: log.likedTags.length });
@@ -3836,6 +3907,7 @@ function answerCoach(questionId, value) {
 }
 
 document.addEventListener("click", async (event) => {
+  if (event.target.closest("[data-action='refresh-growth-blueprint']")) { await refreshGrowthBlueprint(true); return; }
   if (event.target.closest("[data-action='generate-family-brief']")) { await generateFamilyBrief(); return; }
   const familyBriefUpdate = event.target.closest("[data-action='update-family-brief']");
   if (familyBriefUpdate) { await updateFamilyBrief(familyBriefUpdate.dataset.status); return; }

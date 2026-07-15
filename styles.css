@@ -2021,6 +2021,179 @@ button {
   }
 }
 
+.growth-blueprint {
+  position: relative;
+  overflow: hidden;
+  border-color: #315d28;
+  background: linear-gradient(180deg, #fff3cf 0%, #f4ddb0 100%);
+}
+
+.growth-blueprint::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 7px;
+  background: repeating-linear-gradient(90deg, #4f982e 0 18px, #76bf3e 18px 34px, #2e6c2c 34px 43px);
+}
+
+.growth-blueprint .page-head {
+  margin-top: 5px;
+}
+
+.growth-blueprint .page-head small {
+  display: block;
+  margin-top: 3px;
+  color: #66502b;
+}
+
+.empty-blueprint > p,
+.blueprint-summary {
+  margin: 10px 0;
+  color: #463515;
+  line-height: 1.55;
+}
+
+.empty-blueprint > button,
+.blueprint-footer button {
+  border: 2px solid #174b26;
+  background: #328b35;
+  color: #fff8d6;
+  box-shadow: inset 0 -3px 0 #1b6126;
+}
+
+.blueprint-update {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid #c07b20;
+  background: #fff0a8;
+  color: #714713;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.blueprint-priorities {
+  display: grid;
+  gap: 8px;
+}
+
+.blueprint-priorities article {
+  padding: 10px;
+  border: 2px solid #8a6b35;
+  background: rgba(255, 250, 224, .82);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .48);
+}
+
+.blueprint-priorities header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.blueprint-priorities header span {
+  padding: 3px 6px;
+  border: 1px solid #276f31;
+  background: #52a83d;
+  color: white;
+  font-size: 11px;
+}
+
+.blueprint-priorities header em {
+  color: #66502b;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.blueprint-priorities p {
+  margin: 7px 0;
+  color: #4c3a1b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.blueprint-evidence,
+.blueprint-practice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.blueprint-evidence span,
+.blueprint-practice b {
+  padding: 4px 6px;
+  border: 1px solid #aa8c58;
+  background: #f2e4bb;
+  color: #503d20;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.blueprint-practice {
+  margin-top: 6px;
+}
+
+.blueprint-practice b {
+  border-color: #6f944f;
+  background: #dcedb9;
+}
+
+.blueprint-path,
+.blueprint-question {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 2px dashed #a88952;
+}
+
+.blueprint-path > small,
+.blueprint-question small {
+  color: #28682e;
+  font-weight: 800;
+}
+
+.blueprint-path article {
+  margin-top: 7px;
+  padding: 8px;
+  background: rgba(114, 73, 25, .08);
+}
+
+.blueprint-path article > strong,
+.blueprint-question strong {
+  display: block;
+  line-height: 1.45;
+}
+
+.blueprint-path p {
+  margin: 5px 0;
+  font-size: 11px;
+}
+
+.blueprint-path p b {
+  margin-right: 6px;
+  color: #27722d;
+}
+
+.blueprint-path footer {
+  margin-top: 6px;
+  color: #764912;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.blueprint-footer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.blueprint-footer span {
+  min-width: 0;
+  color: #6a5632;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 /* Live economy, safe footer layout, and settings surface. */
 .gem-button {
   width: 96px;

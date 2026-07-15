@@ -49,7 +49,9 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS growth_goals (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, title TEXT NOT NULL, why_text TEXT NOT NULL, success_signal TEXT NOT NULL, first_experiment TEXT NOT NULL, skill TEXT NOT NULL, horizon TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS self_coach_answers (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, question TEXT NOT NULL, answer TEXT NOT NULL, confidence TEXT NOT NULL, evidence_json TEXT NOT NULL, next_question TEXT NOT NULL, provider TEXT NOT NULL, feedback TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS action_decisions (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, action_id INTEGER NOT NULL REFERENCES actions(id) ON DELETE CASCADE, reason TEXT NOT NULL, outcome TEXT NOT NULL, note TEXT NOT NULL, created_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS growth_blueprints (profile_id TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE, blueprint_json TEXT NOT NULL, evidence_fingerprint TEXT NOT NULL, provider TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
   CREATE INDEX IF NOT EXISTS action_decisions_action_time ON action_decisions(action_id,created_at);
+  CREATE INDEX IF NOT EXISTS blueprints_profile_time ON growth_blueprints(profile_id,updated_at);
   CREATE INDEX IF NOT EXISTS self_coach_profile_time ON self_coach_answers(profile_id,created_at);
   CREATE INDEX IF NOT EXISTS goals_profile_status ON growth_goals(profile_id,status,updated_at);
   CREATE INDEX IF NOT EXISTS rescues_action_time ON action_rescues(action_id,created_at);
@@ -151,6 +153,8 @@ async function requestHandler(request, response) {
     if (request.method === "GET" && url.pathname === "/api/goals") return handleListGoals(request, response, url);
     if (request.method === "POST" && url.pathname === "/api/onboarding/question") return handleOnboardingQuestion(request, response);
     if (request.method === "POST" && url.pathname === "/api/onboarding/portrait") return handleOnboardingPortrait(request, response);
+    if (request.method === "GET" && url.pathname === "/api/growth-blueprint") return handleGetGrowthBlueprint(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/growth-blueprint/refresh") return handleRefreshGrowthBlueprint(request, response);
     if (request.method === "POST" && url.pathname === "/api/goals/shape") return handleShapeGoal(request, response);
     if (request.method === "POST" && url.pathname === "/api/goals") return handleCreateGoal(request, response);
     if (request.method === "PATCH" && /^\/api\/goals\/\d+$/.test(url.pathname)) return handleUpdateGoal(request, response, url);
@@ -2198,6 +2202,15 @@ function dailyPlanCandidates(profileIdValue, checkin, excluded = [], swapContext
     const goal = goalsById.get(Number(idea.goalId || 0));
     candidates.push({ ref, sourceType: "idea", sourceId: Number(idea.id), goalId: goal?.id || 0, goalTitle: goal?.title || "", keyResultTitle: goal?.keyResults?.[0]?.title || "", title: idea.title, detail: idea.nextStep, minutes: Math.min(available, 10), energy: "normal", score: 38 + (checkin.intent === "create" ? 42 : 0) + (checkin.intent === "recharge" ? -18 : 0) + (goal ? 18 : 0) + (decisionCalibration.preferShort ? 8 : 0) + (decisionCalibration.preferLowEnergy ? -5 : 0) + (decisionCalibration.preferClearStep && idea.nextStep ? 8 : 0) + (feedbackCalibration.preferTiny ? 8 : 0) + (feedbackCalibration.preferClear && idea.nextStep ? 10 : 0) + (feedbackCalibration.avoidedSourceTypes.includes("idea") ? -10 : 0) + (swapContext.reason === "unclear" && idea.nextStep ? 18 : 0) + (swapContext.reason === "not_interesting" && swapContext.previousSourceType === "idea" ? -80 : 0), firstStep: idea.nextStep || "先写下这个想法最想解决的问题", whyHint: goal ? `它正在推进「${goal.title}」的关键结果` : "它来自你自己保存的灵感" });
   }
+  const blueprint = blueprintPublic(db.prepare("SELECT * FROM growth_blueprints WHERE profile_id=?").get(profileIdValue));
+  for (const [index, path] of (blueprint?.fourWeekPath || []).slice(0, 2).entries()) {
+    const ref = `blueprint:${path.skill}:${index}`;
+    if (excludedSet.has(ref)) continue;
+    const priority = blueprint.priorities?.find((item) => item.skill === path.skill);
+    const sameExperimentOpen = actionRows(profileIdValue).some((item) => ["open", "doing"].includes(item.status) && normalizedTitle(item.title) === normalizedTitle(path.firstExperiment));
+    if (sameExperimentOpen) continue;
+    candidates.push({ ref, sourceType: "blueprint", sourceId: index, skill: normalizeSkillId(path.skill), title: path.firstExperiment, detail: path.objective, minutes: Math.min(available, 10), energy: "normal", score: 44 + (checkin.intent === "learn" ? 32 : 0) + (checkin.intent === "create" && path.skill === "creation" ? 28 : 0) + (index === 0 ? 8 : 0) + (feedbackCalibration.preferTiny ? 12 : 0) + (swapContext.reason === "unclear" ? 16 : 0) + (swapContext.reason === "not_interesting" && swapContext.previousSourceType === "blueprint" ? -80 : 0), firstStep: path.firstExperiment, whyHint: `它来自成长蓝图的${priority?.role || "当前"}能力「${priority?.name || skillIdToName[path.skill]}」` });
+  }
   const rechargeRef = "recharge:today";
   if (!excludedSet.has(rechargeRef)) candidates.push({ ref: rechargeRef, sourceType: "recharge", sourceId: 0, title: checkin.energy === "low" ? "两分钟恢复能量" : "活动一下再出发", detail: "喝水、伸展、看看远处", minutes: Math.min(5, available), energy: "low", score: (checkin.intent === "recharge" ? 110 : checkin.energy === "low" ? 78 : 12) + (feedbackCalibration.preferTiny ? 10 : 0) + (feedbackCalibration.avoidedSourceTypes.includes("recharge") ? -10 : 0) + (swapContext.reason === "too_big" ? 34 : 0) + (swapContext.reason === "not_interesting" && swapContext.previousSourceType === "recharge" ? -80 : 0), firstStep: "先喝几口水，再慢慢伸展肩膀", whyHint: checkin.intent === "recharge" ? "这是你刚刚主动选择的恢复时间" : "照顾状态也是今天的重要一步" });
   return candidates.sort((left, right) => right.score - left.score).slice(0, 18);
@@ -2740,6 +2753,119 @@ function normalizeSkillId(value) {
   ]);
   if (allowed.has(raw)) return raw;
   return skillNameToId[raw] || "metacognition";
+}
+
+const futureSkillFramework = {
+  "self-regulation": { name: "自我调节", role: "底座", future: "把目标变成能开始、检查和收尾的行动", practices: ["准备-执行-检查-归位", "自己选一个最小步骤", "结束时说出下一次怎么做"] },
+  metacognition: { name: "会学会想", role: "底座", future: "监控理解、发现错误并主动换策略", practices: ["先预测再尝试", "说出卡点和证据", "比较两种方法"] },
+  communication: { name: "表达沟通", role: "连接", future: "清楚表达意图、解释判断并与人共创", practices: ["三句话讲清", "向真实听众展示", "根据问题再改一版"] },
+  "data-reasoning": { name: "数据推理", role: "判断", future: "用数量、模式和证据检验人或AI的结论", practices: ["记录真实数据", "做比较或预算", "用证据改变判断"] },
+  "ai-literacy": { name: "AI协作", role: "未来", future: "理解、应用和创造，同时保留人的主体性与核验", practices: ["自己先做第一版", "让AI提问或查漏", "核验并说明人机分工"] },
+  creation: { name: "创造项目", role: "未来", future: "定义值得解决的问题，做出作品并迭代", practices: ["做最小可见版本", "测试一个真实问题", "展示并改进"] },
+  "ethics-collaboration": { name: "判断协作", role: "责任", future: "处理公平、来源、责任和团队分工", practices: ["轮换真实角色", "检查来源与影响", "说清谁决定了什么"] },
+  wellbeing: { name: "身心底座", role: "底座", future: "让睡眠、运动和情绪支持注意、学习与韧性", practices: ["先判断身体状态", "短运动或恢复", "按状态调整而非硬撑"] }
+};
+
+function blueprintPublic(row) {
+  if (!row) return null;
+  return { ...JSON.parse(row.blueprint_json), provider: row.provider, updatedAt: row.updated_at };
+}
+
+function blueprintEvidence(profileIdValue) {
+  const snapshot = db.prepare("SELECT data_json FROM snapshots WHERE profile_id=?").get(profileIdValue);
+  const data = snapshot ? JSON.parse(snapshot.data_json || "{}") : {};
+  const portrait = data["onboarding-portrait"] || data.onboardingPortrait || null;
+  const journals = journalRows(profileIdValue).filter((item) => item.shareWithAi).slice(0, 8).map((item) => ({ id: item.id, content: item.content.slice(0, 500), tags: item.tags, at: item.createdAt }));
+  const feedback = taskFeedbackRows(profileIdValue, 16);
+  const artifacts = artifactRows(profileIdValue, 16).filter((item) => item.shareWithAi).map(({ id, title, skill, type, caption, createdAt }) => ({ id, title, skill, type, caption, createdAt }));
+  const goals = goalRows(profileIdValue).filter((item) => item.status === "active").map(({ id, objective, why, skill, progress, evidenceCount }) => ({ id, objective, why, skill, progress, evidenceCount }));
+  const actions = actionRows(profileIdValue).slice(0, 24).map(({ id, title, status, source, goalId, updatedAt }) => ({ id, title, status, source, goalId, updatedAt }));
+  const hypotheses = hypothesisRows(profileIdValue).filter((item) => item.aiContext && item.status === "active").slice(0, 8).map(({ title, summary, confidence, evidenceCount, counterCount }) => ({ title, summary, confidence, evidenceCount, counterCount }));
+  return { portrait, journals, feedback, artifacts, goals, actions, hypotheses };
+}
+
+function blueprintFingerprint(evidence) {
+  const compact = JSON.stringify(evidence, (key, value) => ["content", "caption"].includes(key) ? String(value).slice(0, 120) : value);
+  return stableHash(compact);
+}
+
+function skillEvidenceScore(skillId, evidence) {
+  let score = 0;
+  for (const item of evidence.feedback) {
+    if (item.skill !== skillId) continue;
+    score += item.difficulty === "too_hard" || item.difficulty === "stuck" ? 4 : item.difficulty === "just_right" ? 2 : 1;
+  }
+  score += evidence.artifacts.filter((item) => item.skill === skillId).length * 2;
+  score += evidence.goals.filter((item) => item.skill === skillId).length * 3;
+  const text = JSON.stringify({ portrait: evidence.portrait, journals: evidence.journals, hypotheses: evidence.hypotheses });
+  const terms = {
+    "self-regulation": /开始|整理|忘|检查|收尾|完成|执行|步骤/g,
+    metacognition: /卡住|方法|不会|理解|复盘|思考|困难/g,
+    communication: /表达|讲|写|故事|分享|说明/g,
+    "data-reasoning": /数学|数据|比较|预算|规律|数感/g,
+    "ai-literacy": /AI|人工智能|Codex|核验|电脑|文件/g,
+    creation: /作品|搭建|创造|设计|Minecraft|画/g,
+    "ethics-collaboration": /合作|分工|公平|责任|家务|来源/g,
+    wellbeing: /睡眠|运动|身体|呼吸|哮喘|姿态|累/g
+  };
+  score += (text.match(terms[skillId]) || []).length;
+  return score;
+}
+
+function fallbackGrowthBlueprint(profile, evidence) {
+  const ranked = Object.keys(futureSkillFramework).map((id) => ({ id, score: skillEvidenceScore(id, evidence) })).sort((a, b) => b.score - a.score);
+  const foundation = ranked.find((item) => ["self-regulation", "metacognition", "wellbeing"].includes(item.id)) || { id: "self-regulation", score: 0 };
+  const frontier = ranked.find((item) => !["self-regulation", "metacognition", "wellbeing"].includes(item.id)) || { id: "creation", score: 0 };
+  const priorities = [foundation, frontier].map((item, index) => {
+    const skill = futureSkillFramework[item.id];
+    return { skill: item.id, name: skill.name, role: skill.role, confidence: Math.min(0.82, 0.38 + item.score * 0.035), reason: index === 0 ? "先稳住能支持所有学习的底座，再减少提醒和停摆。" : "用真实兴趣和作品训练面向未来的创造、判断与表达。", evidence: [evidence.goals.find((goal) => goal.skill === item.id)?.objective, evidence.feedback.find((entry) => entry.skill === item.id)?.taskTitle, evidence.artifacts.find((entry) => entry.skill === item.id)?.title].filter(Boolean).slice(0, 3), practices: skill.practices };
+  });
+  return { version: 2, childSummary: `${profile.name}的蓝图会把已确认的自我描述放在最高优先级，并根据行动、日记、作品和反馈逐步修正。`, priorities, fourWeekPath: priorities.map((item) => ({ skill: item.skill, objective: `四周内用3次小练习和1个可见证据发展${item.name}`, keyResults: ["完成3次刚好难度的小练习", "留下1个作品或生活成果", "完成2次简短复盘"], firstExperiment: item.practices[0] })), nextQuestion: evidence.journals.length ? "最近哪一次你觉得自己真的比以前更会了？" : "你最希望先把哪件日常小事变得更容易？", adjustment: "新证据只改变可修正假设；孩子亲自更正的画像始终优先。", evidenceSummary: { journals: evidence.journals.length, feedback: evidence.feedback.length, artifacts: evidence.artifacts.length, goals: evidence.goals.length } };
+}
+
+async function generateGrowthBlueprint(profile, evidence) {
+  const fallback = fallbackGrowthBlueprint(profile, evidence);
+  if (!apiKey) return { blueprint: fallback, provider: "local" };
+  try {
+    const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(14000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.32, max_tokens: 1100, response_format: { type: "json_object" }, messages: [
+      { role: "system", content: "你是6-12岁儿童的成长蓝图设计师。依据已确认画像和带来源证据，从给定8项未来能力中只选1个底座能力和1个探索能力。孩子亲自更正的描述优先级最高。日记是当下线索，不能据单条内容推断人格、天赋或诊断。目标必须适龄、具体、可观察，采用SMART与OKR，但不要把孩子变成KPI。AI只提问、提示、解释、查漏和检查，不能替孩子完成。只返回合法JSON。" },
+      { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, framework: futureSkillFramework, evidence, output: { childSummary: "给孩子看的可修正描述", priorities: [{ skill: "能力id", name: "能力名", role: "底座或探索", confidence: "0到1", reason: "为什么现在发展", evidence: ["最多3条具体证据"], practices: ["3个适龄练法"] }], fourWeekPath: [{ skill: "能力id", objective: "SMART目标", keyResults: ["3个可观察KR"], firstExperiment: "今天10分钟内可做" }], nextQuestion: "下一条最值得问孩子的问题", adjustment: "本次根据什么变化" } }) }
+    ] }) });
+    if (!apiResponse.ok) throw new Error(`blueprint ${apiResponse.status}`);
+    const json = parseJsonContent((await apiResponse.json()).choices?.[0]?.message?.content || "{}");
+    const priorities = (Array.isArray(json.priorities) ? json.priorities : fallback.priorities).slice(0, 2).map((item, index) => {
+      const skillId = normalizeSkillId(item.skill || fallback.priorities[index]?.skill);
+      const framework = futureSkillFramework[skillId];
+      return { skill: skillId, name: framework.name, role: index === 0 ? "底座" : "探索", confidence: Math.max(0.3, Math.min(0.9, Number(item.confidence || 0.5))), reason: String(item.reason || fallback.priorities[index]?.reason).slice(0, 180), evidence: (Array.isArray(item.evidence) ? item.evidence : []).map(String).slice(0, 3), practices: (Array.isArray(item.practices) ? item.practices : framework.practices).map(String).slice(0, 3) };
+    });
+    return { provider: "siliconflow", blueprint: { ...fallback, childSummary: String(json.childSummary || fallback.childSummary).slice(0, 260), priorities, fourWeekPath: (Array.isArray(json.fourWeekPath) ? json.fourWeekPath : fallback.fourWeekPath).slice(0, 2).map((item, index) => ({ skill: normalizeSkillId(item.skill || priorities[index]?.skill), objective: String(item.objective || fallback.fourWeekPath[index]?.objective).slice(0, 180), keyResults: (Array.isArray(item.keyResults) ? item.keyResults : fallback.fourWeekPath[index]?.keyResults || []).map(String).slice(0, 3), firstExperiment: String(item.firstExperiment || fallback.fourWeekPath[index]?.firstExperiment).slice(0, 160) })), nextQuestion: String(json.nextQuestion || fallback.nextQuestion).slice(0, 160), adjustment: String(json.adjustment || fallback.adjustment).slice(0, 180) } };
+  } catch (error) { console.warn("Growth blueprint used local fallback:", error.message); return { blueprint: fallback, provider: "local" }; }
+}
+
+function handleGetGrowthBlueprint(request, response, url) {
+  const user = requireUser(request, response); if (!user) return;
+  const profileIdValue = String(url.searchParams.get("profileId") || "");
+  if (!ownedProfile(user.id, profileIdValue)) return sendJson(response, 404, { error: "角色不存在" });
+  const row = db.prepare("SELECT * FROM growth_blueprints WHERE profile_id=?").get(profileIdValue);
+  const currentFingerprint = blueprintFingerprint(blueprintEvidence(profileIdValue));
+  sendJson(response, 200, { blueprint: blueprintPublic(row), stale: Boolean(row && row.evidence_fingerprint !== currentFingerprint) });
+}
+
+async function handleRefreshGrowthBlueprint(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  const body = await readBodyJson(request);
+  const profileIdValue = String(body.profileId || "");
+  const profile = ownedProfile(user.id, profileIdValue);
+  if (!profile) return sendJson(response, 404, { error: "角色不存在" });
+  const evidence = blueprintEvidence(profileIdValue);
+  const fingerprint = blueprintFingerprint(evidence);
+  const existing = db.prepare("SELECT * FROM growth_blueprints WHERE profile_id=?").get(profileIdValue);
+  if (existing && existing.evidence_fingerprint === fingerprint && body.force !== true) return sendJson(response, 200, { blueprint: blueprintPublic(existing), stale: false, cached: true });
+  const result = await generateGrowthBlueprint(profile, evidence);
+  const now = nowIso();
+  db.prepare("INSERT INTO growth_blueprints(profile_id,blueprint_json,evidence_fingerprint,provider,created_at,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(profile_id) DO UPDATE SET blueprint_json=excluded.blueprint_json,evidence_fingerprint=excluded.evidence_fingerprint,provider=excluded.provider,updated_at=excluded.updated_at").run(profileIdValue, JSON.stringify(result.blueprint), fingerprint, result.provider, existing?.created_at || now, now);
+  recordEvent(user.id, profileIdValue, "blueprint_refreshed", { provider: result.provider, priorities: result.blueprint.priorities.map((item) => item.skill), evidenceSummary: result.blueprint.evidenceSummary });
+  sendJson(response, 200, { blueprint: { ...result.blueprint, provider: result.provider, updatedAt: now }, stale: false });
 }
 
 function normalizeSteps(steps) {
