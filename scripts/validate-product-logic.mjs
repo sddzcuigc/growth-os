@@ -224,7 +224,7 @@ for (const term of ["/api/capture/parse", "handleParseCapture", "fallbackCapture
 for (const term of ["要做的事、突然的灵感、今天的感悟都可以", "灵感火花", "成长感悟", "放进灵感池", "capture-ai-context", "capture_confirmed"]) if (!appSourceText.includes(term)) failures.push(`unified capture UI missing ${term}`);
 for (const term of ["生成一个问题", "第2步", "在这里回答AI的问题", "写一句后可继续问", "保存回答", "if (state.journalMode !== \"self\") await requestJournalPrompt(false)"]) if (!appSourceText.includes(term)) failures.push(`guided journal flow missing ${term}`);
 for (const term of ["clearContextAnswer", "edit-context-answer", ">修改</button>"]) if (!appSourceText.includes(term)) failures.push(`editable context answers missing ${term}`);
-for (const term of ["onboardingQuestionIds", "renderProfileOnboarding", "finishProfileOnboarding", "AI先认识我", "建立路线，进入今天", "needsProfileOnboarding", "growth-loop-guide"]) if (!appSourceText.includes(term)) failures.push(`guided profile onboarding missing ${term}`);
+for (const term of ["onboardingQuestionIds", "renderProfileOnboarding", "finishProfileOnboarding", "AI先认识我", "按这个理解建立路线", "needsProfileOnboarding", "growth-loop-guide"]) if (!appSourceText.includes(term)) failures.push(`guided profile onboarding missing ${term}`);
 for (const term of [">今天</b>", ">灵感</b>", ">能力</b>", ">计划</b>", ">记录</b>"]) if (!htmlSource.includes(term)) failures.push(`workflow navigation missing ${term}`);
 if (appSourceText.includes('<div class="action-quick-add"')) failures.push("legacy multi-field quick-add is still rendered");
 for (const term of ["/api/auth/recovery/rotate", "/api/auth/recovery/reset", "recoveryCode", "normalizeRecoveryCode", "dummyRecoveryHash", "consumeRecoveryAttempt", "DELETE FROM sessions WHERE user_id", "recovery_hash", "recovery_updated_at"]) {
@@ -334,6 +334,7 @@ for (const term of ["realProfile ? 1", "bonus-rewards", "renderGemStore", "buy-g
   if (!appSourceText.includes(term) && !htmlSource.includes(term) && !readFileSync("onboarding.css", "utf8").includes(term)) failures.push(`real economy missing ${term}`);
 }
 for (const term of ["personal-friction", "/api/onboarding/question", "smart", "keyResults", "weeklyPlan", "SMART目标", "OKR", "keyResultTitle"]) if (!appSourceText.includes(term) && !serverSource.includes(term)) failures.push(`SMART/OKR workflow missing ${term}`);
+for (const term of ["/api/onboarding/portrait", "AI目前这样理解我", "confirmOnboardingPortrait", "saveOnboardingPortraitCorrection", "已用你的更正覆盖AI判断", "confirmedPortrait"]) if (!appSourceText.includes(term) && !serverSource.includes(term)) failures.push(`correctable AI portrait missing ${term}`);
 for (const term of ["surpriseRewardRoll", "surprise-rolls", "chance: 0.35", "dailyCap: 2", "不能反复重抽"]) if (!appSourceText.includes(term)) failures.push(`bounded surprise reward missing ${term}`);
 
 if (failures.length) {

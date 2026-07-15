@@ -37,8 +37,18 @@ test("new child follows one growth loop and uses real economy", async ({ page })
   for (let index = 0; index < 6; index += 1) {
     await page.locator("[data-action='answer-onboarding']").first().click();
   }
-  await expect(page.getByRole("button", { name: "建立路线，进入今天" })).toBeVisible();
-  await expect(page.getByText("第一条成长方向")).toBeVisible();
+  await expect(page.getByText("AI目前这样理解我")).toBeVisible();
+  await expect(page.getByRole("button", { name: "请先确认或修改画像" })).toBeDisabled();
+  await page.getByRole("button", { name: "有些不对，修改" }).click();
+  await page.locator("#onboarding-portrait-correction").fill("我喜欢搭建作品，但不是担心做不好；我只是需要先看到清楚的第一步。希望AI先让我自己试，再给提示。");
+  await page.getByRole("button", { name: "保存我的更正" }).click();
+  await expect(page.getByText("已由我确认")).toBeVisible();
+  await expect(page.getByText("我的更正 · 最高优先级")).toBeVisible();
+  await expect(page.getByText("仅供追溯，不再用于目标", { exact:false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "按这个理解建立路线" })).toBeEnabled();
+  await expect(page.getByText("根据我确认的画像")).toBeVisible();
+  await page.waitForTimeout(1900);
+  await page.screenshot({ path: "qa/workflow-portrait-correction.png" });
 
   await page.evaluate(() => {
     localStorage.setItem("talent-os-e2e-profile-onboarding", JSON.stringify({ started: true, complete: true }));

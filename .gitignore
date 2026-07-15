@@ -2,6 +2,7 @@
 .env.local
 .runtime.env
 .vercel
+.DS_Store
 node_modules/
 test-results/
 data/*.sqlite

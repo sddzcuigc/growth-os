@@ -150,6 +150,7 @@ async function requestHandler(request, response) {
     if (request.method === "POST" && url.pathname === "/api/capture/parse") return handleParseCapture(request, response);
     if (request.method === "GET" && url.pathname === "/api/goals") return handleListGoals(request, response, url);
     if (request.method === "POST" && url.pathname === "/api/onboarding/question") return handleOnboardingQuestion(request, response);
+    if (request.method === "POST" && url.pathname === "/api/onboarding/portrait") return handleOnboardingPortrait(request, response);
     if (request.method === "POST" && url.pathname === "/api/goals/shape") return handleShapeGoal(request, response);
     if (request.method === "POST" && url.pathname === "/api/goals") return handleCreateGoal(request, response);
     if (request.method === "PATCH" && /^\/api\/goals\/\d+$/.test(url.pathname)) return handleUpdateGoal(request, response, url);
@@ -822,6 +823,61 @@ async function handleOnboardingQuestion(request, response) {
     } catch (error) { console.warn("Onboarding question used local fallback:", error.message); }
   }
   sendJson(response, 200, { question, provider });
+}
+
+function fallbackOnboardingPortrait(profile, answers) {
+  const interest = answers["current-interest"] || "还在寻找真正喜欢的事情";
+  const wish = answers["growth-wish"] || "想找到一个值得尝试的成长方向";
+  const output = answers["preferred-output"] || "喜欢的表达方式还不确定";
+  const support = answers["ai-help-style"] || "希望AI先倾听再提供帮助";
+  const friction = answers["personal-friction"] || "主要卡点还需要继续观察";
+  const success = answers["success-picture"] || "成功画面还需要由本人补充";
+  return {
+    summary: `${profile.name}最近容易被“${interest}”吸引，希望“${wish}”。相比被安排很多任务，更适合从一个能用${output}留下成果的小挑战开始。`,
+    signals: [
+      { title: "兴趣线索", text: interest, evidence: "来自本人选择" },
+      { title: "成长愿望", text: wish, evidence: `本人希望看到：${success}` },
+      { title: "当前卡点", text: friction, evidence: "这是当前感受，不是固定特点" }
+    ],
+    supportStyle: `${support}；每次只给一个5到15分钟、第一步清楚的行动。`,
+    uncertainty: "这只是第一版理解，还需要用后续行动、作品和本人反馈继续验证。"
+  };
+}
+
+function normalizeOnboardingPortrait(json, fallback) {
+  const rawSignals = Array.isArray(json?.signals) ? json.signals : fallback.signals;
+  return {
+    summary: String(json?.summary || fallback.summary).slice(0, 420),
+    signals: rawSignals.slice(0, 4).map((item, index) => ({ title: String(item?.title || fallback.signals[index]?.title || "当前线索").slice(0, 30), text: String(item?.text || fallback.signals[index]?.text || "继续观察").slice(0, 160), evidence: String(item?.evidence || fallback.signals[index]?.evidence || "来自问答").slice(0, 100) })),
+    supportStyle: String(json?.supportStyle || fallback.supportStyle).slice(0, 260),
+    uncertainty: String(json?.uncertainty || fallback.uncertainty).slice(0, 220)
+  };
+}
+
+async function handleOnboardingPortrait(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  const body = await readBodyJson(request);
+  const profileIdValue = String(body.profileId || "");
+  const profile = ownedProfile(user.id, profileIdValue);
+  if (!profile) return sendJson(response, 404, { error: "角色不存在" });
+  const answers = body.answers && typeof body.answers === "object" ? body.answers : {};
+  const fallback = fallbackOnboardingPortrait(profile, answers);
+  let portrait = fallback;
+  let provider = "local";
+  if (apiKey) {
+    try {
+      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(10000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.32, max_tokens: 520, response_format: { type: "json_object" }, messages: [
+        { role: "system", content: "你根据6-12岁孩子本人回答，写一份可纠正的第一版成长画像。只能描述回答支持的兴趣、愿望、当前卡点和支持偏好，不诊断、不贴性格或天赋标签，不把一次回答当稳定特征。要明确不确定性，并提醒孩子可以修改。只返回JSON。" },
+        { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, answers, output: { summary: "100字内、孩子能看懂的清晰描述", signals: [{ title: "兴趣线索/成长愿望/当前卡点", text: "具体描述", evidence: "来自哪条回答，并说明只是当前线索" }], supportStyle: "怎样提问和安排任务更适合", uncertainty: "还不能确定什么、以后如何修正" } }) }
+      ] }) });
+      if (!apiResponse.ok) throw new Error(`onboarding portrait ${apiResponse.status}`);
+      const json = parseJsonContent((await apiResponse.json()).choices?.[0]?.message?.content || "{}");
+      portrait = normalizeOnboardingPortrait(json, fallback);
+      provider = "siliconflow";
+    } catch (error) { console.warn("Onboarding portrait used local fallback:", error.message); }
+  }
+  recordEvent(user.id, profileIdValue, "onboarding_portrait_generated", { provider, answerCount: Object.keys(answers).length });
+  sendJson(response, 200, { portrait, provider, model: provider === "siliconflow" ? model : "local" });
 }
 async function handleShapeGoal(request, response) {
   const user = requireUser(request, response); if (!user) return;

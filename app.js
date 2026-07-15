@@ -703,6 +703,8 @@ const state = {
   onboardingLoading: false,
   onboardingError: "",
   onboardingQuestionLoading: false,
+  onboardingPortraitLoading: false,
+  onboardingPortraitEditing: false,
   syncTimer: null
 };
 
@@ -1880,6 +1882,57 @@ async function requestOnboardingQuestion(questionId) {
   finally { state.onboardingQuestionLoading = false; render(); }
 }
 
+function getOnboardingPortrait() {
+  return readJson(storageKey("onboarding-portrait"), null);
+}
+
+function fallbackOnboardingPortrait() {
+  const answers = Object.fromEntries(onboardingAnswerDetails().map(({ question, answer }) => [question.id, answer]));
+  const interest = answers["current-interest"] || "还在寻找真正喜欢的事情";
+  const wish = answers["growth-wish"] || "想找到值得尝试的方向";
+  const output = answers["preferred-output"] || "喜欢的表达方式还不确定";
+  const support = answers["ai-help-style"] || "希望AI先倾听再帮忙";
+  const friction = answers["personal-friction"] || "主要卡点还需要观察";
+  const success = answers["success-picture"] || "成功画面还需要补充";
+  return { summary: `${child().name}最近容易被“${interest}”吸引，希望“${wish}”。更适合从一个能用${output}留下成果的小挑战开始。`, signals: [{ title:"兴趣线索", text:interest, evidence:"来自我的回答" }, { title:"成长愿望", text:wish, evidence:`我希望看到：${success}` }, { title:"当前卡点", text:friction, evidence:"这是现在的感受，不是固定特点" }], supportStyle:`${support}；每次只给一个5到15分钟、第一步清楚的行动。`, uncertainty:"这只是第一版理解，还要由后续行动、作品和我的反馈继续修正。" };
+}
+
+async function requestOnboardingPortrait() {
+  if (state.onboardingPortraitLoading) return;
+  state.onboardingPortraitLoading = true;
+  render();
+  const answers = Object.fromEntries(onboardingAnswerDetails().map(({ question, answer }) => [question.id, answer]));
+  try {
+    const response = await fetch("/api/onboarding/portrait", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ profileId:state.childId, answers }) });
+    const result = await response.json();
+    if (!response.ok || !result.portrait) throw new Error("portrait");
+    writeJson(storageKey("onboarding-portrait"), { portrait:result.portrait, provider:result.provider || "local", confirmed:false, correction:"", generatedAt:new Date().toISOString() });
+  } catch {
+    writeJson(storageKey("onboarding-portrait"), { portrait:fallbackOnboardingPortrait(), provider:"local", confirmed:false, correction:"", generatedAt:new Date().toISOString() });
+  } finally {
+    state.onboardingPortraitLoading = false;
+    render();
+  }
+}
+
+function confirmOnboardingPortrait() {
+  const current = getOnboardingPortrait();
+  if (!current) return;
+  writeJson(storageKey("onboarding-portrait"), { ...current, confirmed:true, confirmedAt:new Date().toISOString() });
+  state.onboardingPortraitEditing = false;
+  render();
+}
+
+function saveOnboardingPortraitCorrection() {
+  const current = getOnboardingPortrait();
+  const correction = document.querySelector("#onboarding-portrait-correction")?.value.trim() || "";
+  if (!current || correction.length < 4) { showToast("请写一句更像你的描述"); return; }
+  writeJson(storageKey("onboarding-portrait"), { ...current, correction, confirmed:true, correctedAt:new Date().toISOString() });
+  state.onboardingPortraitEditing = false;
+  render();
+  showToast("已用你的更正覆盖AI判断");
+}
+
 function onboardingGoalDraft() {
   const profile = getContextProfile();
   const wish = profile["growth-wish"]?.value || "做出自己的作品";
@@ -1903,20 +1956,25 @@ function renderProfileOnboarding() {
   const percent = Math.round((progress / onboardingQuestionIds.length) * 100);
   if (!question) {
     const draft = onboardingGoalDraft();
-    return `<section class="profile-onboarding complete"><header><span>认识完成 · ${onboardingQuestionIds.length}/${onboardingQuestionIds.length}</span><strong>AI有了第一版理解</strong><p>这不是标签，以后的行动、作品和反馈还会继续修正它。</p></header><div class="onboarding-route"><small>第一条成长方向</small><h2>${escapeHtml(draft.title)}</h2><p>${escapeHtml(draft.why)}</p><strong>先试：${escapeHtml(draft.firstExperiment)}</strong></div><div class="onboarding-summary">${answers.map(({ question: item, answer }) => `<span>${escapeHtml(item.title.replace("？", ""))}<b>${escapeHtml(answer)}</b></span>`).join("")}</div>${state.onboardingError ? `<p class="onboarding-error">${escapeHtml(state.onboardingError)}</p>` : ""}<button class="onboarding-primary" type="button" data-action="finish-profile-onboarding" ${state.onboardingLoading ? "disabled" : ""}>${state.onboardingLoading ? "正在建立成长路线..." : "建立路线，进入今天"}</button></section>`;
+    const portraitState = getOnboardingPortrait();
+    const portrait = portraitState?.portrait;
+    const displaySummary = portraitState?.correction || portrait?.summary || "";
+    return `<section class="profile-onboarding complete"><header><span>画像确认 · 最后一步</span><strong>AI目前这样理解我</strong><p>这不是结论。请先确认或修改，系统才会据此制定目标。</p></header>${state.onboardingPortraitLoading ? `<article class="onboarding-portrait loading"><small>正在整理6个回答</small><h2>AI在写一份可以被你纠正的描述</h2><div class="thinking-dots"><span></span><span></span><span></span></div></article>` : portrait ? `<article class="onboarding-portrait ${portraitState.confirmed ? "confirmed" : ""}"><header><span>${portraitState.correction ? "我的更正 · 最高优先级" : portraitState.provider === "siliconflow" ? "GLM第一版画像" : "本地第一版画像"}</span>${portraitState.confirmed ? "<b>已由我确认</b>" : "<b>等待我确认</b>"}</header><h2>${escapeHtml(displaySummary)}</h2>${portraitState.correction ? `<p class="portrait-ai-original"><small>AI原来的理解 · 仅供追溯，不再用于目标</small>${escapeHtml(portrait.summary)}</p>` : `<div class="portrait-signals">${(portrait.signals || []).map(signal => `<p><small>${escapeHtml(signal.title)}</small><strong>${escapeHtml(signal.text)}</strong><em>${escapeHtml(signal.evidence)}</em></p>`).join("")}</div><div class="portrait-support"><small>更适合我的支持方式</small><strong>${escapeHtml(portrait.supportStyle)}</strong></div>`}<p class="portrait-uncertainty">${escapeHtml(portrait.uncertainty)}</p>${state.onboardingPortraitEditing ? `<div class="portrait-correction"><label for="onboarding-portrait-correction">请用自己的话改正AI</label><textarea id="onboarding-portrait-correction" rows="4" maxlength="600" placeholder="例如：我不是怕做不好，我只是需要先知道第一步。">${escapeHtml(portraitState.correction || displaySummary)}</textarea><div><button type="button" data-action="save-onboarding-portrait-correction">保存我的更正</button><button type="button" data-action="cancel-onboarding-portrait-edit">取消</button></div></div>` : `<div class="portrait-actions"><button type="button" data-action="confirm-onboarding-portrait">${portraitState.confirmed ? "这仍然像我" : "这很像我"}</button><button type="button" data-action="edit-onboarding-portrait">${portraitState.confirmed ? "再次修改" : "有些不对，修改"}</button></div>`}</article>` : `<button class="onboarding-primary" type="button" data-action="generate-onboarding-portrait">生成我的第一版画像</button>`}${portraitState?.confirmed ? `<div class="onboarding-route"><small>根据我确认的画像</small><h2>${escapeHtml(draft.title)}</h2><p>${escapeHtml(draft.why)}</p><strong>先试：${escapeHtml(draft.firstExperiment)}</strong></div>` : ""}<details class="onboarding-answer-evidence"><summary>查看AI参考的6个回答</summary><div class="onboarding-summary">${answers.map(({ question: item, answer }) => `<span>${escapeHtml(item.title.replace("？", ""))}<b>${escapeHtml(answer)}</b></span>`).join("")}</div></details>${state.onboardingError ? `<p class="onboarding-error">${escapeHtml(state.onboardingError)}</p>` : ""}<button class="onboarding-primary" type="button" data-action="finish-profile-onboarding" ${state.onboardingLoading || !portraitState?.confirmed ? "disabled" : ""}>${state.onboardingLoading ? "正在建立成长路线..." : portraitState?.confirmed ? "按这个理解建立路线" : "请先确认或修改画像"}</button></section>`;
   }
   return `<section class="profile-onboarding"><header><span>${state.onboardingQuestionLoading ? "AI正在设计下一问" : "AI先认识我"} · ${progress + 1}/${onboardingQuestionIds.length}</span><strong>${escapeHtml(child().name)}，先不急着接任务</strong><p>每次只回答一个。后两题会根据前面的答案变化，没有标准答案。</p><div class="onboarding-progress"><i style="width:${percent}%"></i></div></header>${state.onboardingQuestionLoading ? `<article class="onboarding-question onboarding-thinking"><small>正在结合你刚才的回答</small><h2>AI在想一个真正有用的问题</h2><div class="thinking-dots"><span></span><span></span><span></span></div></article>` : `<article class="onboarding-question"><small>${["personal-friction","success-picture"].includes(question.id) ? "为我生成的问题" : "关于我自己"}</small><h2>${escapeHtml(question.title)}</h2><p>${escapeHtml(question.why)}</p><div>${question.options.map((option) => `<button type="button" data-action="answer-onboarding" data-question="${escapeHtml(question.id)}" data-value="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join("")}</div></article>`}${answers.length && !state.onboardingQuestionLoading ? `<button class="onboarding-back" type="button" data-action="undo-onboarding-answer" data-question="${escapeHtml(answers.at(-1).question.id)}">返回上一题</button>` : ""}<footer><span>认识我</span><i>→</i><span>SMART目标</span><i>→</i><span>OKR</span><i>→</i><span>今日一步</span></footer></section>`;
 }
 
 async function finishProfileOnboarding() {
   if (state.onboardingLoading) return;
+  const portraitState = getOnboardingPortrait();
+  if (!portraitState?.confirmed) { showToast("请先确认或修改AI对你的理解"); return; }
   state.onboardingLoading = true;
   state.onboardingError = "";
   render();
   try {
     if (!state.goals.some((goal) => goal.status === "active")) {
       const fallback = onboardingGoalDraft();
-      const context = Object.fromEntries(onboardingAnswerDetails().map(({ question, answer }) => [question.id, { question: question.title, answer }]));
+      const context = { ...Object.fromEntries(onboardingAnswerDetails().map(({ question, answer }) => [question.id, { question: question.title, answer }])), confirmedPortrait: { summary:portraitState.correction || portraitState.portrait.summary, signals:portraitState.correction ? [] : portraitState.portrait.signals, supportStyle:portraitState.correction || portraitState.portrait.supportStyle, correctedByUser:Boolean(portraitState.correction) } };
       const shapeResponse = await fetch("/api/goals/shape", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, text: `${fallback.title}。${fallback.why}`, context }) });
       const shaped = await shapeResponse.json();
       const draft = shapeResponse.ok && shaped.draft ? shaped.draft : fallback;
@@ -1932,7 +1990,6 @@ async function finishProfileOnboarding() {
     writeJson(storageKey("onboarding"), { started: true, complete: true, completedAt: new Date().toISOString() });
     const rewarded = grantBonusReward("onboarding:first-profile", { xp: 10, gems: 2, label: "完成第一版成长画像" });
     state.page = "profile";
-    state.dailyPlan = null;
     state.dailyCheckin = { energy: "", minutes: 0, intent: "" };
     if (!rewarded) showToast("SMART目标和今日一步已经准备好");
   } catch (error) {
@@ -4195,15 +4252,22 @@ document.addEventListener("click", async (event) => {
     setContextAnswer(onboardingAnswer.dataset.question, onboardingAnswer.dataset.value);
     const nextId = onboardingQuestionIds.find((id) => !getContextProfile()[id]);
     if (["personal-friction", "success-picture"].includes(nextId) && !readJson(storageKey("onboarding-questions"), {})[nextId]) await requestOnboardingQuestion(nextId);
+    else if (!nextId) await requestOnboardingPortrait();
     else render();
     return;
   }
   const undoOnboardingAnswer = event.target.closest("[data-action='undo-onboarding-answer']");
   if (undoOnboardingAnswer) {
     clearContextAnswer(undoOnboardingAnswer.dataset.question);
+    localStorage.removeItem(storageKey("onboarding-portrait"));
     render();
     return;
   }
+  if (event.target.closest("[data-action='generate-onboarding-portrait']")) { await requestOnboardingPortrait(); return; }
+  if (event.target.closest("[data-action='confirm-onboarding-portrait']")) { confirmOnboardingPortrait(); return; }
+  if (event.target.closest("[data-action='edit-onboarding-portrait']")) { state.onboardingPortraitEditing = true; render(); return; }
+  if (event.target.closest("[data-action='cancel-onboarding-portrait-edit']")) { state.onboardingPortraitEditing = false; render(); return; }
+  if (event.target.closest("[data-action='save-onboarding-portrait-correction']")) { saveOnboardingPortraitCorrection(); return; }
   if (event.target.closest("[data-action='finish-profile-onboarding']")) {
     await finishProfileOnboarding();
     return;
