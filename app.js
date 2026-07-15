@@ -2449,18 +2449,27 @@ function dailyPlanSourceDone() {
 async function startDailyPlan() {
   const daily = state.dailyPlan;
   if (!daily?.plan) return;
-  try {
-    const response = await fetch(`/api/daily-plan/${encodeURIComponent(daily.id)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ feedback: "accepted" }) });
-    if (response.ok) state.dailyPlan = await response.json();
-  } catch {}
   const plan = daily.plan;
+  const completingRecharge = plan.sourceType === "recharge" && daily.status === "started";
+  try {
+    const response = await fetch(`/api/daily-plan/${encodeURIComponent(daily.id)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ feedback: completingRecharge ? "completed" : "accepted" }) });
+    if (!response.ok) throw new Error("今日状态保存失败");
+    state.dailyPlan = await response.json();
+  } catch {
+    showToast("状态暂时没有保存，请再试一次");
+    return;
+  }
+  if (plan.sourceType === "recharge") {
+    render();
+    showToast(completingRecharge ? "恢复完成，状态已经照顾好了" : `现在只做：${plan.firstStep}`);
+    return;
+  }
   if (plan.sourceType === "action") {
     const action = state.actions.find((item) => item.id === Number(plan.sourceId));
     if (action) { if (action.status !== "doing") await updateAction(action.id, "doing"); await startFocus({ ...action, estimateMinutes: plan.minutes }); return; }
   }
   if (plan.sourceType === "habit") { state.showPlanningDetails = true; render(); showToast("习惯已经展开，只完成这一次就好"); return; }
   if (plan.sourceType === "idea") { state.page = "discover"; render(); showToast("已经打开这颗灵感，从最小一步开始"); return; }
-  showToast("先照顾好状态，休息也是主动选择");
 }
 
 function renderDailyCompass() {
@@ -2485,10 +2494,15 @@ function renderDailyCompass() {
   const rhythmLabels = { no_time: "优先短任务", no_energy: "优先低能量", unclear: "优先明确第一步", not_important: "优先重要事项" };
   const recommendationLabels = { too_big: "最近更需要小任务", not_interesting: "正在增加不同类型", unclear: "最近更需要清楚第一步", not_now: "尊重当下时机" };
   const sourceDone = dailyPlanSourceDone();
+  const planCompleted = sourceDone || daily.status === "completed";
+  const primaryLabel = plan.sourceType === "recharge"
+    ? daily.status === "started" ? "我恢复好了" : "开始恢复"
+    : daily.status === "started" ? "继续这一小步" : "现在开始";
+  const nextLabel = plan.sourceType === "recharge" ? "状态照顾好了，选下一步" : "这件完成了，选下一步";
   const intentLabels = { finish: "我想推进", create: "我想创造", reset: "我想保持节奏", recharge: "我想先恢复", learn: "我想学习" };
   return `<section class="panel daily-compass ready ${escapeHtml(daily.status)}"><header><div><span>现在只做这一件</span><small>${plan.provider === "siliconflow" ? "GLM选择" : "本地选择"} · ${escapeHtml(sourceLabels[plan.sourceType] || "个性化下一步")}</small></div><strong>${plan.minutes}分钟</strong></header>
     <h2>${escapeHtml(plan.title)}</h2><p>${escapeHtml(plan.why)}</p>${plan.goalTitle ? `<div class="daily-goal-link">正在推进：${escapeHtml(plan.goalTitle)}</div>` : ""}${plan.decisionSignals?.length ? `<div class="daily-rhythm-link">节奏适配：${plan.decisionSignals.map((signal) => escapeHtml(rhythmLabels[signal] || signal)).join(" · ")}</div>` : ""}${plan.recommendationSignals?.length ? `<div class="daily-recommendation-link">AI正在适应：${plan.recommendationSignals.map((signal) => escapeHtml(recommendationLabels[signal] || signal)).join(" · ")}</div>` : ""}<div class="daily-first-step"><small>第一小步</small><strong>${escapeHtml(plan.firstStep)}</strong></div><blockquote><small>${escapeHtml(plan.motivator && plan.motivator !== "unknown" ? motivationLabels[plan.motivator] || "个性化支持" : "低压力支持")}</small>${escapeHtml(plan.support)}</blockquote>
-    <div class="daily-actions">${sourceDone ? `<button class="daily-primary" type="button" data-action="daily-plan-next">这件完成了，选下一步</button>` : `<button class="daily-primary" type="button" data-action="start-daily-plan">${daily.status === "started" ? "继续这一小步" : "现在开始"}</button>`}<button type="button" data-action="open-daily-swap">换一个</button><button type="button" data-action="lighten-daily-plan" ${plan.minutes <= 5 ? "disabled" : ""}>轻一点</button></div>
+    <div class="daily-actions">${planCompleted ? `<button class="daily-primary" type="button" data-action="daily-plan-next">${nextLabel}</button>` : `<button class="daily-primary" type="button" data-action="start-daily-plan">${primaryLabel}</button>`}<button type="button" data-action="open-daily-swap">换一个</button><button type="button" data-action="lighten-daily-plan" ${plan.minutes <= 5 ? "disabled" : ""}>轻一点</button></div>
     ${state.dailySwapOpen ? `<div class="daily-swap-dialog"><strong>这次为什么想换？</strong><small>只选最接近的一项，帮助AI少猜一点。</small><div><button type="button" data-action="swap-daily-plan" data-reason="too_big">感觉有点大</button><button type="button" data-action="swap-daily-plan" data-reason="not_interesting">现在没兴趣</button><button type="button" data-action="swap-daily-plan" data-reason="unclear">不知道怎么开始</button><button type="button" data-action="swap-daily-plan" data-reason="not_now">只是现在不合适</button></div><button class="daily-swap-cancel" type="button" data-action="close-daily-swap">不换了</button></div>` : ""}
     <footer><span>${escapeHtml(intentLabels[daily.checkin.intent] || "我的选择")} · ${escapeHtml({ low: "低能量", normal: "普通能量", high: "高能量" }[daily.checkin.energy] || "当前状态")} · ${daily.checkin.minutes}分钟</span><button type="button" data-action="reset-daily-plan">重新回答</button></footer></section>`;
 }

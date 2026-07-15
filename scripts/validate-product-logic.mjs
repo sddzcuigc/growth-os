@@ -207,6 +207,12 @@ for (const term of ["AI今日指挥台", "现在只做这一件", "daily-checkin
 for (const term of ["只能从候选中选择一个ref，不创造新任务", "sourceType: \"recharge\"", "daily_plan_swapped", "daily_plan_lightened", "excluded_json"]) {
   if (!serverSource.includes(term)) failures.push(`daily plan arbitration missing ${term}`);
 }
+for (const term of ["completingRecharge", "我恢复好了", "状态照顾好了，选下一步", "feedback: completingRecharge ? \"completed\" : \"accepted\""]) {
+  if (!appSourceText.includes(term)) failures.push(`recharge plan completion UI missing ${term}`);
+}
+for (const term of ["daily_plan_completed", "feedback === \"completed\" ? \"completed\""]) {
+  if (!serverSource.includes(term)) failures.push(`recharge plan completion backend missing ${term}`);
+}
 for (const term of ["/api/action-inbox/parse", "handleParseActionInbox", "fallbackInboxDraft", "findDuplicateAction", "已有answer后不得继续追问", "action_inbox_duplicate"]) {
   if (!serverSource.includes(term)) failures.push(`AI action inbox server missing ${term}`);
 }

@@ -485,7 +485,7 @@ function handleDeleteMemory(request, response, url) {
   sendJson(response, 200, { ok: true });
 }
 
-const allowedEvents = new Set(["app_opened", "page_viewed", "coach_started", "coach_generated", "coach_failed", "quest_skipped", "quest_completed", "quest_undone", "reflection_saved", "task_feedback_saved", "artifact_saved", "artifact_deleted", "artifact_privacy_changed", "daily_plan_generated", "daily_plan_started", "daily_plan_swapped", "daily_plan_lightened", "action_inbox_parsed", "action_inbox_clarified", "action_inbox_duplicate", "capture_parsed", "capture_clarified", "capture_confirmed", "goal_shaped", "goal_created", "goal_status_changed", "goal_deleted", "goal_experiment_started", "self_coach_asked", "self_coach_feedback", "self_coach_deleted", "strategy_digest_generated", "strategy_feedback", "action_negotiated", "action_deferred", "action_restored", "action_rescue_requested", "action_rescue_outcome", "recovery_rotated", "recovery_reset", "insights_opened", "plan_generated", "news_synced", "journal_prompted", "journal_saved", "journal_deleted", "idea_captured", "idea_developed", "idea_started", "idea_completed", "idea_deleted", "idea_resurfaced", "idea_resurface_outcome", "action_created", "action_broken_down", "action_completed", "action_reopened", "action_deleted", "habit_created", "habit_done", "habit_skipped", "habit_reopened", "habit_deleted", "focus_started", "focus_paused", "focus_resumed", "focus_finished", "focus_cancelled", "review_generated", "review_feedback", "review_focus_adopted"]);
+const allowedEvents = new Set(["app_opened", "page_viewed", "coach_started", "coach_generated", "coach_failed", "quest_skipped", "quest_completed", "quest_undone", "reflection_saved", "task_feedback_saved", "artifact_saved", "artifact_deleted", "artifact_privacy_changed", "daily_plan_generated", "daily_plan_started", "daily_plan_completed", "daily_plan_swapped", "daily_plan_lightened", "action_inbox_parsed", "action_inbox_clarified", "action_inbox_duplicate", "capture_parsed", "capture_clarified", "capture_confirmed", "goal_shaped", "goal_created", "goal_status_changed", "goal_deleted", "goal_experiment_started", "self_coach_asked", "self_coach_feedback", "self_coach_deleted", "strategy_digest_generated", "strategy_feedback", "action_negotiated", "action_deferred", "action_restored", "action_rescue_requested", "action_rescue_outcome", "recovery_rotated", "recovery_reset", "insights_opened", "plan_generated", "news_synced", "journal_prompted", "journal_saved", "journal_deleted", "idea_captured", "idea_developed", "idea_started", "idea_completed", "idea_deleted", "idea_resurfaced", "idea_resurface_outcome", "action_created", "action_broken_down", "action_completed", "action_reopened", "action_deleted", "habit_created", "habit_done", "habit_skipped", "habit_reopened", "habit_deleted", "focus_started", "focus_paused", "focus_resumed", "focus_finished", "focus_cancelled", "review_generated", "review_feedback", "review_focus_adopted"]);
 function recordEvent(userId, profileIdValue, eventName, properties = {}) {
   db.prepare("INSERT INTO events(user_id,profile_id,event_name,properties_json,created_at) VALUES(?,?,?,?,?)")
     .run(userId, profileIdValue || null, eventName, JSON.stringify(properties).slice(0, 4000), nowIso());
@@ -2142,10 +2142,11 @@ async function handleUpdateDailyPlan(request, response, url) {
   const row = db.prepare("SELECT daily_plans.* FROM daily_plans JOIN profiles ON profiles.id=daily_plans.profile_id WHERE daily_plans.id=? AND profiles.user_id=?").get(id, user.id);
   if (!row) return sendJson(response, 404, { error: "今日下一步不存在" });
   const body = await readBodyJson(request);
-  const feedback = ["accepted", "not_now"].includes(body.feedback) ? body.feedback : "accepted";
-  const status = feedback === "accepted" ? "started" : "ready";
+  const feedback = ["accepted", "not_now", "completed"].includes(body.feedback) ? body.feedback : "accepted";
+  const status = feedback === "completed" ? "completed" : feedback === "accepted" ? "started" : "ready";
   db.prepare("UPDATE daily_plans SET status=?,feedback=?,updated_at=? WHERE id=?").run(status, feedback, nowIso(), id);
-  recordEvent(user.id, row.profile_id, feedback === "accepted" ? "daily_plan_started" : "daily_plan_swapped", { feedback });
+  const eventName = feedback === "completed" ? "daily_plan_completed" : feedback === "accepted" ? "daily_plan_started" : "daily_plan_swapped";
+  recordEvent(user.id, row.profile_id, eventName, { feedback });
   sendJson(response, 200, todayDailyPlan(row.profile_id));
 }
 function handleDeleteDailyPlan(request, response, url) {
