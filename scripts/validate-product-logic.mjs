@@ -122,7 +122,7 @@ if (!questHtml.includes("&lt;img src=x&gt;") || !questHtml.includes("&lt;script&
 }
 
 const recommendationHtml = context.renderRecommendations();
-for (const requiredText of ["主线信号站", "不会在这里另发一套任务", "统一进入主线", "真正要做的下一步只会出现在“今天”"]) {
+for (const requiredText of ["记下一句值得记住的事", "不会自动变成任务", "我刚想到", "当前服务于"]) {
   if (!recommendationHtml.includes(requiredText)) failures.push(`recommendation page missing ${requiredText}`);
 }
 
@@ -201,13 +201,13 @@ for (const term of ["2 * 1024 * 1024", "image/jpeg", "audio/mpeg", "x-content-ty
 }
 if (!serverSource.includes("if (shareWithAi) createArtifactMemory") || !serverSource.includes("retractArtifactMemory(row.profile_id, id)")) failures.push("artifact privacy does not control AI memory");
 if (!serverSource.includes("serverDateKey(new Date(item.createdAt)) >= weekStart") || serverSource.includes("item.createdAt.slice(0, 10) >= weekStart")) failures.push("weekly evidence uses UTC date slicing instead of local dates");
-for (const term of ["AI今日指挥台", "当前主线 · 现在先过这一关", "daily-checkin", "start-daily-plan", "swap-daily-plan", "lighten-daily-plan", "renderDailyCompass", "generateDailyPlan", "loadDailyPlan", "做完就留下证据", "去复盘与记录"]) {
+for (const term of ["今天只选一种节奏", "当前主线 · 现在先过这一关", "quick-daily-start", "start-daily-plan", "swap-daily-plan", "lighten-daily-plan", "renderDailyCompass", "generateDailyPlan", "loadDailyPlan", "做完了吗", "去记录"]) {
   if (!appSourceText.includes(term)) failures.push(`daily adaptive compass missing ${term}`);
 }
 for (const term of ["只能从候选中选择一个ref，不创造新任务", "sourceType: \"recharge\"", "daily_plan_swapped", "daily_plan_lightened", "excluded_json"]) {
   if (!serverSource.includes(term)) failures.push(`daily plan arbitration missing ${term}`);
 }
-for (const term of ["completingRecharge", "我恢复好了", "状态照顾好了，选下一步", "feedback: completingRecharge ? \"completed\" : \"accepted\""]) {
+for (const term of ["completingRecharge", "completingMission", "我恢复好了", "状态照顾好了，选下一步", "completingRecharge || completingMission ? \"completed\" : \"accepted\""]) {
   if (!appSourceText.includes(term)) failures.push(`recharge plan completion UI missing ${term}`);
 }
 for (const term of ["daily_plan_completed", "feedback === \"completed\" ? \"completed\""]) {
@@ -224,8 +224,14 @@ for (const term of ["/api/capture/parse", "handleParseCapture", "fallbackCapture
 for (const term of ["要做的事、突然的灵感、今天的感悟都可以", "灵感火花", "成长感悟", "放进灵感池", "capture-ai-context", "capture_confirmed"]) if (!appSourceText.includes(term)) failures.push(`unified capture UI missing ${term}`);
 for (const term of ["生成一个问题", "第2步", "在这里回答AI的问题", "写一句后可继续问", "保存回答", "if (state.journalMode !== \"self\") await requestJournalPrompt(false)"]) if (!appSourceText.includes(term)) failures.push(`guided journal flow missing ${term}`);
 for (const term of ["clearContextAnswer", "edit-context-answer", ">修改</button>"]) if (!appSourceText.includes(term)) failures.push(`editable context answers missing ${term}`);
-for (const term of ["onboardingQuestionIds", "renderProfileOnboarding", "finishProfileOnboarding", "AI先认识我", "按这个理解建立路线", "needsProfileOnboarding", "growth-loop-guide"]) if (!appSourceText.includes(term)) failures.push(`guided profile onboarding missing ${term}`);
-for (const term of [">今天</b>", ">信号</b>", ">蓝图</b>", ">路线</b>", ">证据</b>"]) if (!htmlSource.includes(term)) failures.push(`workflow navigation missing ${term}`);
+for (const term of ["onboardingQuestionIds", "renderProfileOnboarding", "finishProfileOnboarding", "AI先认识我", "onboarding-goal-project", "用这个目标开始", "needsProfileOnboarding"]) if (!appSourceText.includes(term)) failures.push(`guided profile onboarding missing ${term}`);
+for (const term of ["isVagueGrowthGoal", "skillTreeGoalSuggestions", "choose-goal-suggestion", "技能树给出的具体目标建议", "这才是具体的SMART目标"]) if (!appSourceText.includes(term)) failures.push(`concrete goal choice flow missing ${term}`);
+for (const term of ["choose-daily-mission", "preferredRef", "选这项", "mission-picks"]) if (!appSourceText.includes(term)) failures.push(`daily mission choice flow missing ${term}`);
+for (const term of ["isVagueGoalText", "preferredRef"]) if (!serverSource.includes(term)) failures.push(`server goal or mission choice guard missing ${term}`);
+for (const term of ["mode必须为clarify", "goalClarifications", "目标设计需要连接GLM", "系统不会改用模板", "GLM没有满足该技能的安全约束", "GLM给出了不安全的水上练习选项", "家长只在岸上看"]) if (!serverSource.includes(term)) failures.push(`LLM-only goal clarification missing ${term}`);
+for (const term of ["goalQuestion", "goalClarifications", "answer-goal-clarification", "GLM生成的SMART目标", "不会套用通用模板"]) if (!appSourceText.includes(term)) failures.push(`LLM goal clarification UI missing ${term}`);
+if (appSourceText.includes("function onboardingGoalDraft()")) failures.push("onboarding still uses a local goal template");
+for (const term of [">今天</b>", ">想法</b>", ">目标</b>", ">安排</b>", ">记录</b>"]) if (!htmlSource.includes(term)) failures.push(`workflow navigation missing ${term}`);
 if (appSourceText.includes('<div class="action-quick-add"')) failures.push("legacy multi-field quick-add is still rendered");
 for (const term of ["/api/auth/recovery/rotate", "/api/auth/recovery/reset", "recoveryCode", "normalizeRecoveryCode", "dummyRecoveryHash", "consumeRecoveryAttempt", "DELETE FROM sessions WHERE user_id", "recovery_hash", "recovery_updated_at"]) {
   if (!serverSource.includes(term)) failures.push(`account recovery security missing ${term}`);
@@ -277,7 +283,7 @@ for (const term of ["主线信号站", "capture-idea", "develop-idea", "set-idea
 for (const term of ["唤醒一颗旧灵感", "decide-idea-resurfacing", "继续收藏", "过阵子再看", "放下它", "loadIdeaResurfacing"]) {
   if (!appSourceText.includes(term)) failures.push(`idea resurfacing UI missing ${term}`);
 }
-for (const term of ["推进一件事", "创造点东西", "保持小节奏", "先恢复能量", "daily-checkin-back", "state.dailyCheckin.intent"]) {
+for (const term of ["轻松开始", "正常推进", "认真挑战", "先休息一下", "quick-daily-start", "state.dailyCheckin.intent"]) {
   if (!appSourceText.includes(term)) failures.push(`daily intention UI missing ${term}`);
 }
 for (const term of ["checkin.intent === \"finish\"", "checkin.intent === \"create\"", "checkin.intent === \"reset\"", "checkin.intent === \"recharge\""]) {

@@ -806,6 +806,10 @@ function fallbackGoalDraft(text) {
   };
 }
 
+function isVagueGoalText(value) {
+  return /更容易开始并做完|更会学习和思考|更敢表达和分享|变得更好|提高能力/.test(String(value || ""));
+}
+
 function normalizeGoalPlan(json, fallback) {
   const smart = json?.smart || {};
   const rawResults = Array.isArray(json?.keyResults) ? json.keyResults : fallback.keyResults;
@@ -919,24 +923,44 @@ async function handleShapeGoal(request, response) {
   if (!profile) return sendJson(response, 404, { error: "角色不存在" });
   const text = String(body.text || "").trim().slice(0, 600);
   if (text.length < 2) return sendJson(response, 400, { error: "先说一个你真心想探索的方向" });
-  const fallback = fallbackGoalDraft(text);
-  let draft = fallback;
-  let provider = "local";
-  if (apiKey) {
-    try {
-      const existing = goalRows(profileIdValue).filter((goal) => goal.status !== "done").map(({ title, why, successSignal, skill }) => ({ title, why, successSignal, skill }));
-      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(12000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.35, max_tokens: 420, response_format: { type: "json_object" }, messages: [
-        { role: "system", content: "你帮助6-12岁孩子把愿望和画像整理成一条儿童友好的SMART目标和OKR。保留孩子原意，不做成人绩效管理，不评价天赋。目标要具体、可观察、可达到、与内在动机相关、有4周时限；一个Objective配3个Key Results，每个KR都能用次数或作品计量，并给4周节奏及10分钟第一步。只返回JSON。" },
-        { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, text, answers: body.context || {}, existingDirections: existing, output: { title: "孩子第一人称短目标", why: "内在动机", successSignal: "四周内可观察信号", firstExperiment: "10分钟第一步", skill: "能力id", horizon: "one_month", smart: { specific: "具体做什么", measurable: "如何量化", achievable: "为何做得到", relevant: "与本人有什么关系", timeBound: "时间边界" }, objective: "鼓舞但具体的一句话", keyResults: [{ title: "关键结果", target: 3, unit: "次" }], weeklyPlan: ["四周各一步"] } }) }
-      ] }) });
-      if (!apiResponse.ok) throw new Error(`goal shape ${apiResponse.status}`);
-      const json = parseJsonContent((await apiResponse.json()).choices?.[0]?.message?.content || "{}");
-      draft = { title: String(json.title || fallback.title).trim().slice(0, 100), why: String(json.why || fallback.why).trim().slice(0, 220), successSignal: String(json.successSignal || fallback.successSignal).trim().slice(0, 240), firstExperiment: String(json.firstExperiment || fallback.firstExperiment).trim().slice(0, 220), skill: normalizeSkillId(json.skill || fallback.skill), horizon: ["one_month", "three_months"].includes(json.horizon) ? json.horizon : fallback.horizon, ...normalizeGoalPlan(json, fallback) };
-      provider = "siliconflow";
-    } catch (error) { console.warn("Goal shape used local fallback:", error.message); }
+  if (isVagueGoalText(text)) return sendJson(response, 422, { error: "这更像能力方向。请说一件未来四周能完成、能看见结果的具体事情。" });
+  if (!apiKey) return sendJson(response, 503, { error: "目标设计需要连接GLM，现在模型服务未配置。系统不会用模板代替。" });
+  try {
+    const existing = goalRows(profileIdValue).filter((goal) => goal.status !== "done").map(({ title, why, successSignal, skill }) => ({ title, why, successSignal, skill }));
+    const clarifications = body.clarifications && typeof body.clarifications === "object" ? body.clarifications : {};
+    const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(60000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.22, max_tokens: 700, response_format: { type: "json_object" }, messages: [
+      { role: "system", content: "你是6-12岁儿童的目标设计师。先判断信息是否足够，禁止把所有愿望套成作品、最小版本或10分钟任务。游泳、骑车、球类、乐器、语言、生活自理等领域必须按该技能真实的学习规律定义结果。涉及水、火、道路、器械或身体安全时，必须询问当前水平、成人/教练支持或练习条件，并把安全陪同写进目标。所有选项本身也必须安全：不会游泳的孩子不得出现独自下水、家长只在岸上看、同龄人陪同等选项；只能是合格教练教学、具备救护能力的成人近距离全程陪同，或暂不练习等待安排。信息不足时mode必须为clarify，一次只问最关键的一个问题，给3-4个互斥、具体、儿童能区分的安全选项；信息足够时mode为draft，生成适龄SMART目标和3个KR。第一步可以是评估、预约、准备或一次安全练习，但必须服务于该领域，不能凭空写作品。只返回JSON。" },
+      { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, wish: text, profileAnswers: body.context || {}, goalClarifications: clarifications, existingDirections: existing, allowedSkills: Object.keys(futureSkillFramework), output: { mode: "clarify或draft", clarification: { key: "稳定英文id", question: "一次只问一件事", why: "为什么必须先知道", options: ["3到4个互斥选项"] }, draft: { title: "孩子第一人称短目标", why: "内在动机", successSignal: "四周内可观察结果", firstExperiment: "符合领域与安全条件的第一步", skill: "能力id", horizon: "one_month", smart: { specific: "具体结果", measurable: "量化标准", achievable: "依据当前水平和条件", relevant: "与本人关系", timeBound: "四周" }, objective: "明确、可验证的四周目标", keyResults: [{ title: "可观察关键结果", target: 3, unit: "次" }], weeklyPlan: ["四周各一步"] } } }) }
+    ] }) });
+    if (!apiResponse.ok) throw new Error(`GLM ${apiResponse.status}`);
+    const json = parseJsonContent((await apiResponse.json()).choices?.[0]?.message?.content || "{}");
+    const responseMode = json.mode || (json.clarification ? "clarify" : json.draft || json.objective ? "draft" : "");
+    if (responseMode === "clarify") {
+      const options = Array.isArray(json.clarification?.options) ? json.clarification.options.map((item) => String(item).trim().slice(0, 70)).filter(Boolean).slice(0, 4) : [];
+      if (options.length < 3 || !json.clarification?.question || !json.clarification?.key) throw new Error("GLM追问结构不完整");
+      if (/游泳|潜水|水上/.test(text) && options.some((option) => /独自|自己下水|岸上看|同学|朋友陪/.test(option))) throw new Error("GLM给出了不安全的水上练习选项");
+      recordEvent(user.id, profileIdValue, "goal_clarification_requested", { key: String(json.clarification.key).slice(0, 40) });
+      return sendJson(response, 200, { needsClarification: true, clarification: { key: String(json.clarification.key).slice(0, 40), question: String(json.clarification.question).slice(0, 160), why: String(json.clarification.why || "回答后，AI才能制定真正适合你的目标").slice(0, 180), options }, provider: "siliconflow", model });
+    }
+    const raw = json.draft || (json.objective ? json : null);
+    if (responseMode !== "draft" || !raw || !raw.title || !raw.objective || !raw.successSignal || !raw.firstExperiment || !raw.smart || !Array.isArray(raw.keyResults) || raw.keyResults.length !== 3 || !Array.isArray(raw.weeklyPlan) || raw.weeklyPlan.length < 3) {
+      console.warn("Rejected GLM goal structure:", JSON.stringify(json).slice(0, 1800));
+      throw new Error("GLM目标结构不完整");
+    }
+    const dangerousPhysical = /游泳|潜水|骑车|攀岩|滑雪|滑冰|烹饪|用火/.test(text);
+    const combined = `${raw.title} ${raw.objective} ${raw.successSignal} ${raw.firstExperiment}`;
+    if (dangerousPhysical && (/最小版本|做一个关于|作品/.test(combined) || !/教练|成人|家长|监护|陪同|安全/.test(combined))) throw new Error("GLM没有满足该技能的安全约束");
+    const draft = {
+      title: String(raw.title).trim().slice(0, 100), why: String(raw.why || "").trim().slice(0, 220), successSignal: String(raw.successSignal).trim().slice(0, 240), firstExperiment: String(raw.firstExperiment).trim().slice(0, 220), skill: normalizeSkillId(raw.skill), horizon: "one_month",
+      smart: { specific: String(raw.smart.specific || "").slice(0, 160), measurable: String(raw.smart.measurable || "").slice(0, 180), achievable: String(raw.smart.achievable || "").slice(0, 160), relevant: String(raw.smart.relevant || "").slice(0, 180), timeBound: String(raw.smart.timeBound || "四周").slice(0, 120) },
+      objective: String(raw.objective).slice(0, 180), keyResults: raw.keyResults.map((item, index) => ({ id: `kr${index + 1}`, title: String(item.title || "").slice(0, 140), target: Math.max(1, Math.min(20, Number(item.target || 1))), unit: String(item.unit || "次").slice(0, 12) })), weeklyPlan: raw.weeklyPlan.slice(0, 4).map((item) => String(item).slice(0, 160))
+    };
+    recordEvent(user.id, profileIdValue, "goal_shaped", { provider: "siliconflow", skill: draft.skill, horizon: draft.horizon, clarificationCount: Object.keys(clarifications).length });
+    return sendJson(response, 200, { draft, provider: "siliconflow", model });
+  } catch (error) {
+    console.warn("Goal shape rejected:", error.message);
+    return sendJson(response, 502, { error: `GLM这次没有生成可靠目标：${error.message}。请重试，系统不会改用模板。` });
   }
-  recordEvent(user.id, profileIdValue, "goal_shaped", { provider, skill: draft.skill, horizon: draft.horizon });
-  sendJson(response, 200, { draft, provider, model: provider === "siliconflow" ? model : "local" });
 }
 async function handleCreateGoal(request, response) {
   const user = requireUser(request, response); if (!user) return;
@@ -946,6 +970,7 @@ async function handleCreateGoal(request, response) {
   if (goalRows(profileIdValue).filter((goal) => goal.status === "active").length >= 3) return sendJson(response, 409, { error: "同时保留三个方向就够了，先暂停或完成一个" });
   const title = String(body.title || "").trim().slice(0, 100);
   if (title.length < 2) return sendJson(response, 400, { error: "方向名称太短了" });
+  if (isVagueGoalText(`${title} ${body.objective || ""}`)) return sendJson(response, 422, { error: "不能把能力方向当作目标，请先补充一件具体要完成的事" });
   if (goalRows(profileIdValue).some((goal) => goal.status !== "done" && (normalizedTitle(goal.title) === normalizedTitle(title) || serverTitleSimilarity(goal.title, title) >= 0.82))) return sendJson(response, 409, { error: "这个方向已经点亮了，可以继续原来的旅程" });
   const now = nowIso();
   const fallback = fallbackGoalDraft(title);
@@ -2300,19 +2325,20 @@ async function handleGenerateDailyPlan(request, response) {
   const lighter = body.lighter === true;
   const swapReason = ["too_big", "not_interesting", "unclear", "not_now"].includes(body.swapReason) ? body.swapReason : "";
   if (swap && swapReason && previous?.plan?.ref) db.prepare("INSERT INTO daily_plan_feedback(profile_id,daily_plan_id,source_ref,source_type,reason,created_at) VALUES(?,?,?,?,?,?)").run(profileIdValue, previous.id, previous.plan.ref, previous.plan.sourceType || "unknown", swapReason, nowIso());
-  const checkin = { energy: lighter ? "low" : ["low", "normal", "high"].includes(body.energy) ? body.energy : previous?.checkin.energy || "normal", minutes: lighter ? 5 : [5, 10, 20, 30].includes(Number(body.minutes)) ? Number(body.minutes) : Number(previous?.checkin.minutes || 10), intent: ["finish", "create", "learn", "reset", "recharge"].includes(body.intent) ? body.intent : previous?.checkin.intent || "finish" };
+  const checkin = { energy: lighter ? "low" : ["low", "normal", "high"].includes(body.energy) ? body.energy : previous?.checkin.energy || "normal", minutes: lighter ? 5 : [2, 5, 10, 20, 30].includes(Number(body.minutes)) ? Number(body.minutes) : Number(previous?.checkin.minutes || 10), intent: ["finish", "create", "learn", "reset", "recharge"].includes(body.intent) ? body.intent : previous?.checkin.intent || "finish" };
   const excluded = [...new Set([...(previous?.excluded || []), ...(swap && previous?.plan.ref ? [previous.plan.ref] : [])])].slice(-12);
   const recommendationCalibration = dailyPlanFeedbackCalibration(profileIdValue);
   const allCandidates = dailyPlanCandidates(profileIdValue, checkin, excluded, { reason: swapReason, previousSourceType: previous?.plan?.sourceType || "" });
   const missionCandidates = allCandidates.filter((candidate) => candidate.sourceType === "mission");
   const candidates = missionCandidates.length ? missionCandidates : allCandidates;
   if (!candidates.length) return sendJson(response, 409, { error: "今天的候选都看过了，先休息一下吧" });
-  const fallback = candidates[0];
+  const preferredRef = String(body.preferredRef || "");
+  const fallback = candidates.find((candidate) => candidate.ref === preferredRef) || candidates[0];
   const calibration = feedbackCalibration(taskFeedbackRows(profileIdValue));
   const decisionCalibration = actionDecisionCalibration(profileIdValue);
   const motivation = motivationSupport(calibration, checkin);
   let selected = { ref: fallback.ref, title: fallback.title, minutes: fallback.minutes, why: fallback.whyHint, firstStep: fallback.firstStep, support: motivation.text, motivator: motivation.motivator, provider: "local" };
-  if (apiKey) {
+  if (apiKey && body.enhance === true) {
     try {
       const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(12000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.38, max_tokens: 420, response_format: { type: "json_object" }, messages: [
         { role: "system", content: "你是6-12岁孩子的每日下一步教练。只能从候选中选择一个ref，不创造新任务。根据当下能量、时间、意图、截止时间和体验校准选择。decisionCalibration只有在同一协商原因重复至少两次后才激活，要尊重它但不能把当前节奏说成固定性格；截止紧急事项仍可优先。preferredMotivators只有在重复证据达到阈值后才会出现；support要贴合它。语气简短温和，不评价孩子好坏，不用成人管理口吻。只返回JSON。" },
@@ -3003,7 +3029,9 @@ async function handleGenerateDailyMissions(request, response) {
   const fingerprint = stableHash(JSON.stringify(fingerprintPayload));
   const existing = db.prepare("SELECT * FROM daily_mission_books WHERE profile_id=? AND mission_date=?").get(profileIdValue, serverDateKey());
   if (existing && existing.context_fingerprint === fingerprint && body.force !== true) return sendJson(response, 200, { book: publicDailyMissionBook(existing), cached: true });
-  const result = await generateDailyMissionBook(profile, body, baseTasks);
+  const result = body.fast === true
+    ? { book: { date: serverDateKey(), headline: "今天的成长关卡", rationale: "先根据当前目标和状态快速准备，AI会继续在后台校准。", blueprintVersion: Number(body.blueprint?.version || 0), goalId: Number(body.activeGoals?.[0]?.id || 0), goalTitle: String(body.activeGoals?.[0]?.objective || "当前成长主线").slice(0, 140), tasks: balancedMissionFallback(baseTasks).map((task) => normalizeMissionTask(task, task)) }, provider: "local" }
+    : await generateDailyMissionBook(profile, body, baseTasks);
   const now = nowIso();
   db.prepare("INSERT INTO daily_mission_books(profile_id,mission_date,book_json,context_fingerprint,provider,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(profile_id,mission_date) DO UPDATE SET book_json=excluded.book_json,context_fingerprint=excluded.context_fingerprint,provider=excluded.provider,updated_at=excluded.updated_at").run(profileIdValue, serverDateKey(), JSON.stringify(result.book), fingerprint, result.provider, existing?.created_at || now, now);
   recordEvent(user.id, profileIdValue, "daily_missions_generated", { provider: result.provider, taskCount: result.book.tasks.length, blueprintVersion: result.book.blueprintVersion });

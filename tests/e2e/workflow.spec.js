@@ -50,9 +50,21 @@ test("new child follows one growth loop and uses real economy", async ({ page })
     contentType: "application/json",
     body: JSON.stringify({ stale: true, blueprint: { version: 2, provider: "siliconflow", updatedAt: "2026-07-15T08:00:00.000Z", childSummary: "我喜欢把搭建兴趣变成作品，清楚的第一步能帮助我自己开始。", priorities: [{ skill: "self-regulation", name: "自我调节", role: "底座", confidence: 0.76, reason: "先练会自己开始、检查和收尾。", evidence: ["需要清楚的第一步"], practices: ["准备-执行-检查-归位", "自己选最小步骤"] }, { skill: "creation", name: "创造项目", role: "探索", confidence: 0.71, reason: "把真实兴趣变成可以展示和改进的作品。", evidence: ["搭建作品目标"], practices: ["做最小版本", "展示并改一版"] }], fourWeekPath: [{ skill: "self-regulation", objective: "四周内独立完成3次任务闭环", keyResults: ["完成3次小练习", "留下1个检查记录", "完成2次复盘"], firstExperiment: "整理一次任务材料并自己检查" }, { skill: "creation", objective: "四周内完成一个搭建作品", keyResults: ["做3个小版本", "解决1个真实问题", "展示1次"], firstExperiment: "用10分钟搭出最小版本" }], nextQuestion: "最近哪一次你是自己找到开始办法的？", adjustment: "孩子的更正始终优先。" } })
   }));
+  await page.route("**/api/goals/shape", (route) => {
+    const body = route.request().postDataJSON();
+    if (body.text === "学会游泳" && !body.clarifications?.swim_level) return route.fulfill({ contentType: "application/json", body: JSON.stringify({ needsClarification: true, provider: "siliconflow", clarification: { key: "swim_level", question: "你现在在水里能做到哪一步？", why: "先知道起点，才能定出安全又做得到的目标。", options: ["完全不会，需要从适应水开始", "能憋气和漂浮", "能游几米但动作不稳定", "已经能连续游25米"] } }) });
+    if (body.text === "学会游泳" && !body.clarifications?.swim_support) return route.fulfill({ contentType: "application/json", body: JSON.stringify({ needsClarification: true, provider: "siliconflow", clarification: { key: "swim_support", question: "接下来四周，你会在什么条件下练习？", why: "游泳目标必须先确认教练或成人陪同。", options: ["有固定游泳教练", "有会游泳的家长全程陪同", "只能偶尔去泳池", "目前还没有安全练习条件"] } }) });
+    const swimmingDraft = { title: "我想安全学会游泳", why: "我想在水里更自信，也愿意在教练陪同下练习", successSignal: "四周内在教练全程陪同下，能独立漂浮10秒并连续游10米", firstExperiment: "和家长一起确认教练与泳池时间，由教练评估当前水中能力", skill: "wellbeing", horizon: "one_month", objective: "四周内在教练全程陪同下，独立漂浮10秒并连续游10米", smart: { specific: "在教练陪同下学习漂浮、呼吸和短距离游进", measurable: "漂浮10秒并连续游10米", achievable: "从完全不会起步，每周由教练指导", relevant: "实现我想学会游泳的愿望", timeBound: "未来四周" }, keyResults: [{ id: "kr1", title: "完成4次教练指导的安全练习", target: 4, unit: "次" }, { id: "kr2", title: "独立漂浮达到10秒", target: 10, unit: "秒" }, { id: "kr3", title: "连续游进达到10米", target: 10, unit: "米" }], weeklyPlan: ["适应水和安全规则", "练习漂浮与呼吸", "在教练保护下短距离游进", "完成安全测评并复盘"] };
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ provider: "siliconflow", model: "zai-org/GLM-5.2", draft: swimmingDraft }) });
+  });
   await page.route("**/api/daily-missions?profileId=e2e-profile", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ book: missionBook }) }));
   await page.route("**/api/daily-missions/generate", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ book: missionBook }) }));
   await page.route("**/api/daily-plan?profileId=e2e-profile", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ dailyPlan }) }));
+  await page.route("**/api/daily-plan/generate", (route) => {
+    const body = route.request().postDataJSON();
+    const selected = missionTasks.find((task) => `mission:${task.id}` === body.preferredRef) || missionTasks[0];
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...dailyPlan, plan: { ...dailyPlan.plan, sourceId: selected.id, sourceRef: `mission:${selected.id}`, title: selected.title, skill: selected.skill, minutes: selected.minutes, why: selected.why, firstStep: selected.success } }) });
+  });
   await page.route("**/api/daily-plan/7", async (route) => {
     if (route.request().method() !== "PATCH") return route.continue();
     return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...dailyPlan, status: "started" }) });
@@ -76,9 +88,17 @@ test("new child follows one growth loop and uses real economy", async ({ page })
   await page.getByRole("button", { name: "保存我的更正" }).click();
   await expect(page.getByText("已由我确认")).toBeVisible();
   await expect(page.getByText("我的更正 · 最高优先级")).toBeVisible();
-  await expect(page.getByText("仅供追溯，不再用于目标", { exact:false })).toBeVisible();
-  await expect(page.getByRole("button", { name: "按这个理解建立路线" })).toBeEnabled();
-  await expect(page.getByText("根据我确认的画像")).toBeVisible();
+  await expect(page.getByText("AI原来的理解 · 仅供追溯", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "先说一个想实现的愿望" })).toBeDisabled();
+  await page.locator("#onboarding-goal-project").fill("学会游泳");
+  await page.getByRole("button", { name: "让GLM理解" }).click();
+  await expect(page.getByText("你现在在水里能做到哪一步？")).toBeVisible();
+  await page.getByRole("button", { name: "完全不会，需要从适应水开始" }).click();
+  await expect(page.getByText("接下来四周，你会在什么条件下练习？")).toBeVisible();
+  await page.getByRole("button", { name: "有固定游泳教练" }).click();
+  await expect(page.getByText("GLM生成的SMART目标")).toBeVisible();
+  await expect(page.getByText("四周内在教练全程陪同下，独立漂浮10秒并连续游10米", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "用这个目标开始" })).toBeEnabled();
   await page.waitForTimeout(1900);
   await page.screenshot({ path: "qa/workflow-portrait-correction.png" });
 
@@ -87,25 +107,35 @@ test("new child follows one growth loop and uses real economy", async ({ page })
     window.render();
   });
   for (const tab of await page.locator(".tab").all()) await expect(tab).toBeEnabled();
-  for (const label of ["今天", "信号", "蓝图", "路线", "证据"]) await expect(page.locator(".tabbar")).toContainText(label);
-  await expect(page.getByText(missionBook.headline)).toBeVisible();
-  await expect(page.locator(".daily-todo-book article")).toHaveCount(24);
+  for (const label of ["今天", "想法", "目标", "安排", "记录"]) await expect(page.locator(".tabbar")).toContainText(label);
+  await expect(page.getByText("只做当前最合适的一步")).toBeVisible();
+  await expect(page.locator(".todo-category-list article")).toHaveCount(24);
+  await expect(page.locator(".mission-picks article")).toHaveCount(3);
+  await expect(page.locator(".all-missions")).not.toHaveAttribute("open", "");
   await expect(page.locator(".daily-compass h2")).toHaveText(missionTasks[0].title);
-  const firstMicroTask = page.locator(".daily-todo-book article").first();
+  await page.getByText("查看全部 24 项选择").click();
+  await page.locator(".todo-category-list > details > summary").first().click();
+  const firstMicroTask = page.locator(".todo-category-list article").first();
   await expect(firstMicroTask).toContainText("第2关");
-  await expect(firstMicroTask).toContainText("来源：");
+  await firstMicroTask.getByText("为什么推荐").click();
   await expect(firstMicroTask).toContainText("未来技能树");
   await page.getByRole("button", { name: "现在开始" }).click();
-  await expect(firstMicroTask).toHaveClass(/current-mission/);
-  await firstMicroTask.locator("button").click();
+  await expect(page.getByRole("button", { name: "我做完了 +3经验" })).toBeVisible();
+  await page.getByRole("button", { name: "我做完了 +3经验" }).click();
   await expect(firstMicroTask).toHaveClass(/done/);
-  await firstMicroTask.locator("button").click();
-  await expect(firstMicroTask).not.toHaveClass(/done/);
+  await page.getByRole("button", { name: "重新选择节奏" }).click();
+  for (const choice of ["轻松开始", "正常推进", "认真挑战", "先休息一下"]) await expect(page.getByRole("button", { name: new RegExp(choice) })).toBeVisible();
+  await expect(page.getByText("每个选择都会直接给出一件具体的事")).toBeVisible();
+  await page.getByRole("button", { name: /正常推进/ }).click();
+  await expect(page.locator(".daily-compass h2")).toHaveText(missionTasks[0].title);
+  const secondChoice = page.locator(".mission-picks article").nth(1);
+  const secondChoiceTitle = await secondChoice.locator("strong").textContent();
+  await secondChoice.getByRole("button", { name: "选这项" }).click();
+  await expect(page.locator(".daily-compass h2")).toHaveText(secondChoiceTitle || "");
   await page.screenshot({ path: "qa/workflow-daily-todo-book.png" });
 
-  for (const [pageId, heading] of [["discover", "主线信号站"], ["plan", "当前主线路线台"], ["execute", "主线成长日记"], ["profile", missionBook.headline]]) {
+  for (const [pageId, heading] of [["discover", "记下一句值得记住的事"], ["skills", "知道现在要变好什么"], ["plan", "只安排这一周"], ["execute", "用两个回答让AI更懂你"], ["profile", "只做当前最合适的一步"]]) {
     await page.locator(`.tab[data-page='${pageId}']`).click();
-    await expect(page.getByText("把喜欢的搭建变成看得见的作品").first()).toBeVisible();
     await expect(page.getByText(heading).first()).toBeVisible();
   }
 
@@ -121,20 +151,19 @@ test("new child follows one growth loop and uses real economy", async ({ page })
     document.querySelector("#settings-content").innerHTML = window.renderSettingsPanel();
   });
   await expect(page.locator("#level-value")).toHaveText("Lv.2");
-  await expect(page.locator("#xp-number")).toHaveText("10/150");
+  await expect(page.locator("#xp-number")).toHaveText("13/150");
   await page.getByRole("button", { name: "18宝石" }).click();
   await expect(page.locator(".screen")).toHaveAttribute("data-theme", "forest");
   await expect(page.locator(".gem-button span").nth(1)).toHaveText("18");
   await page.screenshot({ path: "qa/workflow-gem-store.png" });
 
   await page.getByRole("button", { name: "关闭设置" }).click();
-  await page.getByRole("button", { name: "蓝图" }).click();
-  await expect(page.getByText("AI成长蓝图")).toBeVisible();
-  await expect(page.getByText("日记或行动带来了新证据")).toBeVisible();
-  await expect(page.getByText("自我调节").first()).toBeVisible();
-  await expect(page.getByText("创造项目").first()).toBeVisible();
-  await expect(page.getByText("SMART · OKR · 创造项目")).toBeVisible();
-  await expect(page.locator(".goal-card").getByText("KR1")).toBeVisible();
+  await page.getByRole("button", { name: "目标" }).click();
+  await expect(page.getByText("重点能力")).toBeVisible();
+  await expect(page.locator(".compact-priorities").getByText("自我调节")).toBeVisible();
+  await expect(page.locator(".compact-priorities").getByText("创造项目")).toBeVisible();
+  await expect(page.getByText("SMART目标", { exact: true })).toBeVisible();
+  await expect(page.locator(".compact-krs").getByText("KR1")).toBeVisible();
   await page.waitForTimeout(1900);
   await page.screenshot({ path: "qa/workflow-smart-okr.png" });
 

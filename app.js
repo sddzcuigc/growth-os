@@ -660,6 +660,8 @@ const state = {
   growthBlueprintTimer: null,
   goalText: "",
   goalDraft: null,
+  goalQuestion: null,
+  goalClarifications: {},
   goalLoading: false,
   ideas: [],
   ideaLoadingId: null,
@@ -757,11 +759,11 @@ function showRecoveryCode(code) {
 }
 
 const tutorialSteps = [
-  { icon: "face", kicker: "第一步 · 这是你的冒险", title: "先选对自己的角色", copy: "哥哥和妹妹有各自独立的任务、技能树和成长记录，切换角色不会混在一起。" },
-  { icon: "question", kicker: "第二步 · 告诉AI今天的状态", title: "回答几个很短的问题", copy: "没有标准答案。按今天真实的精力、兴趣和时间回答，AI才会给你不同的任务。" },
-  { icon: "quest", kicker: "第三步 · 只做眼前这一关", title: "AI每次推荐一个下一步", copy: "觉得合适就开始；不喜欢可以点“换一个”，系统会记住，下次少推荐相似任务。" },
-  { icon: "gem", kicker: "第四步 · 看得见的成长", title: "完成任务会获得经验和宝石", copy: "经验会真实累计并升级。任务结束后告诉AI哪里有趣、哪里太难，推荐会越来越像你。" },
-  { icon: "map", kicker: "第五步 · 你在决定路线", title: "路线不是固定课程表", copy: "技能树、计划、日程和新消息会一起影响任务。现在去回答第一个问题吧。" }
+  { icon: "face", kicker: "第一步 · AI先认识你", title: "确认一份可以修改的画像", copy: "注册后先回答几个具体问题。AI会总结它怎样理解你，你可以改正后再建立目标。" },
+  { icon: "question", kicker: "第二步 · 今天", title: "只选今天的节奏", copy: "轻松、正常、挑战或休息。选一个后，系统直接给出一件具体的事。" },
+  { icon: "quest", kicker: "第三步 · 做一小步", title: "在同一张卡片开始和完成", copy: "不合适可以换一个或变轻；做完直接点“我做完了”，经验会立刻到账。" },
+  { icon: "gem", kicker: "第四步 · 记录", title: "只回答难不难、有没有趣", copy: "没有作文，也没有标准答案。真实反馈会改变下一次推荐。" },
+  { icon: "map", kicker: "第五步 · 同一条主线", title: "想法、目标和安排各做一件事", copy: "想法收线索，目标看方向，安排管本周；它们最终都服务于“今天”的下一步。" }
 ];
 
 function escapeHtml(value) {
@@ -1596,7 +1598,10 @@ async function loadCloudProgress(profileId) {
   await loadDailyMissionBook();
   await loadDailyPlan();
   await loadDailyPlanFeedback();
-  if (!state.dailyMissionBook) setTimeout(() => generateDailyMissionBook(false, true), 50);
+  if (!state.dailyMissionBook) setTimeout(async () => {
+    await generateDailyMissionBook(false, true, true);
+    generateDailyMissionBook(true, true, false);
+  }, 50);
 }
 
 function getPrefs() {
@@ -1996,51 +2001,92 @@ function saveOnboardingPortraitCorrection() {
   showToast("已用你的更正覆盖AI判断");
 }
 
-function onboardingGoalDraft() {
-  const profile = getContextProfile();
-  const wish = profile["growth-wish"]?.value || "做出自己的作品";
-  const interest = profile["current-interest"]?.value || "喜欢的事情";
-  const map = {
-    "更容易开始做完": { skill: "self-regulation", title: "我想更容易开始并做完", signal: "我能自己开始一件小事，并在结束后检查一次" },
-    "更会学习思考": { skill: "metacognition", title: "我想更会学习和思考", signal: "我能说出哪里会、哪里卡住，并换一种办法" },
-    "更敢表达分享": { skill: "communication", title: "我想更敢表达和分享", signal: "我能把一个想法讲清楚或展示给别人" },
-    "做出自己的作品": { skill: "creation", title: "我想做出自己的作品", signal: "我能留下一个看得见、可以继续修改的小作品" }
+function onboardingGoalProject() {
+  return String(getContextProfile()["goal-project"]?.value || "").trim();
+}
+
+function onboardingGoalSuggestions() {
+  const interest = getContextProfile()["current-interest"]?.value || "喜欢的事情";
+  const suggestions = {
+    "读故事和知识": ["独立读完一本自己选的书，并讲给家人听", "完成一张主题知识图，并做一次3分钟介绍", "围绕一个好奇的问题完成3次查找并写出答案"],
+    "搭建和动手": ["完成一个能展示的搭建作品，并改进两版", "做出一个能解决生活小问题的模型", "完成一个带说明卡的科学小制作"],
+    "画画和设计": ["完成一组3张同主题作品，并选一张改进", "设计一张能讲清一个故事的海报", "完成一个角色设定和四格故事"],
+    "观察和探索": ["完成3次同主题观察，并做一张发现图", "设计并完成一个安全的小实验", "调查一个生活问题，并向家人讲清结论"]
   };
-  const selected = map[wish] || map["做出自己的作品"];
-  const why = `我喜欢${interest}，想从这里开始探索`;
-  const firstExperiment = `用10分钟，把“${interest}”变成一个最小版本`;
-  return { title: selected.title, why, successSignal: `四周内完成3次练习，并做到：${selected.signal}`, firstExperiment, skill: selected.skill, horizon: "one_month", objective: `${selected.title}，并留下看得见的进步`, smart: { specific: selected.title, measurable: "完成3次小练习、1件成果和2次复盘", achievable: "每天只推进5到15分钟", relevant: why, timeBound: "四周完成第一轮" }, keyResults: [{ id:"kr1", title:"完成3次小练习", target:3, unit:"次" }, { id:"kr2", title:"留下1件可展示成果", target:1, unit:"件" }, { id:"kr3", title:"完成2次任务复盘", target:2, unit:"次" }], weeklyPlan:["第1周：完成最小版本", "第2周：再做一次并改进", "第3周：解决一个卡点", "第4周：展示并复盘"] };
+  return suggestions[interest] || [`完成一个关于“${interest}”的作品，并改进两次`, `围绕“${interest}”完成3次探索并展示结果`, `解决一个和“${interest}”有关的真实小问题`];
+}
+
+async function saveOnboardingGoalProject(value = "") {
+  const input = document.querySelector("#onboarding-goal-project");
+  const project = String(value || input?.value || "").trim();
+  if (project.length < 2) { showToast("请说一个你真正想学会或完成的事情"); return; }
+  setContextAnswer("goal-project", project);
+  state.goalText = project;
+  state.goalDraft = null;
+  state.goalQuestion = null;
+  state.goalClarifications = {};
+  await shapeGrowthGoal();
+}
+
+function isVagueGrowthGoal(goal) {
+  const text = `${goal?.title || ""} ${goal?.objective || ""}`;
+  return /更容易开始并做完|更会学习和思考|更敢表达和分享|变得更好|提高能力/.test(text);
+}
+
+function renderProfileOnboardingLegacy() {
+  const question = nextOnboardingQuestion();
+  const answers = onboardingAnswerDetails();
+  const progress = answers.length;
+  const percent = Math.round((progress / onboardingQuestionIds.length) * 100);
+  if (!question) {
+    const draft = state.goalDraft?.draft;
+    const goalProject = onboardingGoalProject();
+    const goalSuggestions = onboardingGoalSuggestions();
+    const portraitState = getOnboardingPortrait();
+    const portrait = portraitState?.portrait;
+    const displaySummary = portraitState?.correction || portrait?.summary || "";
+    return `<section class="profile-onboarding complete"><header><span>画像确认 · 最后一步</span><strong>AI目前这样理解我</strong><p>这不是结论。画像只决定支持方式，不会直接冒充目标。</p></header>${state.onboardingPortraitLoading ? `<article class="onboarding-portrait loading"><small>正在整理6个回答</small><h2>AI在写一份可以被你纠正的描述</h2><div class="thinking-dots"><span></span><span></span><span></span></div></article>` : portrait ? `<article class="onboarding-portrait ${portraitState.confirmed ? "confirmed" : ""}"><header><span>${portraitState.correction ? "我的更正 · 最高优先级" : portraitState.provider === "siliconflow" ? "GLM第一版画像" : "本地第一版画像"}</span>${portraitState.confirmed ? "<b>已由我确认</b>" : "<b>等待我确认</b>"}</header><h2>${escapeHtml(displaySummary)}</h2>${portraitState.correction ? `<p class="portrait-ai-original"><small>AI原来的理解 · 仅供追溯，不再用于目标</small>${escapeHtml(portrait.summary)}</p>` : `<div class="portrait-signals">${(portrait.signals || []).map(signal => `<p><small>${escapeHtml(signal.title)}</small><strong>${escapeHtml(signal.text)}</strong><em>${escapeHtml(signal.evidence)}</em></p>`).join("")}</div><div class="portrait-support"><small>更适合我的支持方式</small><strong>${escapeHtml(portrait.supportStyle)}</strong></div>`}<p class="portrait-uncertainty">${escapeHtml(portrait.uncertainty)}</p>${state.onboardingPortraitEditing ? `<div class="portrait-correction"><label for="onboarding-portrait-correction">请用自己的话改正AI</label><textarea id="onboarding-portrait-correction" rows="4" maxlength="600" placeholder="例如：我不是怕做不好，我只是需要先知道第一步。">${escapeHtml(portraitState.correction || displaySummary)}</textarea><div><button type="button" data-action="save-onboarding-portrait-correction">保存我的更正</button><button type="button" data-action="cancel-onboarding-portrait-edit">取消</button></div></div>` : `<div class="portrait-actions"><button type="button" data-action="confirm-onboarding-portrait">${portraitState.confirmed ? "这仍然像我" : "这很像我"}</button><button type="button" data-action="edit-onboarding-portrait">${portraitState.confirmed ? "再次修改" : "有些不对，修改"}</button></div>`}</article>` : `<button class="onboarding-primary" type="button" data-action="generate-onboarding-portrait">生成我的第一版画像</button>`}${portraitState?.confirmed ? `<section class="onboarding-goal-project"><small>AI还差一个具体答案</small><h2>未来四周，你最想真正完成哪一件事？</h2><p>“更容易开始”是要训练的能力；目标必须是一件能完成、能看见结果的事。</p>${goalProject ? `<div class="chosen-goal-project"><span>具体成果</span><strong>${escapeHtml(goalProject)}</strong><button type="button" data-action="edit-onboarding-goal-project">重新说</button></div>` : `<div class="goal-project-entry"><input id="onboarding-goal-project" maxlength="160" placeholder="例如：完成一个能展示的搭建作品，并改进两版" /><button type="button" data-action="save-onboarding-goal-project">用这件事建立目标</button></div><div class="goal-project-suggestions">${goalSuggestions.map((value) => `<button type="button" data-action="save-onboarding-goal-project" data-value="${escapeHtml(value)}">${escapeHtml(value)}</button>`).join("")}</div>`}</section>${goalProject ? `<div class="onboarding-route"><small>这才是具体的SMART目标</small><h2>${escapeHtml(draft.objective)}</h2><p>${escapeHtml(draft.why)}</p><strong>四周完成标志：${escapeHtml(draft.successSignal)}</strong></div>` : ""}` : ""}<details class="onboarding-answer-evidence"><summary>查看AI参考的6个回答</summary><div class="onboarding-summary">${answers.map(({ question: item, answer }) => `<span>${escapeHtml(item.title.replace("？", ""))}<b>${escapeHtml(answer)}</b></span>`).join("")}</div></details>${state.onboardingError ? `<p class="onboarding-error">${escapeHtml(state.onboardingError)}</p>` : ""}<button class="onboarding-primary" type="button" data-action="finish-profile-onboarding" ${state.onboardingLoading || !portraitState?.confirmed || !goalProject ? "disabled" : ""}>${state.onboardingLoading ? "正在建立成长路线..." : !portraitState?.confirmed ? "请先确认或修改画像" : !goalProject ? "先说一件具体要完成的事" : "用这个目标开始"}</button></section>`;
+  }
+  return `<section class="profile-onboarding"><header><span>${state.onboardingQuestionLoading ? "AI正在设计下一问" : "AI先认识我"} · ${progress + 1}/${onboardingQuestionIds.length}</span><strong>${escapeHtml(child().name)}，先不急着接任务</strong><p>每次只回答一个。后两题会根据前面的答案变化，没有标准答案。</p><div class="onboarding-progress"><i style="width:${percent}%"></i></div></header>${state.onboardingQuestionLoading ? `<article class="onboarding-question onboarding-thinking"><small>正在结合你刚才的回答</small><h2>AI在想一个真正有用的问题</h2><div class="thinking-dots"><span></span><span></span><span></span></div></article>` : `<article class="onboarding-question"><small>${["personal-friction","success-picture"].includes(question.id) ? "为我生成的问题" : "关于我自己"}</small><h2>${escapeHtml(question.title)}</h2><p>${escapeHtml(question.why)}</p><div>${question.options.map((option) => `<button type="button" data-action="answer-onboarding" data-question="${escapeHtml(question.id)}" data-value="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join("")}</div></article>`}${answers.length && !state.onboardingQuestionLoading ? `<button class="onboarding-back" type="button" data-action="undo-onboarding-answer" data-question="${escapeHtml(answers.at(-1).question.id)}">返回上一题</button>` : ""}<footer><span>认识我</span><i>→</i><span>SMART目标</span><i>→</i><span>OKR</span><i>→</i><span>今日一步</span></footer></section>`;
 }
 
 function renderProfileOnboarding() {
   const question = nextOnboardingQuestion();
   const answers = onboardingAnswerDetails();
   const progress = answers.length;
-  const percent = Math.round((progress / onboardingQuestionIds.length) * 100);
-  if (!question) {
-    const draft = onboardingGoalDraft();
-    const portraitState = getOnboardingPortrait();
-    const portrait = portraitState?.portrait;
-    const displaySummary = portraitState?.correction || portrait?.summary || "";
-    return `<section class="profile-onboarding complete"><header><span>画像确认 · 最后一步</span><strong>AI目前这样理解我</strong><p>这不是结论。请先确认或修改，系统才会据此制定目标。</p></header>${state.onboardingPortraitLoading ? `<article class="onboarding-portrait loading"><small>正在整理6个回答</small><h2>AI在写一份可以被你纠正的描述</h2><div class="thinking-dots"><span></span><span></span><span></span></div></article>` : portrait ? `<article class="onboarding-portrait ${portraitState.confirmed ? "confirmed" : ""}"><header><span>${portraitState.correction ? "我的更正 · 最高优先级" : portraitState.provider === "siliconflow" ? "GLM第一版画像" : "本地第一版画像"}</span>${portraitState.confirmed ? "<b>已由我确认</b>" : "<b>等待我确认</b>"}</header><h2>${escapeHtml(displaySummary)}</h2>${portraitState.correction ? `<p class="portrait-ai-original"><small>AI原来的理解 · 仅供追溯，不再用于目标</small>${escapeHtml(portrait.summary)}</p>` : `<div class="portrait-signals">${(portrait.signals || []).map(signal => `<p><small>${escapeHtml(signal.title)}</small><strong>${escapeHtml(signal.text)}</strong><em>${escapeHtml(signal.evidence)}</em></p>`).join("")}</div><div class="portrait-support"><small>更适合我的支持方式</small><strong>${escapeHtml(portrait.supportStyle)}</strong></div>`}<p class="portrait-uncertainty">${escapeHtml(portrait.uncertainty)}</p>${state.onboardingPortraitEditing ? `<div class="portrait-correction"><label for="onboarding-portrait-correction">请用自己的话改正AI</label><textarea id="onboarding-portrait-correction" rows="4" maxlength="600" placeholder="例如：我不是怕做不好，我只是需要先知道第一步。">${escapeHtml(portraitState.correction || displaySummary)}</textarea><div><button type="button" data-action="save-onboarding-portrait-correction">保存我的更正</button><button type="button" data-action="cancel-onboarding-portrait-edit">取消</button></div></div>` : `<div class="portrait-actions"><button type="button" data-action="confirm-onboarding-portrait">${portraitState.confirmed ? "这仍然像我" : "这很像我"}</button><button type="button" data-action="edit-onboarding-portrait">${portraitState.confirmed ? "再次修改" : "有些不对，修改"}</button></div>`}</article>` : `<button class="onboarding-primary" type="button" data-action="generate-onboarding-portrait">生成我的第一版画像</button>`}${portraitState?.confirmed ? `<div class="onboarding-route"><small>根据我确认的画像</small><h2>${escapeHtml(draft.title)}</h2><p>${escapeHtml(draft.why)}</p><strong>先试：${escapeHtml(draft.firstExperiment)}</strong></div>` : ""}<details class="onboarding-answer-evidence"><summary>查看AI参考的6个回答</summary><div class="onboarding-summary">${answers.map(({ question: item, answer }) => `<span>${escapeHtml(item.title.replace("？", ""))}<b>${escapeHtml(answer)}</b></span>`).join("")}</div></details>${state.onboardingError ? `<p class="onboarding-error">${escapeHtml(state.onboardingError)}</p>` : ""}<button class="onboarding-primary" type="button" data-action="finish-profile-onboarding" ${state.onboardingLoading || !portraitState?.confirmed ? "disabled" : ""}>${state.onboardingLoading ? "正在建立成长路线..." : portraitState?.confirmed ? "按这个理解建立路线" : "请先确认或修改画像"}</button></section>`;
+  if (question) {
+    const percent = Math.round((progress / onboardingQuestionIds.length) * 100);
+    return `<section class="profile-onboarding"><header><span>${state.onboardingQuestionLoading ? "AI正在设计下一问" : "AI先认识我"} · ${progress + 1}/${onboardingQuestionIds.length}</span><strong>${escapeHtml(child().name)}，先不急着接任务</strong><p>每次只回答一个。后两题会根据前面的答案变化，没有标准答案。</p><div class="onboarding-progress"><i style="width:${percent}%"></i></div></header>${state.onboardingQuestionLoading ? `<article class="onboarding-question onboarding-thinking"><small>正在结合你刚才的回答</small><h2>AI在想一个真正有用的问题</h2><div class="thinking-dots"><span></span><span></span><span></span></div></article>` : `<article class="onboarding-question"><small>${["personal-friction", "success-picture"].includes(question.id) ? "为我生成的问题" : "关于我自己"}</small><h2>${escapeHtml(question.title)}</h2><p>${escapeHtml(question.why)}</p><div>${question.options.map((option) => `<button type="button" data-action="answer-onboarding" data-question="${escapeHtml(question.id)}" data-value="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join("")}</div></article>`}${answers.length && !state.onboardingQuestionLoading ? `<button class="onboarding-back" type="button" data-action="undo-onboarding-answer" data-question="${escapeHtml(answers.at(-1).question.id)}">返回上一题</button>` : ""}<footer><span>认识我</span><i>→</i><span>SMART目标</span><i>→</i><span>OKR</span><i>→</i><span>今日一步</span></footer></section>`;
   }
-  return `<section class="profile-onboarding"><header><span>${state.onboardingQuestionLoading ? "AI正在设计下一问" : "AI先认识我"} · ${progress + 1}/${onboardingQuestionIds.length}</span><strong>${escapeHtml(child().name)}，先不急着接任务</strong><p>每次只回答一个。后两题会根据前面的答案变化，没有标准答案。</p><div class="onboarding-progress"><i style="width:${percent}%"></i></div></header>${state.onboardingQuestionLoading ? `<article class="onboarding-question onboarding-thinking"><small>正在结合你刚才的回答</small><h2>AI在想一个真正有用的问题</h2><div class="thinking-dots"><span></span><span></span><span></span></div></article>` : `<article class="onboarding-question"><small>${["personal-friction","success-picture"].includes(question.id) ? "为我生成的问题" : "关于我自己"}</small><h2>${escapeHtml(question.title)}</h2><p>${escapeHtml(question.why)}</p><div>${question.options.map((option) => `<button type="button" data-action="answer-onboarding" data-question="${escapeHtml(question.id)}" data-value="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join("")}</div></article>`}${answers.length && !state.onboardingQuestionLoading ? `<button class="onboarding-back" type="button" data-action="undo-onboarding-answer" data-question="${escapeHtml(answers.at(-1).question.id)}">返回上一题</button>` : ""}<footer><span>认识我</span><i>→</i><span>SMART目标</span><i>→</i><span>OKR</span><i>→</i><span>今日一步</span></footer></section>`;
+
+  const portraitState = getOnboardingPortrait();
+  const portrait = portraitState?.portrait;
+  const displaySummary = portraitState?.correction || portrait?.summary || "";
+  const goalProject = onboardingGoalProject();
+  const draft = state.goalDraft?.draft;
+  const goalSuggestions = onboardingGoalSuggestions();
+  const portraitCard = state.onboardingPortraitLoading
+    ? `<article class="onboarding-portrait loading"><small>正在整理6个回答</small><h2>AI在写一份可以被你纠正的描述</h2><div class="thinking-dots"><span></span><span></span><span></span></div></article>`
+    : portrait
+      ? `<article class="onboarding-portrait ${portraitState.confirmed ? "confirmed" : ""}"><header><span>${portraitState.correction ? "我的更正 · 最高优先级" : portraitState.provider === "siliconflow" ? "GLM第一版画像" : "第一版画像"}</span><b>${portraitState.confirmed ? "已由我确认" : "等待我确认"}</b></header><h2>${escapeHtml(displaySummary)}</h2>${portraitState.correction ? `<p class="portrait-ai-original"><small>AI原来的理解 · 仅供追溯</small>${escapeHtml(portrait.summary)}</p>` : `<div class="portrait-signals">${(portrait.signals || []).map((signal) => `<p><small>${escapeHtml(signal.title)}</small><strong>${escapeHtml(signal.text)}</strong><em>${escapeHtml(signal.evidence)}</em></p>`).join("")}</div><div class="portrait-support"><small>更适合我的支持方式</small><strong>${escapeHtml(portrait.supportStyle)}</strong></div>`}<p class="portrait-uncertainty">${escapeHtml(portrait.uncertainty)}</p>${state.onboardingPortraitEditing ? `<div class="portrait-correction"><label for="onboarding-portrait-correction">请用自己的话改正AI</label><textarea id="onboarding-portrait-correction" rows="4" maxlength="600">${escapeHtml(portraitState.correction || displaySummary)}</textarea><div><button type="button" data-action="save-onboarding-portrait-correction">保存我的更正</button><button type="button" data-action="cancel-onboarding-portrait-edit">取消</button></div></div>` : `<div class="portrait-actions"><button type="button" data-action="confirm-onboarding-portrait">${portraitState.confirmed ? "这仍然像我" : "这很像我"}</button><button type="button" data-action="edit-onboarding-portrait">${portraitState.confirmed ? "再次修改" : "有些不对，修改"}</button></div>`}</article>`
+      : `<button class="onboarding-primary" type="button" data-action="generate-onboarding-portrait">生成我的第一版画像</button>`;
+
+  const goalStep = portraitState?.confirmed ? `<section class="onboarding-goal-project"><small>目标必须由GLM理解后生成</small><h2>未来四周，你最想真正学会或完成什么？</h2><p>GLM会先判断信息是否足够；不够就继续问，不会套用通用模板。</p>${goalProject ? `<div class="chosen-goal-project"><span>你想做到</span><strong>${escapeHtml(goalProject)}</strong><button type="button" data-action="edit-onboarding-goal-project">重新说</button></div>${state.goalLoading ? `<div class="onboarding-route"><small>GLM正在判断目标类型和必要条件...</small></div>` : state.goalQuestion ? `<article class="goal-clarification"><small>AI还需要知道一件事</small><h3>${escapeHtml(state.goalQuestion.question)}</h3><p>${escapeHtml(state.goalQuestion.why)}</p><div>${state.goalQuestion.options.map((option) => `<button type="button" data-action="answer-goal-clarification" data-key="${escapeHtml(state.goalQuestion.key)}" data-value="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join("")}</div></article>` : draft ? `<div class="onboarding-route"><small>GLM生成的SMART目标</small><h2>${escapeHtml(draft.objective)}</h2><p>${escapeHtml(draft.why)}</p><strong>四周完成标志：${escapeHtml(draft.successSignal)}</strong></div>` : `<div class="onboarding-route"><small>GLM这次没有给出可靠结果</small><button type="button" data-action="retry-goal-shape">重试GLM</button></div>`}` : `<div class="goal-project-entry"><input id="onboarding-goal-project" maxlength="160" placeholder="例如：学会游泳" /><button type="button" data-action="save-onboarding-goal-project">让GLM理解</button></div><div class="goal-project-suggestions">${goalSuggestions.map((value) => `<button type="button" data-action="save-onboarding-goal-project" data-value="${escapeHtml(value)}">${escapeHtml(value)}</button>`).join("")}</div>`}</section>` : "";
+  return `<section class="profile-onboarding complete"><header><span>画像确认 · 目标建立</span><strong>AI目前这样理解我</strong><p>画像只决定支持方式；具体目标必须结合真实领域和条件单独生成。</p></header>${portraitCard}${goalStep}<details class="onboarding-answer-evidence"><summary>查看AI参考的6个回答</summary><div class="onboarding-summary">${answers.map(({ question: item, answer }) => `<span>${escapeHtml(item.title.replace("？", ""))}<b>${escapeHtml(answer)}</b></span>`).join("")}</div></details>${state.onboardingError ? `<p class="onboarding-error">${escapeHtml(state.onboardingError)}</p>` : ""}<button class="onboarding-primary" type="button" data-action="finish-profile-onboarding" ${state.onboardingLoading || !portraitState?.confirmed || !draft ? "disabled" : ""}>${state.onboardingLoading ? "正在建立成长路线..." : !portraitState?.confirmed ? "请先确认或修改画像" : !goalProject ? "先说一个想实现的愿望" : !draft ? "请先回答AI的追问" : "用这个目标开始"}</button></section>`;
 }
 
 async function finishProfileOnboarding() {
   if (state.onboardingLoading) return;
   const portraitState = getOnboardingPortrait();
   if (!portraitState?.confirmed) { showToast("请先确认或修改AI对你的理解"); return; }
+  if (!onboardingGoalProject()) { showToast("先说一个未来四周想实现的愿望"); return; }
+  if (!state.goalDraft?.draft) { showToast("请先回答GLM的追问，生成可靠目标"); return; }
   state.onboardingLoading = true;
   state.onboardingError = "";
   render();
   try {
     if (!state.goals.some((goal) => goal.status === "active")) {
-      const fallback = onboardingGoalDraft();
-      const context = { ...Object.fromEntries(onboardingAnswerDetails().map(({ question, answer }) => [question.id, { question: question.title, answer }])), confirmedPortrait: { summary:portraitState.correction || portraitState.portrait.summary, signals:portraitState.correction ? [] : portraitState.portrait.signals, supportStyle:portraitState.correction || portraitState.portrait.supportStyle, correctedByUser:Boolean(portraitState.correction) } };
-      const shapeResponse = await fetch("/api/goals/shape", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, text: `${fallback.title}。${fallback.why}`, context }) });
-      const shaped = await shapeResponse.json();
-      const draft = shapeResponse.ok && shaped.draft ? shaped.draft : fallback;
+      const draft = state.goalDraft.draft;
       const response = await fetch("/api/goals", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, ...draft }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "SMART目标建立失败");
@@ -2910,8 +2956,8 @@ async function generateDailyPlan(options = {}) {
   state.dailyPlanLoading = true;
   render();
   try {
-    await generateDailyMissionBook(false, true);
-    const response = await fetch("/api/daily-plan/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, energy: state.dailyCheckin.energy || state.dailyPlan?.checkin.energy || "normal", minutes: Number(state.dailyCheckin.minutes || state.dailyPlan?.checkin.minutes || 10), intent: state.dailyCheckin.intent || state.dailyPlan?.checkin.intent || "finish", swap: options.swap === true, swapReason: options.swapReason || "", lighter: options.lighter === true }) });
+    if (!state.dailyMissionBook?.tasks?.length) await generateDailyMissionBook(false, true, true);
+    const response = await fetch("/api/daily-plan/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, energy: state.dailyCheckin.energy || state.dailyPlan?.checkin.energy || "normal", minutes: Number(state.dailyCheckin.minutes || state.dailyPlan?.checkin.minutes || 10), intent: state.dailyCheckin.intent || state.dailyPlan?.checkin.intent || "finish", swap: options.swap === true, swapReason: options.swapReason || "", lighter: options.lighter === true, preferredRef: options.preferredRef || "" }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "今天暂时选不出下一步");
     state.dailyPlan = result;
@@ -2944,12 +2990,12 @@ function dailyMissionPayload() {
   };
 }
 
-async function generateDailyMissionBook(force = false, quiet = false) {
+async function generateDailyMissionBook(force = false, quiet = false, fast = false) {
   if (!currentProfile() || state.dailyMissionLoading) return state.dailyMissionBook;
   state.dailyMissionLoading = true;
   if (!quiet) render();
   try {
-    const response = await fetch("/api/daily-missions/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...dailyMissionPayload(), force }) });
+    const response = await fetch("/api/daily-missions/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...dailyMissionPayload(), force, fast }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "mission-book");
     state.dailyMissionBook = result.book;
@@ -2987,8 +3033,9 @@ async function startDailyPlan() {
   if (!daily?.plan) return;
   const plan = daily.plan;
   const completingRecharge = plan.sourceType === "recharge" && daily.status === "started";
+  const completingMission = plan.sourceType === "mission" && daily.status === "started";
   try {
-    const response = await fetch(`/api/daily-plan/${encodeURIComponent(daily.id)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ feedback: completingRecharge ? "completed" : "accepted" }) });
+    const response = await fetch(`/api/daily-plan/${encodeURIComponent(daily.id)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ feedback: completingRecharge || completingMission ? "completed" : "accepted" }) });
     if (!response.ok) throw new Error("今日状态保存失败");
     state.dailyPlan = await response.json();
   } catch {
@@ -3007,10 +3054,9 @@ async function startDailyPlan() {
   if (plan.sourceType === "habit") { state.showPlanningDetails = true; render(); showToast("习惯已经展开，只完成这一次就好"); return; }
   if (plan.sourceType === "idea") { state.page = "discover"; render(); showToast("已经打开这颗灵感，从最小一步开始"); return; }
   if (plan.sourceType === "mission") {
-    state.focusedMissionId = String(plan.sourceId);
+    if (completingMission && !isDone(String(plan.sourceId))) toggleDone(String(plan.sourceId));
     render();
-    setTimeout(() => document.querySelector(`[data-mission-id="${CSS.escape(state.focusedMissionId)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
-    showToast("已在同一份任务册中定位这一关，完成后直接勾选");
+    showToast(completingMission ? "这一小步完成了，经验已经到账" : `现在只做：${plan.firstStep}`);
     return;
   }
   if (plan.sourceType === "blueprint") {
@@ -3029,20 +3075,15 @@ async function startDailyPlan() {
 
 function renderDailyCompass() {
   const daily = state.dailyPlan;
-  if (state.dailyPlanLoading) return `<section class="panel daily-compass checkin loading"><div class="daily-kicker">AI今日指挥台</div><h2>正在从已有事项中选择</h2><p>不会再加一张新清单，只找现在最合适的一步。</p><div class="thinking-dots"><span></span><span></span><span></span></div></section>`;
+  if (state.dailyPlanLoading) return `<section class="panel daily-compass checkin loading"><div class="daily-kicker">正在准备今天的一步</div><h2>马上就好</h2><p>先用已有画像快速选择，AI会在后台继续校准。</p><div class="thinking-dots"><span></span><span></span><span></span></div></section>`;
   if (!daily) {
-    const energy = state.dailyCheckin.energy;
-    const minutes = state.dailyCheckin.minutes;
-    const stage = !energy ? "energy" : !minutes ? "minutes" : "intent";
-    const questions = { energy: ["你现在的能量怎么样？", "没有标准答案，按真实感觉选。"], minutes: ["你现在有多少时间？", "只看眼前这一小段时间。"], intent: ["这一小段，你更想怎样？", "方向由你选，AI只帮你找最合适的一步。"] };
-    const choices = {
-      energy: [["low","有点累"],["normal","还可以"],["high","很有劲"]],
-      minutes: [[5,"5分钟"],[10,"10分钟"],[20,"20分钟"],[30,"半小时"]],
-      intent: [["finish","推进一件事"],["create","创造点东西"],["reset","保持小节奏"],["recharge","先恢复能量"]]
-    };
-    return `<section class="panel daily-compass checkin"><div class="daily-kicker">AI今日指挥台 · ${stage === "energy" ? "1" : stage === "minutes" ? "2" : "3"}/3</div><h2>${questions[stage][0]}</h2><p>${questions[stage][1]}</p>
-      <div class="daily-answer-grid intent-${stage}">${choices[stage].map(([value,label]) => `<button type="button" data-action="daily-checkin" data-field="${stage}" data-value="${value}">${label}</button>`).join("")}</div>
-      ${stage !== "energy" ? `<button class="daily-back" type="button" data-action="daily-checkin-back" data-stage="${stage}">上一步</button>` : ""}</section>`;
+    const starts = [
+      ["light", "轻松开始", "5分钟 · 最简单的一步"],
+      ["steady", "正常推进", "10分钟 · 沿当前目标前进"],
+      ["challenge", "认真挑战", "20分钟 · 做完整一点"],
+      ["recharge", "先休息一下", "2分钟 · 只恢复状态"]
+    ];
+    return `<section class="panel daily-compass checkin quick-start"><div class="daily-kicker">今天只选一种节奏</div><h2>你现在适合哪一种？</h2><p>每个选择都会直接给出一件具体的事，不需要再回答抽象问题。</p><div class="quick-start-grid">${starts.map(([value, label, detail]) => `<button type="button" data-action="quick-daily-start" data-mode="${value}"><strong>${label}</strong><small>${detail}</small></button>`).join("")}</div></section>`;
   }
   const plan = daily.plan;
   const sourceLabels = { mission: "来自下方同一份AI任务册", action: "来自我的行动", habit: "来自我的节奏", idea: "来自我的灵感", blueprint: "来自我的成长蓝图", recharge: "来自我的状态" };
@@ -3052,14 +3093,16 @@ function renderDailyCompass() {
   const planCompleted = sourceDone || daily.status === "completed";
   const primaryLabel = plan.sourceType === "recharge"
     ? daily.status === "started" ? "我恢复好了" : "开始恢复"
-    : daily.status === "started" ? "继续这一小步" : "现在开始";
+    : plan.sourceType === "mission" && daily.status === "started"
+      ? `我做完了 +${currentQuestReward(String(plan.sourceId))}经验`
+      : daily.status === "started" ? "继续这一小步" : "现在开始";
   const nextLabel = plan.sourceType === "recharge" ? "状态照顾好了，选下一步" : "这件完成了，选下一步";
   const intentLabels = { finish: "我想推进", create: "我想创造", reset: "我想保持节奏", recharge: "我想先恢复", learn: "我想学习" };
   return `<section class="panel daily-compass ready ${escapeHtml(daily.status)}"><header><div><span>当前主线 · 现在先过这一关</span><small>${plan.provider === "siliconflow" ? "GLM选择" : "本地选择"} · ${escapeHtml(sourceLabels[plan.sourceType] || "个性化下一步")}</small></div><strong>${plan.minutes}分钟</strong></header>
     <h2>${escapeHtml(plan.title)}</h2><p>${escapeHtml(plan.why)}</p>${plan.goalTitle ? `<div class="daily-goal-link">正在推进：${escapeHtml(plan.goalTitle)}${plan.keyResultTitle ? `<small>对应 ${escapeHtml(plan.keyResultTitle)}</small>` : ""}</div>` : ""}${plan.decisionSignals?.length ? `<div class="daily-rhythm-link">节奏适配：${plan.decisionSignals.map((signal) => escapeHtml(rhythmLabels[signal] || signal)).join(" · ")}</div>` : ""}${plan.recommendationSignals?.length ? `<div class="daily-recommendation-link">AI正在适应：${plan.recommendationSignals.map((signal) => escapeHtml(recommendationLabels[signal] || signal)).join(" · ")}</div>` : ""}<div class="daily-first-step"><small>第一小步</small><strong>${escapeHtml(plan.firstStep)}</strong></div><blockquote><small>${escapeHtml(plan.motivator && plan.motivator !== "unknown" ? motivationLabels[plan.motivator] || "个性化支持" : "低压力支持")}</small>${escapeHtml(plan.support)}</blockquote>
     <div class="daily-actions">${planCompleted ? `<button class="daily-primary" type="button" data-action="daily-plan-next">${nextLabel}</button>` : `<button class="daily-primary" type="button" data-action="start-daily-plan">${primaryLabel}</button>`}<button type="button" data-action="open-daily-swap">换一个</button><button type="button" data-action="lighten-daily-plan" ${plan.minutes <= 5 ? "disabled" : ""}>轻一点</button></div>
     ${state.dailySwapOpen ? `<div class="daily-swap-dialog"><strong>这次为什么想换？</strong><small>只选最接近的一项，帮助AI少猜一点。</small><div><button type="button" data-action="swap-daily-plan" data-reason="too_big">感觉有点大</button><button type="button" data-action="swap-daily-plan" data-reason="not_interesting">现在没兴趣</button><button type="button" data-action="swap-daily-plan" data-reason="unclear">不知道怎么开始</button><button type="button" data-action="swap-daily-plan" data-reason="not_now">只是现在不合适</button></div><button class="daily-swap-cancel" type="button" data-action="close-daily-swap">不换了</button></div>` : ""}
-    <footer><span>${escapeHtml(intentLabels[daily.checkin.intent] || "我的选择")} · ${escapeHtml({ low: "低能量", normal: "普通能量", high: "高能量" }[daily.checkin.energy] || "当前状态")} · ${daily.checkin.minutes}分钟</span><button type="button" data-action="reset-daily-plan">重新回答</button></footer></section>`;
+    <footer><span>${escapeHtml(intentLabels[daily.checkin.intent] || "今日节奏")} · ${escapeHtml({ low: "低能量", normal: "普通能量", high: "高能量" }[daily.checkin.energy] || "当前状态")} · ${daily.checkin.minutes}分钟</span><button type="button" data-action="reset-daily-plan">重新选择节奏</button></footer></section>`;
 }
 
 function actionReason(action) {
@@ -3141,12 +3184,12 @@ function renderHabitRhythm() {
 
 function renderToday() {
   return `
-    <section class="growth-loop-guide"><strong>今天的成长循环</strong><div><span class="done">认识我</span><i>→</i><span class="done">选方向</span><i>→</i><span class="active">做一步</span><i>→</i><span>留记录</span></div></section>
+    <section class="page-purpose"><span>今天</span><div><strong>只做当前最合适的一步</strong><small>做完再记录，AI会自动调整下一步。</small></div></section>
     ${renderDailyCompass()}
     ${renderDailyTodoBook()}
     <section class="panel today-evidence-bridge">
-      <div><h2 class="panel-title">${pixelIcon("nav-execute", "")} 做完就留下证据</h2><p>勾选任务后，告诉AI难不难、有没有趣，或留下一句话和作品。证据会更新同一条主线的下一份任务册。</p></div>
-      <button type="button" data-action="jump-journey-stage" data-page="execute">去复盘与记录</button>
+      <div><h2 class="panel-title">${pixelIcon("nav-execute", "")} 做完了吗？</h2><p>回答难不难、有没有趣，下一次就会更适合你。</p></div>
+      <button type="button" data-action="jump-journey-stage" data-page="execute">去记录</button>
     </section>
   `;
 }
@@ -3155,23 +3198,19 @@ function renderDailyTodoBook() {
   const tasks = dailyTodoCatalog();
   const categories = ["健康", "学习", "生活", "责任", "表达", "未来"];
   const done = tasks.filter((task) => isDone(task.id)).length;
-  const personalized = tasks.filter((task) => task.personalized && !isDone(task.id)).slice(0, 6);
-  const stages = [...new Set(tasks.map((task) => task.stage))].sort();
+  const picks = [...tasks.filter((task) => task.personalized && !isDone(task.id)), ...tasks.filter((task) => !isDone(task.id))].filter((task, index, all) => all.findIndex((item) => item.id === task.id) === index).slice(0, 3);
   const book = state.dailyMissionBook;
   return `<section class="panel daily-todo-book">
-    <div class="page-head"><div><h2 class="panel-title">${pixelIcon("skill-check", "")} ${escapeHtml(book?.headline || "今日任务册")}</h2><small>${book ? `${book.provider === "siliconflow" ? "GLM生成" : "本地生成"} · 服务于当前成长主线` : "正在根据成长主线生成"}</small></div><span class="tag">${done}/${tasks.length}</span></div>
+    <div class="page-head"><div><h2 class="panel-title">${pixelIcon("skill-check", "")} 更多选择</h2><small>当前一步不合适时，再从这里换</small></div><span class="tag">完成 ${done}</span></div>
     ${book?.rationale ? `<p class="mission-book-rationale">${escapeHtml(book.rationale)}</p>` : ""}
-    <button class="mission-book-refresh" type="button" data-action="generate-daily-missions" ${state.dailyMissionLoading ? "disabled" : ""}>${state.dailyMissionLoading ? "AI正在统一编排..." : "根据当前主线重新编排"}</button>
-    <div class="todo-book-progress"><span><i style="width:${Math.round(done / tasks.length * 100)}%"></i></span><strong>${done ? `今天已完成${done}项` : "从任意一项开始"}</strong></div>
-    <div class="todo-stage-summary"><strong>当前关卡 ${stages.map((stage) => `Lv.${stage}`).join(" / ")}</strong><span>经验升级会提高关卡；状态差或连续卡住会临时降阶</span></div>
-    ${personalized.length ? `<div class="todo-ai-focus"><small>AI根据当前成长蓝图标记</small><p>${[...new Set(personalized.map((task) => skillDisplayName(task.skill)))].join(" · ")}相关任务会显示星标</p></div>` : ""}
-    <div class="todo-tier-legend"><span>基础：每日生活底座</span><span>成长：建议练习</span><span>探索：有余力再做</span></div>
-    <div class="todo-category-list">${categories.map((category) => {
+    <div class="todo-book-progress"><span><i style="width:${Math.round(done / tasks.length * 100)}%"></i></span><strong>${done ? `今天已完成${done}项` : "完成一项就很好"}</strong></div>
+    <div class="mission-picks">${picks.map((task) => `<article data-mission-id="${escapeHtml(task.id)}" class="${task.personalized ? "personalized" : ""}"><div><strong>${escapeHtml(task.title)}</strong><small>${task.minutes}分钟 · 训练${escapeHtml(skillDisplayName(task.skill))}</small><small>${escapeHtml(task.why || "来自当前目标和今日状态")}</small></div><button type="button" data-action="choose-daily-mission" data-task-id="${escapeHtml(task.id)}">选这项</button></article>`).join("")}</div>
+    <details class="all-missions"><summary>查看全部 ${tasks.length} 项选择</summary><button class="mission-book-refresh" type="button" data-action="generate-daily-missions" ${state.dailyMissionLoading ? "disabled" : ""}>${state.dailyMissionLoading ? "AI正在校准..." : "让AI重新编排"}</button><div class="todo-category-list">${categories.map((category) => {
       const categoryTasks = tasks.filter((task) => task.category === category);
       const categoryDone = categoryTasks.filter((task) => isDone(task.id)).length;
-      return `<details open><summary><strong>${category}</strong><span>${categoryDone}/${categoryTasks.length}</span></summary><div>${categoryTasks.map((task) => `<article data-mission-id="${escapeHtml(task.id)}" class="${isDone(task.id) ? "done" : ""} ${task.personalized ? "personalized" : ""} ${state.focusedMissionId === String(task.id) ? "current-mission" : ""}"><button type="button" data-action="toggle-task" data-task-id="${escapeHtml(task.id)}" aria-label="${isDone(task.id) ? "撤销" : "完成"}${escapeHtml(task.title)}"><i>${isDone(task.id) ? "✓" : ""}</i></button><div><strong>${task.personalized ? "★ " : ""}${escapeHtml(task.title)}</strong><small>${task.minutes}分钟 · 第${task.stage}关 ${escapeHtml(task.difficulty)} · ${escapeHtml(skillDisplayName(task.skill))}</small><small class="todo-source">来源：${(task.contextUsed || []).map(escapeHtml).join(" / ")}</small><small class="todo-success">过关：${escapeHtml(task.success)}</small></div><em>+${task.reward}</em></article>`).join("")}</div></details>`;
-    }).join("")}</div>
-    <footer>任务册是选择空间，不要求全部完成。AI会根据完成、跳过和复盘继续调整。</footer>
+      return `<details><summary><strong>${category}</strong><span>${categoryDone}/${categoryTasks.length}</span></summary><div>${categoryTasks.map((task) => `<article data-mission-id="${escapeHtml(task.id)}" class="${isDone(task.id) ? "done" : ""} ${task.personalized ? "personalized" : ""} ${state.focusedMissionId === String(task.id) ? "current-mission" : ""}"><button type="button" data-action="toggle-task" data-task-id="${escapeHtml(task.id)}" aria-label="${isDone(task.id) ? "撤销" : "完成"}${escapeHtml(task.title)}"><i>${isDone(task.id) ? "✓" : ""}</i></button><div><strong>${task.personalized ? "★ " : ""}${escapeHtml(task.title)}</strong><small>${task.minutes}分钟 · 第${task.stage}关 ${escapeHtml(task.difficulty)} · ${escapeHtml(skillDisplayName(task.skill))}</small><details class="mission-meta"><summary>为什么推荐</summary><small>来源：${(task.contextUsed || []).map(escapeHtml).join(" / ")}</small><small>过关：${escapeHtml(task.success)}</small></details></div><em>+${task.reward}</em></article>`).join("")}</div></details>`;
+    }).join("")}</div></details>
+    <footer>这些是备选，不要求全部完成。等级提升后，AI会逐渐增加挑战。</footer>
   </section>`;
 }
 
@@ -3342,7 +3381,7 @@ function buildCoachPayload() {
   };
 }
 
-function renderRecommendations() {
+function renderRecommendationsLegacy() {
   const journey = currentJourney();
   const ideaStatus = { spark: "灵感池", incubating: "孵化中", active: "行动中", done: "已长成", dismissed: "已放下" };
   const visibleIdeas = state.ideas.filter((idea) => idea.status !== "dismissed");
@@ -3369,6 +3408,19 @@ function renderRecommendations() {
   `;
 }
 
+function renderRecommendations() {
+  const journey = currentJourney();
+  const ideas = state.ideas.filter((idea) => idea.status !== "dismissed");
+  return `<section class="page-purpose"><span>想法</span><div><strong>记下一句值得记住的事</strong><small>AI把它当作了解你的线索，不会自动变成任务。</small></div></section>
+    <section class="panel idea-workshop simple-page">
+      <div class="page-head"><h2 class="panel-title">${pixelIcon("flow-build", "")} 我刚想到</h2><span class="tag">${ideas.length}条</span></div>
+      <div class="idea-capture"><input id="idea-title" maxlength="80" placeholder="例如：我想试着做一个会亮的模型" /><button type="button" data-action="capture-idea">记下来</button></div>
+      <p class="gentle-rule">当前服务于：${escapeHtml(journey?.objective || journey?.title || "建立第一条成长目标")}</p>
+      <div class="simple-idea-list">${ideas.slice(0, 3).map((idea) => `<article><div><strong>${escapeHtml(idea.title)}</strong><small>${idea.status === "done" ? "已成为成长证据" : "已用于了解兴趣与方向"}</small></div><button type="button" class="idea-delete" data-action="delete-idea" data-idea-id="${idea.id}" aria-label="删除想法">×</button></article>`).join("") || `<p class="empty-state">一句好奇、一个困难、一个突然想做的东西，都可以记。</p>`}</div>
+      ${ideas.length > 3 ? `<details class="advanced-section"><summary>以前的想法 ${ideas.length - 3} 条</summary><div class="simple-idea-list">${ideas.slice(3).map((idea) => `<article><div><strong>${escapeHtml(idea.title)}</strong><small>已保存</small></div></article>`).join("")}</div></details>` : ""}
+    </section>`;
+}
+
 async function shapeGrowthGoal() {
   const input = document.querySelector("#goal-text");
   state.goalText = input?.value.trim() || state.goalText;
@@ -3377,10 +3429,16 @@ async function shapeGrowthGoal() {
   render();
   try {
     const context = Object.fromEntries(contextAnswerDetails().map(({ question, answer }) => [question.id, { question: question.title, answer }]));
-    const response = await fetch("/api/goals/shape", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, text: state.goalText, context }) });
+    const response = await fetch("/api/goals/shape", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, text: state.goalText, context, clarifications: state.goalClarifications }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "AI暂时没整理清楚");
-    state.goalDraft = result;
+    if (result.needsClarification) {
+      state.goalQuestion = result.clarification;
+      state.goalDraft = null;
+    } else {
+      state.goalQuestion = null;
+      state.goalDraft = result;
+    }
   } catch (error) { showToast(error.message || "暂时无法整理这个方向"); }
   finally { state.goalLoading = false; render(); }
 }
@@ -3394,6 +3452,8 @@ async function confirmGrowthGoal() {
     if (!response.ok) throw new Error(goal.error || "方向保存失败");
     await loadGoals();
     state.goalDraft = null;
+    state.goalQuestion = null;
+    state.goalClarifications = {};
     state.goalText = "";
     state.dailyMissionBook = null;
     generateDailyMissionBook(true, true);
@@ -3442,19 +3502,55 @@ async function startGoalExperiment(id) {
   } catch (error) { showToast(error.message || "暂时无法开始实验"); }
 }
 
-function renderGrowthGoals() {
+function skillTreeGoalSuggestions() {
+  const interest = getContextProfile()["current-interest"]?.value || "自己喜欢的主题";
+  const output = getContextProfile()["preferred-output"]?.value || "作品";
+  const suggestions = {
+    "self-regulation": { title: "连续四周独立准备第二天需要的物品，每周成功3次", why: "练习自己开始、检查和收尾" },
+    metacognition: { title: `围绕“${interest}”完成3次学习实验，并总结一种对自己有效的方法`, why: "练习发现卡点、选择方法和复盘" },
+    communication: { title: `完成一次关于“${interest}”的3分钟分享，并根据反馈改进一次`, why: "练习把想法和成果讲清楚" },
+    "data-reasoning": { title: "记录一个生活问题7天，用表格找出规律并讲出结论", why: "练习记录、比较和用证据判断" },
+    "ai-literacy": { title: `完成一份“AI怎样帮我做${output}”的对比作品，并核对3条信息`, why: "练习提问、验证和保留自己的判断" },
+    creation: { title: `完成一个关于“${interest}”的可展示作品，并改进两版`, why: "练习从想法到版本再到成果" },
+    "ethics-collaboration": { title: "和家人或同伴完成一个小项目，明确分工并做一次公平检查", why: "练习协作、责任和可靠判断" },
+    wellbeing: { title: "连续四周建立一个睡眠或运动小习惯，每周记录4次身体感受", why: "建立支持学习和情绪的身心底座" }
+  };
+  const priorityIds = (state.growthBlueprint?.priorities || []).map((item) => normalizeSkillId(item.skill));
+  const orderedIds = [...new Set([...priorityIds, ...Object.keys(suggestions)])];
+  return orderedIds.map((skill) => ({ skill, name: skillDisplayName(skill), ...suggestions[skill] })).filter((item) => item.title);
+}
+
+function renderGoalSuggestionPicker() {
+  const suggestions = skillTreeGoalSuggestions();
+  const card = (item) => `<article><span>${escapeHtml(item.name)}</span><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.why)}</p><button type="button" data-action="choose-goal-suggestion" data-value="${escapeHtml(item.title)}">选这个方向</button></article>`;
+  return `<section class="goal-suggestion-picker"><div><strong>技能树给出的具体目标建议</strong><small>先选一个感兴趣的，AI再整理成SMART目标和OKR，不会直接采用。</small></div><div class="goal-suggestion-grid">${suggestions.slice(0, 4).map(card).join("")}</div>${suggestions.length > 4 ? `<details><summary>查看另外 ${suggestions.length - 4} 个能力方向</summary><div class="goal-suggestion-grid">${suggestions.slice(4).map(card).join("")}</div></details>` : ""}</section>`;
+}
+
+function renderGrowthGoalsLegacy() {
   const activeCount = state.goals.filter((goal) => goal.status === "active").length;
   const draft = state.goalDraft;
   const statusLabels = { active: "备选方向", paused: "休息中", done: "已留下成果" };
   return `<section class="panel growth-goals">
     <div class="page-head"><h2 class="panel-title">${pixelIcon("nav-map", "")} 当前成长主线</h2><span class="tag">1条当前 · ${Math.max(0, activeCount - 1)}条备选</span></div>
     <p class="section-note">系统只用一条当前主线生成蓝图、OKR和今日任务。新采用或重新点亮的方向会成为当前主线，原方向保留为备选。</p>
-    ${draft ? `<article class="goal-draft"><header><small>${draft.provider === "siliconflow" ? "GLM生成SMART目标" : "本地SMART目标"}</small><button type="button" data-action="edit-goal-draft">重新说</button></header><h3>${escapeHtml(draft.draft.objective || draft.draft.title)}</h3><p>${escapeHtml(draft.draft.why)}</p><div class="smart-grid">${Object.entries({具体: draft.draft.smart?.specific, 可衡量: draft.draft.smart?.measurable, 可做到: draft.draft.smart?.achievable, 有意义: draft.draft.smart?.relevant, 有时限: draft.draft.smart?.timeBound}).map(([label,value]) => value ? `<span><small>${label}</small><strong>${escapeHtml(value)}</strong></span>` : "").join("")}</div><div class="okr-preview"><small>OKR · 三个关键结果</small>${(draft.draft.keyResults || []).map((kr,index) => `<p><b>KR${index + 1}</b>${escapeHtml(kr.title)}</p>`).join("")}</div><div><small>今天自动安排的第一步</small><strong>${escapeHtml(draft.draft.firstExperiment)}</strong></div><footer><span>${escapeHtml(skillDisplayName(draft.draft.skill))} · 四周一轮</span><button type="button" data-action="confirm-goal">采用这个目标</button></footer></article>` : `<div class="goal-capture"><input id="goal-text" maxlength="600" value="${escapeHtml(state.goalText)}" placeholder="我想学会…… / 我想做出…… / 我想改善……" /><button type="button" data-action="shape-goal" ${state.goalLoading || activeCount >= 3 ? "disabled" : ""}>${state.goalLoading ? "AI正在整理..." : activeCount >= 3 ? "先暂停一个方向" : "生成SMART目标"}</button></div>`}
+    ${draft ? `<article class="goal-draft"><header><small>GLM生成SMART目标</small><button type="button" data-action="edit-goal-draft">重新说</button></header><h3>${escapeHtml(draft.draft.objective || draft.draft.title)}</h3><p>${escapeHtml(draft.draft.why)}</p><div class="smart-grid">${Object.entries({具体: draft.draft.smart?.specific, 可衡量: draft.draft.smart?.measurable, 可做到: draft.draft.smart?.achievable, 有意义: draft.draft.smart?.relevant, 有时限: draft.draft.smart?.timeBound}).map(([label,value]) => value ? `<span><small>${label}</small><strong>${escapeHtml(value)}</strong></span>` : "").join("")}</div><div class="okr-preview"><small>OKR · 三个关键结果</small>${(draft.draft.keyResults || []).map((kr,index) => `<p><b>KR${index + 1}</b>${escapeHtml(kr.title)}</p>`).join("")}</div><div><small>今天自动安排的第一步</small><strong>${escapeHtml(draft.draft.firstExperiment)}</strong></div><footer><span>${escapeHtml(skillDisplayName(draft.draft.skill))} · 四周一轮</span><button type="button" data-action="confirm-goal">采用这个目标</button></footer></article>` : state.goalQuestion ? `<article class="goal-clarification"><small>AI还不能负责任地制定目标</small><h3>${escapeHtml(state.goalQuestion.question)}</h3><p>${escapeHtml(state.goalQuestion.why)}</p><div>${state.goalQuestion.options.map((option) => `<button type="button" data-action="answer-goal-clarification" data-key="${escapeHtml(state.goalQuestion.key)}" data-value="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join("")}</div><button type="button" data-action="edit-goal-draft">换一个目标</button></article>` : `<div class="goal-capture"><input id="goal-text" maxlength="600" value="${escapeHtml(state.goalText)}" placeholder="我想学会…… / 我想做出…… / 我想改善……" /><button type="button" data-action="shape-goal" ${state.goalLoading || activeCount >= 3 ? "disabled" : ""}>${state.goalLoading ? "GLM正在判断..." : activeCount >= 3 ? "先暂停一个方向" : "让AI帮我定目标"}</button></div>`}
     <div class="goal-list">${state.goals.map((goal) => `<article class="goal-card ${escapeHtml(goal.status)} ${goal.isPrimary ? "primary-goal" : ""}"><header><span>${goal.isPrimary ? "当前主线" : escapeHtml(statusLabels[goal.status] || "方向")}</span><small>SMART · OKR · ${escapeHtml(skillDisplayName(goal.skill))}</small></header><h3>${escapeHtml(goal.objective || goal.title)}</h3><p>${escapeHtml(goal.why)}</p><div class="goal-progress"><span><i style="width:${goal.progress}%"></i></span><small>${goal.evidenceCount}个成果 · ${goal.journalCount || 0}篇日记 · ${goal.reflectionCount || 0}次复盘</small></div><div class="okr-preview">${(goal.keyResults || []).map((kr,index) => `<p><b>KR${index + 1}</b>${escapeHtml(kr.title)} <em>目标${kr.target}${escapeHtml(kr.unit)}</em></p>`).join("")}</div><div class="goal-signal"><small>SMART成功信号</small><strong>${escapeHtml(goal.successSignal)}</strong></div><footer>${goal.status === "active" ? `<button type="button" data-action="start-goal-experiment" data-goal-id="${goal.id}" ${goal.activeSteps ? "disabled" : ""}>${goal.activeSteps ? "主线行动已安排" : "安排第一个行动"}</button>${goal.isPrimary ? "" : `<button type="button" data-action="update-goal" data-status="active" data-goal-id="${goal.id}">设为当前主线</button>`}<button type="button" data-action="update-goal" data-status="paused" data-goal-id="${goal.id}">先休息</button><button type="button" data-action="update-goal" data-status="done" data-goal-id="${goal.id}">完成本轮</button>` : goal.status === "paused" ? `<button type="button" data-action="update-goal" data-status="active" data-goal-id="${goal.id}">设为当前主线</button><button type="button" data-action="delete-goal" data-goal-id="${goal.id}">删除</button>` : `<button type="button" data-action="delete-goal" data-goal-id="${goal.id}">收起这段旅程</button>`}</footer></article>`).join("") || `<p class="empty-state">先让AI通过提问认识你，再建立第一条SMART目标。</p>`}</div>
   </section>`;
 }
 
-function renderSkills() {
+function renderGrowthGoals() {
+  const goal = currentJourney();
+  const vague = isVagueGrowthGoal(goal);
+  return `<section class="panel growth-goals simple-page">
+    <div class="page-head"><h2 class="panel-title">${pixelIcon("nav-map", "")} 当前目标</h2><span class="tag">${goal ? `${goal.progress}%` : "待建立"}</span></div>
+    ${goal && vague ? `<article class="vague-goal-warning"><small>这是能力方向，还不是目标</small><h3>${escapeHtml(goal.objective || goal.title)}</h3><p>请补充一件未来四周能完成、能看见结果的事。</p>${state.goalDraft || state.goalQuestion ? renderGrowthGoalsLegacy() : `<div class="goal-capture"><input id="goal-text" maxlength="600" value="${escapeHtml(state.goalText)}" placeholder="例如：学会游泳" /><button type="button" data-action="shape-goal" ${state.goalLoading ? "disabled" : ""}>${state.goalLoading ? "GLM正在判断..." : "让AI帮我定目标"}</button></div>`}</article>` : goal ? `<article class="primary-goal-summary"><small>SMART目标</small><h3>${escapeHtml(goal.objective || goal.title)}</h3><p>${escapeHtml(goal.why)}</p><div class="goal-progress"><span><i style="width:${goal.progress}%"></i></span><small>${goal.progress}%</small></div><div class="compact-krs">${(goal.keyResults || []).slice(0, 3).map((kr, index) => `<p><b>KR${index + 1}</b>${escapeHtml(kr.title)}</p>`).join("")}</div><strong class="goal-success">完成标志：${escapeHtml(goal.successSignal)}</strong></article>` : `<div class="empty-state">还没有成长目标。请先从技能树建议里选一个具体成果。</div>`}
+    ${(state.goalDraft || state.goalQuestion) && !vague ? renderGrowthGoalsLegacy() : ""}
+    ${!goal || vague ? renderGoalSuggestionPicker() : `<details class="advanced-section goal-suggestion-details"><summary>查看技能树的下一轮目标建议</summary>${renderGoalSuggestionPicker()}</details>`}
+    <details class="advanced-section"><summary>${goal ? "调整目标" : "建立第一个目标"}</summary>${renderGrowthGoalsLegacy()}</details>
+  </section>`;
+}
+
+function renderSkillsLegacy() {
   const c = child();
   return `
     ${renderGrowthBlueprint()}
@@ -3501,6 +3597,16 @@ function renderSkills() {
   `;
 }
 
+function renderSkills() {
+  const c = child();
+  const blueprint = state.growthBlueprint;
+  const priorities = blueprint?.priorities || [];
+  return `<section class="page-purpose"><span>目标</span><div><strong>知道现在要变好什么</strong><small>AI只保留一条当前主线，再用SMART和OKR把它说清楚。</small></div></section>
+    ${renderGrowthGoals()}
+    <section class="panel compact-blueprint"><div class="page-head"><h2 class="panel-title">${pixelIcon("skill-ai", "")} 重点能力</h2><span class="tag">2个方向</span></div><div class="compact-priorities">${priorities.slice(0, 2).map((item) => `<article><span>${escapeHtml(item.role || "重点")}</span><strong>${escapeHtml(item.name || skillDisplayName(item.skill))}</strong><p>${escapeHtml(item.reason)}</p></article>`).join("") || `<p class="empty-state">目标确认后，AI会挑出两个最值得练的能力。</p>`}</div><button type="button" data-action="refresh-growth-blueprint" ${state.growthBlueprintLoading ? "disabled" : ""}>${state.growthBlueprintLoading ? "AI正在更新..." : "根据最新记录更新"}</button></section>
+    <details class="advanced-section standalone"><summary>查看完整能力树</summary><section class="panel skill-board">${c.skills.map((skill) => `<article class="skill-node kid-skill-node"><div class="skill-badge">${pixelIcon(pixelIconBySkill[skill.id] || "skill-book", "")}</div><div><strong>${skill.name} Lv.${skill.level}</strong><p>${skillFramework[skill.id]?.childMeaning || skill.science}</p><div class="bar-track"><span style="width:${skillProgress(skill)}%"></span></div></div></article>`).join("")}</section></details>`;
+}
+
 function renderGrowthBlueprint() {
   const blueprint = state.growthBlueprint;
   if (!blueprint) return `<section class="panel growth-blueprint empty-blueprint"><div class="page-head"><div><h2 class="panel-title">${pixelIcon("skill-ai", "")} AI成长蓝图</h2><small>画像 × 未来能力 × 真实证据</small></div></div><p>AI会从已确认画像、日记、任务体验和作品中，只挑两个最值得发展的方向。</p><button type="button" data-action="refresh-growth-blueprint" ${state.growthBlueprintLoading ? "disabled" : ""}>${state.growthBlueprintLoading ? "正在生成蓝图..." : "生成我的成长蓝图"}</button></section>`;
@@ -3529,7 +3635,7 @@ function formatScheduleTime(value) {
   });
 }
 
-function renderSelf() {
+function renderSelfLegacy() {
   const c = child();
   const journey = currentJourney();
   const contextQuestion = nextContextQuestion();
@@ -3695,6 +3801,16 @@ function renderSelf() {
   `;
 }
 
+function renderSelf() {
+  const journey = currentJourney();
+  const plan = getGrowthPlan();
+  const scheduleItems = getScheduleItems();
+  return `<section class="page-purpose"><span>安排</span><div><strong>只安排这一周</strong><small>目标不在这里改变，这里只告诉AI什么时候做、这周先做什么。</small></div></section>
+    <section class="panel weekly-route simple-page"><div class="page-head"><h2 class="panel-title">${pixelIcon("nav-project", "")} 本周安排</h2><span class="tag">${scheduleItems.length}个日程</span></div><small class="route-goal-label">正在推进</small><h3>${escapeHtml(journey?.objective || journey?.title || "等待建立目标")}</h3>${plan.rationale ? `<p>${escapeHtml(plan.rationale)}</p>` : `<p>AI会结合当前目标、日程和最近记录，安排本周节奏。</p>`}<div class="milestone-list">${(plan.milestones || []).slice(0, 3).map((milestone, index) => `<article><span>${index + 1}</span><div><strong>${escapeHtml(milestone.title)}</strong><small>${escapeHtml(milestone.when || "本周")}</small></div></article>`).join("") || `<p class="empty-state">点击下面按钮生成本周三个关键步骤。</p>`}</div><button class="primary-action" type="button" data-action="generate-growth-plan" ${state.planLoading ? "disabled" : ""}>${state.planLoading ? "AI正在重排..." : "让AI重排本周"}</button></section>
+    <details class="advanced-section standalone"><summary>调整本周重点</summary><section class="panel context-editor-panel"><label class="context-field">这周特别想推进<textarea id="plan-weekly-goal" maxlength="240" placeholder="不填就沿用当前目标">${escapeHtml(plan.weeklyGoal)}</textarea></label><label class="context-field">重点能力<select id="plan-focus-skill"><option value="">让AI判断</option>${Object.entries(skillFramework).map(([id, skill]) => `<option value="${id}" ${plan.focusSkill === id ? "selected" : ""}>${skill.name}</option>`).join("")}</select></label><label class="context-field">家庭安排或限制<input id="plan-constraints" maxlength="160" value="${escapeHtml(plan.constraints)}" placeholder="例如：周三有课" /></label><button class="primary-action" type="button" data-action="save-growth-plan">保存调整</button></section></details>
+    <details class="advanced-section standalone"><summary>添加近期日程</summary><section class="panel context-editor-panel"><div class="context-inline-form"><input id="schedule-title" maxlength="60" placeholder="日程名称" /><input id="schedule-start" type="datetime-local" /><select id="schedule-energy"><option value="low">结束后会累</option><option value="normal" selected>普通消耗</option><option value="high">结束后有精神</option></select><button type="button" data-action="add-schedule">加入日程</button></div><div class="context-item-list">${scheduleItems.map((item) => `<article class="context-item"><div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(formatScheduleTime(item.start))}</small></div><button type="button" data-action="delete-schedule" data-item-id="${escapeHtml(item.id)}" aria-label="删除日程">×</button></article>`).join("") || `<p class="empty-state">还没有近期日程。</p>`}</div></section></details>`;
+}
+
 function feedbackTaskOptions() {
   const quests = doneToday().map((quest) => ({ key: `quest:${quest.id}`, title: quest.title, skill: normalizeSkillId(quest.skill), mode: taskProfile(quest).mode }));
   const actions = state.actions.filter((action) => action.status === "done").slice(0, 8).map((action) => ({ key: `action:${action.id}`, title: action.title, skill: action.source === "idea" ? "creation" : "self-regulation", mode: action.source === "idea" ? "design" : "organize" }));
@@ -3827,7 +3943,7 @@ function renderArtifactStudio() {
   </section>`;
 }
 
-function renderReflect() {
+function renderReflectLegacy() {
   const c = child();
   const journey = currentJourney();
   const done = doneToday();
@@ -3936,6 +4052,21 @@ function renderReflect() {
   `;
 }
 
+function renderReflect() {
+  const done = doneToday();
+  const feedbackTasks = feedbackTaskOptions();
+  const logs = getLogs();
+  return `<section class="page-purpose"><span>记录</span><div><strong>用两个回答让AI更懂你</strong><small>记录不是作业。真实地说难不难、有没有趣就够了。</small></div></section>
+    <section class="panel reflection-panel simple-page">
+      <div class="page-head"><h2 class="panel-title">${pixelIcon("voice", "")} 刚才做得怎么样？</h2><span class="tag">完成 ${done.length}</span></div>
+      ${feedbackTasks.length ? `<label class="feedback-task-picker">选择刚做的事<select id="reflect-task">${feedbackTasks.map((task) => `<option value="${escapeHtml(task.key)}">${escapeHtml(task.title)}</option>`).join("")}</select></label><div class="reflection-grid compact"><label>难不难<select id="reflect-difficulty"><option value="just_right">刚刚好</option><option value="too_easy">太简单</option><option value="too_hard">太难</option><option value="stuck">卡住了</option></select></label><label>有没有趣<select id="reflect-fun"><option value="fun">有趣</option><option value="neutral">一般</option><option value="boring">无聊</option></select></label></div><textarea id="reflect-note" rows="3" placeholder="还有一句想告诉AI的话（可以不写）"></textarea><select id="reflect-mood" hidden><option selected>平静</option></select><select id="reflect-support" hidden><option value="none" selected>让我自己试</option></select><input type="radio" name="reflect-motivation" value="unknown" checked hidden /><div class="tag-choice" hidden></div><button class="primary-action" type="button" data-action="save-reflection">保存，调整下一步</button>` : `<div class="record-empty"><strong>还没有完成的任务</strong><p>先去“今天”做完一小步，这里才会出现两个简单问题。</p><button type="button" data-action="jump-journey-stage" data-page="profile">回到今天</button></div>`}
+      <p class="feedback-calibration">${escapeHtml(calibrationCopy())}</p>
+    </section>
+    <details class="advanced-section standalone"><summary>写一句日记</summary><section class="panel journal-panel"><div class="page-head"><h2 class="panel-title">${pixelIcon("skill-book", "")} 成长日记</h2><span class="tag">${state.journals.length}篇</span></div><div class="journal-question-actions"><button type="button" data-action="ask-journal-question" ${state.journalLoading ? "disabled" : ""}>${state.journalLoading ? "AI正在想..." : "让AI问我一句"}</button></div>${state.journalPrompt ? `<article class="journal-prompt"><strong>${escapeHtml(state.journalPrompt.question)}</strong></article>` : ""}<textarea id="journal-content" rows="4" maxlength="4000" placeholder="我今天发现……">${escapeHtml(state.journalDraft)}</textarea><label class="journal-ai-consent"><input id="journal-ai-context" type="checkbox" ${state.journalShareWithAi ? "checked" : ""} />允许AI以后参考</label><div class="journal-save-row"><input id="journal-tags" maxlength="100" value="${escapeHtml(state.journalTags)}" placeholder="标签（可不填）" /><button type="button" data-action="save-journal">记下来</button></div></section></details>
+    <details class="advanced-section standalone"><summary>留下作品</summary>${renderArtifactStudio()}</details>
+    ${logs.length ? `<details class="advanced-section standalone"><summary>以前的成长记录 ${logs.length} 条</summary><section class="panel"><div class="log-list">${logs.map((log) => `<article class="log-entry"><strong>${escapeHtml(log.taskTitle || "成长记录")} · ${escapeHtml(log.difficulty)} · ${escapeHtml(log.fun)}</strong><p>${escapeHtml(log.note || "已完成一次真实反馈。")}</p></article>`).join("")}</div></section></details>` : ""}`;
+}
+
 function render() {
   const pageRenderers = {
     profile: renderToday,
@@ -3960,15 +4091,8 @@ function renderCurrentJourneySpine() {
   const journey = currentJourney();
   const tasks = dailyTodoCatalog();
   const done = tasks.filter((task) => isDone(task.id)).length;
-  const stages = [
-    { page: "discover", label: "发现信号" },
-    { page: "skills", label: "确认方向" },
-    { page: "plan", label: "规划关卡" },
-    { page: "profile", label: "执行任务" },
-    { page: "execute", label: "证据复盘" }
-  ];
-  const title = journey?.objective || journey?.title || state.growthBlueprint?.fourWeekPath?.[0]?.objective || "正在建立第一条成长主线";
-  return `<section class="current-journey-spine"><header><span>当前成长主线</span><strong>${escapeHtml(title)}</strong><em>${journey ? `${journey.progress}%` : "准备中"}</em></header><div class="journey-stage-row">${stages.map((item, index) => `<button type="button" data-action="jump-journey-stage" data-page="${item.page}" class="${state.page === item.page ? "active" : ""}"><i>${index + 1}</i>${item.label}</button>`).join("")}</div><footer><span>${journey ? `SMART · ${escapeHtml(skillDisplayName(journey.skill))}` : "画像与蓝图正在汇合"}</span><b>今日关卡 ${done}/${tasks.length}</b></footer></section>`;
+  const title = isVagueGrowthGoal(journey) ? "目标待具体化：选择一件四周内要完成的事" : journey?.objective || journey?.title || state.growthBlueprint?.fourWeekPath?.[0]?.objective || "正在建立第一条成长主线";
+  return `<section class="current-journey-spine"><header><span>当前目标</span><strong>${escapeHtml(title)}</strong><em>${journey ? `${journey.progress}%` : "准备中"}</em></header><footer><span>${journey ? `正在练习 ${escapeHtml(skillDisplayName(journey.skill))}` : "AI正在建立第一条主线"}</span><b>今天完成 ${done}</b></footer></section>`;
 }
 
 function updateShell() {
@@ -4080,7 +4204,24 @@ document.addEventListener("click", async (event) => {
   const dailyFeedbackDelete = event.target.closest("[data-action='delete-daily-feedback']");
   if (dailyFeedbackDelete) { await deleteDailyPlanFeedback(dailyFeedbackDelete.dataset.feedbackId); return; }
   if (event.target.closest("[data-action='shape-goal']")) { await shapeGrowthGoal(); return; }
-  if (event.target.closest("[data-action='edit-goal-draft']")) { state.goalDraft = null; render(); return; }
+  if (event.target.closest("[data-action='retry-goal-shape']")) { await shapeGrowthGoal(); return; }
+  const goalSuggestion = event.target.closest("[data-action='choose-goal-suggestion']");
+  if (goalSuggestion) {
+    state.goalText = goalSuggestion.dataset.value || "";
+    state.goalDraft = null;
+    state.goalQuestion = null;
+    state.goalClarifications = {};
+    await shapeGrowthGoal();
+    return;
+  }
+  const goalClarification = event.target.closest("[data-action='answer-goal-clarification']");
+  if (goalClarification) {
+    state.goalClarifications[goalClarification.dataset.key] = goalClarification.dataset.value;
+    state.goalQuestion = null;
+    await shapeGrowthGoal();
+    return;
+  }
+  if (event.target.closest("[data-action='edit-goal-draft']")) { state.goalDraft = null; state.goalQuestion = null; state.goalClarifications = {}; render(); return; }
   if (event.target.closest("[data-action='confirm-goal']")) { await confirmGrowthGoal(); return; }
   const goalUpdate = event.target.closest("[data-action='update-goal']");
   if (goalUpdate) { await updateGrowthGoal(goalUpdate.dataset.goalId, goalUpdate.dataset.status); return; }
@@ -4098,6 +4239,23 @@ document.addEventListener("click", async (event) => {
   if (event.target.closest("[data-action='confirm-action-inbox']")) { await confirmActionInbox(); return; }
   const duplicateAction = event.target.closest("[data-action='open-duplicate-action']");
   if (duplicateAction) { await openDuplicateAction(duplicateAction.dataset.actionId); return; }
+  const quickStart = event.target.closest("[data-action='quick-daily-start']");
+  if (quickStart) {
+    const modes = {
+      light: { energy: "low", minutes: 5, intent: "finish" },
+      steady: { energy: "normal", minutes: 10, intent: "finish" },
+      challenge: { energy: "high", minutes: 20, intent: "create" },
+      recharge: { energy: "low", minutes: 2, intent: "recharge" }
+    };
+    state.dailyCheckin = modes[quickStart.dataset.mode] || modes.steady;
+    await generateDailyPlan();
+    return;
+  }
+  const missionChoice = event.target.closest("[data-action='choose-daily-mission']");
+  if (missionChoice) {
+    await generateDailyPlan({ swap: Boolean(state.dailyPlan), preferredRef: `mission:${missionChoice.dataset.taskId}` });
+    return;
+  }
   const dailyCheckinButton = event.target.closest("[data-action='daily-checkin']");
   if (dailyCheckinButton) {
     const field = dailyCheckinButton.dataset.field;
@@ -4505,6 +4663,9 @@ document.addEventListener("click", async (event) => {
   if (event.target.closest("[data-action='edit-onboarding-portrait']")) { state.onboardingPortraitEditing = true; render(); return; }
   if (event.target.closest("[data-action='cancel-onboarding-portrait-edit']")) { state.onboardingPortraitEditing = false; render(); return; }
   if (event.target.closest("[data-action='save-onboarding-portrait-correction']")) { saveOnboardingPortraitCorrection(); return; }
+  const saveGoalProjectButton = event.target.closest("[data-action='save-onboarding-goal-project']");
+  if (saveGoalProjectButton) { await saveOnboardingGoalProject(saveGoalProjectButton.dataset.value || ""); return; }
+  if (event.target.closest("[data-action='edit-onboarding-goal-project']")) { clearContextAnswer("goal-project"); state.goalText = ""; state.goalDraft = null; state.goalQuestion = null; state.goalClarifications = {}; render(); return; }
   if (event.target.closest("[data-action='finish-profile-onboarding']")) {
     await finishProfileOnboarding();
     return;
