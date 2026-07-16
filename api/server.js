@@ -392,7 +392,14 @@ async function handleRegister(request, response) {
 }
 async function handleLogin(request, response) {
   const body = await readBodyJson(request);
-  const email = String(body.email || "").trim().toLowerCase();
+  const loginName = String(body.email || "").trim().toLowerCase();
+  if (loginName === "admin") {
+    if (String(body.password || "") !== "admin") return sendJson(response, 401, { error: "账号或密码不正确" });
+    const demo = ensureBuiltInDemoAccount();
+    createSession(response, demo.id);
+    return sendJson(response, 200, { email: "admin", isTestAdmin: true, profiles: publicProfiles(demo.id), recoveryConfigured: false, recoveryUpdatedAt: "" });
+  }
+  const email = loginName;
   const row = db.prepare("SELECT id,email,password_hash,recovery_hash,recovery_updated_at FROM users WHERE email=?").get(email);
   if (!row || !verifyPassword(String(body.password || ""), row.password_hash)) return sendJson(response, 401, { error: "邮箱或密码不正确" });
   createSession(response, row.id);
@@ -407,7 +414,30 @@ function handleLogout(request, response) {
 function handleAccount(request, response) {
   const user = requireUser(request, response); if (!user) return;
   const recovery = db.prepare("SELECT recovery_hash,recovery_updated_at FROM users WHERE id=?").get(user.id);
-  sendJson(response, 200, { email: user.email, isTestAdmin: user.email === "admin@growth-os.local", recoveryConfigured: Boolean(recovery?.recovery_hash), recoveryUpdatedAt: recovery?.recovery_updated_at || "", profiles: publicProfiles(user.id) });
+  const isBuiltInDemo = user.email === "builtin-admin@growth-os.local";
+  sendJson(response, 200, { email: isBuiltInDemo ? "admin" : user.email, isTestAdmin: isBuiltInDemo || user.email === "admin@growth-os.local", recoveryConfigured: isBuiltInDemo ? false : Boolean(recovery?.recovery_hash), recoveryUpdatedAt: isBuiltInDemo ? "" : recovery?.recovery_updated_at || "", profiles: publicProfiles(user.id) });
+}
+function ensureBuiltInDemoAccount() {
+  const email = "builtin-admin@growth-os.local";
+  let user = db.prepare("SELECT id,email FROM users WHERE email=?").get(email);
+  if (!user) {
+    const result = db.prepare("INSERT INTO users(email,password_hash,created_at) VALUES(?,?,?)").run(email, hashPassword(randomBytes(24).toString("hex")), nowIso());
+    user = { id: Number(result.lastInsertRowid), email };
+  }
+  let profile = db.prepare("SELECT id FROM profiles WHERE user_id=? AND name=?").get(user.id, "崔护");
+  if (!profile) {
+    const id = profileId();
+    db.exec("BEGIN");
+    try {
+      db.prepare("INSERT INTO profiles(id,user_id,name,age,avatar,base_template,created_at) VALUES(?,?,?,?,?,?,?)").run(id, user.id, "崔护", "9岁3个月", "boy", "brother", nowIso());
+      db.prepare("INSERT INTO consents(profile_id,user_id,consent_version,guardian_confirmed,granted_at) VALUES(?,?,?,?,?)").run(id, user.id, "built-in-demo-v1", 1, nowIso());
+      db.exec("COMMIT");
+      profile = { id };
+    } catch (error) { db.exec("ROLLBACK"); throw error; }
+  } else {
+    db.prepare("UPDATE profiles SET age=?,avatar=?,base_template=? WHERE id=?").run("9岁3个月", "boy", "brother", profile.id);
+  }
+  return user;
 }
 function ensureDevAdmin() {
   let user = db.prepare("SELECT id,email FROM users WHERE email=?").get("admin@growth-os.local");

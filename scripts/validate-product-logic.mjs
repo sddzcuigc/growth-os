@@ -231,6 +231,8 @@ for (const term of ["isVagueGoalText", "preferredRef"]) if (!serverSource.includ
 for (const term of ["mode必须为clarify", "goalClarifications", "目标设计需要连接GLM", "系统不会改用模板", "GLM没有满足该技能的安全约束", "GLM给出了不安全的水上练习选项", "家长只在岸上看"]) if (!serverSource.includes(term)) failures.push(`LLM-only goal clarification missing ${term}`);
 for (const term of ["goalQuestion", "goalClarifications", "answer-goal-clarification", "GLM生成的SMART目标", "不会套用通用模板"]) if (!appSourceText.includes(term)) failures.push(`LLM goal clarification UI missing ${term}`);
 if (appSourceText.includes("function onboardingGoalDraft()")) failures.push("onboarding still uses a local goal template");
+for (const term of ["ensureBuiltInDemoAccount", "builtin-admin@growth-os.local", 'loginName === "admin"', '"崔护"', '"9岁3个月"']) if (!serverSource.includes(term)) failures.push(`built-in demo account missing ${term}`);
+for (const term of ["内置测试：账号 admin", "邮箱或测试账号"]) if (!htmlSource.includes(term)) failures.push(`built-in demo login UI missing ${term}`);
 for (const term of [">今天</b>", ">想法</b>", ">目标</b>", ">安排</b>", ">记录</b>"]) if (!htmlSource.includes(term)) failures.push(`workflow navigation missing ${term}`);
 if (appSourceText.includes('<div class="action-quick-add"')) failures.push("legacy multi-field quick-add is still rendered");
 for (const term of ["/api/auth/recovery/rotate", "/api/auth/recovery/reset", "recoveryCode", "normalizeRecoveryCode", "dummyRecoveryHash", "consumeRecoveryAttempt", "DELETE FROM sessions WHERE user_id", "recovery_hash", "recovery_updated_at"]) {
@@ -277,7 +279,7 @@ for (const term of ["[3, 7, 14, 30, 60, 100]", "kind='habit'", "habit_reopened"]
 for (const term of ["我的行动台", "create-action", "breakdown-action", "update-action", "rankedActions", "actionQueue", "loadActions"]) {
   if (!appSourceText.includes(term)) failures.push(`adaptive action desk missing ${term}`);
 }
-for (const term of ["主线信号站", "capture-idea", "develop-idea", "set-idea-status", "journal-to-idea", "ideaPipeline", "loadIdeas", "本地测试管理员"]) {
+for (const term of ["主线信号站", "capture-idea", "develop-idea", "set-idea-status", "journal-to-idea", "ideaPipeline", "loadIdeas", "内置测试账号"]) {
   if (!appSourceText.includes(term)) failures.push(`idea incubation or dev admin UI missing ${term}`);
 }
 for (const term of ["唤醒一颗旧灵感", "decide-idea-resurfacing", "继续收藏", "过阵子再看", "放下它", "loadIdeaResurfacing"]) {
