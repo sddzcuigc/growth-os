@@ -2219,10 +2219,7 @@ async function finishProfileOnboarding() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "SMART目标建立失败");
       state.goals = [result, ...state.goals];
-      const actionResponse = await fetch("/api/actions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, title: result.firstExperiment, detail: `来自SMART目标：${result.title}\n对应OKR：${result.keyResults?.[0]?.title || "完成第一次小练习"}`, estimateMinutes: 10, energy: "normal", importance: 3, goalId: result.id }) });
-      if (actionResponse.ok) state.actions = [await actionResponse.json(), ...state.actions];
-      const dailyResponse = await fetch("/api/daily-plan/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, energy: "normal", minutes: 10, intent: "finish" }) });
-      if (dailyResponse.ok) state.dailyPlan = await dailyResponse.json();
+      await rebuildTodayFromGoal(result, { quiet: true });
     }
     writeJson(storageKey("onboarding"), { started: true, complete: true, completedAt: new Date().toISOString() });
     const rewarded = grantBonusReward("onboarding:first-profile", { xp: 10, gems: 2, label: "完成第一版成长画像" });
@@ -3080,9 +3077,9 @@ function renderQuestCard(quest, options = {}) {
 }
 
 async function generateDailyPlan(options = {}) {
-  if (state.dailyPlanLoading) return;
+  if (state.dailyPlanLoading) return state.dailyPlan;
   state.dailyPlanLoading = true;
-  render();
+  if (!options.quiet) render();
   try {
     if (!state.dailyMissionBook?.tasks?.length) await generateDailyMissionBook(false, true, true);
     const response = await fetch("/api/daily-plan/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, energy: state.dailyCheckin.energy || state.dailyPlan?.checkin.energy || "normal", minutes: Number(state.dailyCheckin.minutes || state.dailyPlan?.checkin.minutes || 10), intent: state.dailyCheckin.intent || state.dailyPlan?.checkin.intent || "finish", swap: options.swap === true, swapReason: options.swapReason || "", lighter: options.lighter === true, preferredRef: options.preferredRef || "" }) });
@@ -3091,13 +3088,62 @@ async function generateDailyPlan(options = {}) {
     state.dailyPlan = result;
     state.dailyCheckin = { energy: result.checkin.energy, minutes: result.checkin.minutes, intent: result.checkin.intent };
     state.dailySwapOpen = false;
-    showToast(options.swap ? "换成了另一件真正不同的事" : options.lighter ? "已经缩成更轻的一小步" : "AI已经选好现在的下一步");
-  } catch (error) { showToast(error.message || "暂时无法安排下一步"); }
-  finally { state.dailyPlanLoading = false; render(); }
+    if (!options.quiet) showToast(options.swap ? "换成了另一件真正不同的事" : options.lighter ? "已经缩成更轻的一小步" : "AI已经选好现在的下一步");
+    return result;
+  } catch (error) {
+    if (options.throwOnError) throw error;
+    if (!options.quiet) showToast(error.message || "暂时无法安排下一步");
+    return state.dailyPlan;
+  } finally {
+    state.dailyPlanLoading = false;
+    if (!options.quiet) render();
+  }
 }
 
 function currentJourney() {
   return state.goals.find((goal) => goal.status === "active" && goal.isPrimary) || state.goals.find((goal) => goal.status === "active") || null;
+}
+
+async function rebuildTodayFromGoal(goal, options = {}) {
+  const activeGoal = goal || currentJourney();
+  if (!activeGoal) throw new Error("请先建立一个当前目标");
+
+  const hasOpenFirstStep = state.actions.some((action) => Number(action.goalId) === Number(activeGoal.id) && !["done", "dropped"].includes(action.status));
+  if (!hasOpenFirstStep && activeGoal.firstExperiment) {
+    const actionResponse = await fetch("/api/actions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        profileId: state.childId,
+        title: activeGoal.firstExperiment,
+        detail: `来自SMART目标：${activeGoal.title}\n对应OKR：${activeGoal.keyResults?.[0]?.title || "完成第一次小练习"}`,
+        estimateMinutes: 10,
+        energy: "normal",
+        importance: 3,
+        goalId: activeGoal.id
+      })
+    });
+    const action = await actionResponse.json();
+    if (!actionResponse.ok) throw new Error(action.error || "第一步行动建立失败");
+    state.actions = [action, ...state.actions];
+  }
+
+  state.dailyMissionBook = null;
+  state.dailyPlan = null;
+  await generateDailyMissionBook(true, true, true);
+  await generateDailyPlan({ quiet: true, throwOnError: true });
+  const rebuiltTasks = defaultBossCoreTasks();
+  if (state.bossState) {
+    state.bossState = {
+      ...state.bossState,
+      corePlan: { ...(state.bossState.corePlan || {}), tasks: rebuiltTasks, status: "active" }
+    };
+  }
+  await syncBossCorePlan(rebuiltTasks, true);
+  state.page = "profile";
+  if (!options.quiet) showToast("目标已变成今天可以完成的任务");
+  render();
+  return state.bossState?.corePlan?.tasks || defaultBossCoreTasks();
 }
 
 function dailyMissionPayload() {
@@ -3330,7 +3376,7 @@ function renderWeeklyBossSummary(compact = false) {
 function renderCoreMissionPanel() {
   const tasks = state.bossState?.corePlan?.tasks || defaultBossCoreTasks();
   const completed = tasks.filter((task) => ["completed", "adjusted_completed", "withdrawn", "recovery_completed"].includes(task.status)).length;
-  return `<section class="panel core-missions"><div class="page-head"><div><h2 class="panel-title">${pixelIcon("skill-check", "")} 今日核心打卡</h2><small>只需完成经过确认的合理计划</small></div><span class="tag">${completed}/${tasks.length}</span></div>
+  return `<section class="panel core-missions"><div class="page-head"><div><h2 class="panel-title">${pixelIcon("skill-check", "")} 今天要做</h2><small>根据当前目标生成，完成1–3项即可</small></div><span class="tag">${completed}/${tasks.length}</span></div>
     <div class="core-progress"><i style="width:${tasks.length ? Math.round(completed / tasks.length * 100) : 0}%"></i></div>
     <div class="core-task-list">${tasks.map((task) => { const done = ["completed", "adjusted_completed", "withdrawn", "recovery_completed"].includes(task.status); return `<article class="${done ? "done" : ""}"><button class="core-check" type="button" data-action="boss-core-toggle" data-task-id="${escapeHtml(task.id)}" aria-label="${done ? "撤销完成" : "完成"}">${done ? "✓" : ""}</button><div><strong>${escapeHtml(task.title)}</strong><small>${task.adjustment ? escapeHtml(task.adjustment) : "来自当前蓝图、责任和身体状态"}</small></div>${done ? "" : `<details><summary>调整</summary><div><button type="button" data-action="adjust-boss-core" data-mode="shrink" data-task-id="${escapeHtml(task.id)}">缩小</button><button type="button" data-action="adjust-boss-core" data-mode="replace" data-task-id="${escapeHtml(task.id)}">替换</button><button type="button" data-action="adjust-boss-core" data-mode="defer" data-task-id="${escapeHtml(task.id)}">延期</button><button type="button" data-action="adjust-boss-core" data-mode="recovery" data-task-id="${escapeHtml(task.id)}">恢复</button></div></details>`}</article>`; }).join("")}</div>
     <footer>支线不会替代核心责任；合理缩小、替换、延期或恢复不会扣经验。</footer>
@@ -3352,10 +3398,10 @@ function renderTodayEvidence() {
 }
 
 function renderToday() {
-  return `<section class="page-purpose"><span>今天</span><div><strong>完成核心任务，解锁每日小Boss</strong><small>今天只看1–3项合理计划；调整不会被惩罚。</small></div></section>
-    ${renderWeeklyBossSummary(true)}
+  return `<section class="page-purpose"><span>今天</span><div><strong>先完成目标带来的今日任务</strong><small>今天只看1–3项合理计划；调整不会被惩罚。</small></div></section>
     ${renderCoreMissionPanel()}
     ${renderMiniBossPanel()}
+    ${renderWeeklyBossSummary(true)}
     ${renderTodayEvidence()}`;
 }
 
@@ -3640,14 +3686,12 @@ async function confirmGrowthGoal() {
     const goal = await response.json();
     if (!response.ok) throw new Error(goal.error || "方向保存失败");
     await loadGoals();
+    const activeGoal = state.goals.find((item) => item.id === goal.id) || goal;
     state.goalDraft = null;
     state.goalQuestion = null;
     state.goalClarifications = {};
     state.goalText = "";
-    state.dailyMissionBook = null;
-    generateDailyMissionBook(true, true);
-    showToast("当前成长主线已更新，AI正在重排今日任务册");
-    render();
+    await rebuildTodayFromGoal(activeGoal);
   } catch (error) { showToast(error.message || "方向保存失败"); }
 }
 
@@ -3657,8 +3701,7 @@ async function updateGrowthGoal(id, status) {
     const goal = await response.json();
     if (!response.ok) throw new Error(goal.error || "更新失败");
     await loadGoals();
-    state.dailyMissionBook = null;
-    generateDailyMissionBook(true, true);
+    if (currentJourney()) await rebuildTodayFromGoal(currentJourney(), { quiet: true });
     showToast(status === "done" ? "这个方向已经留下成果" : status === "paused" ? "方向先休息，不会失去进度" : "方向重新点亮了");
     render();
   } catch (error) { showToast(error.message || "方向暂时无法更新"); }
@@ -3669,8 +3712,7 @@ async function deleteGrowthGoal(id) {
     const response = await fetch(`/api/goals/${encodeURIComponent(id)}`, { method: "DELETE" });
     if (!response.ok) throw new Error("delete");
     await loadGoals();
-    state.dailyMissionBook = null;
-    generateDailyMissionBook(true, true);
+    if (currentJourney()) await rebuildTodayFromGoal(currentJourney(), { quiet: true });
     showToast("方向已删除，原来的行动和作品仍然保留");
     render();
   } catch { showToast("方向暂时无法删除"); }
