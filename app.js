@@ -669,6 +669,11 @@ const state = {
   ideaResurfacingLoading: false,
   actions: [],
   actionLoadingId: null,
+  planner: { date: "", dayMode: "summer_weekday", scheduled: [], overdue: [], inbox: [] },
+  plannerLoading: false,
+  plannerParse: null,
+  plannerRecommendations: null,
+  plannerText: "",
   decisionCalibration: { sampleSize: 0, reasonCounts: {}, activeSignals: [], preferShort: false, preferLowEnergy: false, preferClearStep: false, preferImportant: false },
   habits: [],
   focusSession: null,
@@ -1010,6 +1015,107 @@ async function loadActions() {
       state.decisionCalibration = result.decisionCalibration || state.decisionCalibration;
     }
   } catch {}
+}
+
+async function loadPlannerToday() {
+  if (!currentProfile()) return;
+  try {
+    const response = await fetch(`/api/planner/today?profileId=${encodeURIComponent(state.childId)}&date=${encodeURIComponent(todayKey())}`);
+    if (response.ok) state.planner = await response.json();
+  } catch {}
+}
+
+async function parsePlannerText(answer = null) {
+  const input = document.querySelector("#planner-natural-text");
+  const text = String(input?.value || state.plannerText).trim();
+  if (text.length < 2 || state.plannerLoading) { showToast("先说说你想安排什么"); return; }
+  state.plannerText = text;
+  state.plannerLoading = true;
+  render();
+  try {
+    const response = await fetch("/api/planner/parse", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, date: todayKey(), text, answer }) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "暂时无法理解这段安排");
+    state.plannerParse = result;
+  } catch (error) { showToast(error.message || "暂时无法理解这段安排"); }
+  finally { state.plannerLoading = false; render(); }
+}
+
+async function requestPlannerRecommendations() {
+  if (state.plannerLoading) return;
+  state.plannerLoading = true;
+  render();
+  try {
+    const response = await fetch("/api/planner/recommend", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, date: todayKey(), energy: getPrefs().energy || "normal" }) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "暂时无法安排今天");
+    state.plannerRecommendations = result;
+  } catch (error) { showToast(error.message || "暂时无法安排今天"); }
+  finally { state.plannerLoading = false; render(); }
+}
+
+async function acceptPlannerItems(items) {
+  if (!items?.length || state.plannerLoading) return;
+  state.plannerLoading = true;
+  render();
+  try {
+    const response = await fetch("/api/planner/accept", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, date: todayKey(), items }) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "暂时无法加入今天");
+    state.planner = result;
+    state.plannerParse = null;
+    state.plannerRecommendations = null;
+    state.plannerText = "";
+    await loadActions();
+    showToast(items.length > 1 ? `已加入${items.length}项安排` : "已加入我的一天");
+  } catch (error) { showToast(error.message || "暂时无法加入今天"); }
+  finally { state.plannerLoading = false; render(); }
+}
+
+async function createPlannerItem(quick = false) {
+  const title = String(document.querySelector(quick ? "#planner-quick-title" : "#planner-item-title")?.value || "").trim();
+  if (!title) { showToast("先写下要做什么"); return; }
+  const kind = quick ? "todo" : document.querySelector("#planner-item-kind")?.value || "todo";
+  const at = quick ? "" : document.querySelector("#planner-item-at")?.value || "";
+  const minutes = quick ? 10 : Number(document.querySelector("#planner-item-minutes")?.value || 15);
+  const recurrence = quick ? "none" : document.querySelector("#planner-item-repeat")?.value || "none";
+  const importance = quick ? 2 : Number(document.querySelector("#planner-item-importance")?.value || 2);
+  const reminderAt = quick ? "" : document.querySelector("#planner-reminder-at")?.value || "";
+  const steps = quick ? [] : String(document.querySelector("#planner-item-steps")?.value || "").split(/[；;\n]/).map((step) => step.trim()).filter(Boolean).slice(0, 8);
+  const payload = { profileId: state.childId, title, itemKind: kind, estimateMinutes: minutes, importance, recurrence, reminderAt, steps, myDayDate: todayKey(), startAt: kind === "event" ? at : "", dueAt: kind === "todo" ? at : "", endAt: kind === "event" && at ? new Date(new Date(at).getTime() + minutes * 60000).toISOString().slice(0, 16) : "" };
+  state.plannerLoading = true;
+  render();
+  try {
+    const response = await fetch("/api/actions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "暂时无法保存");
+    await loadActions();
+    await loadPlannerToday();
+    showToast(kind === "event" ? "日程已加入" : "Todo已加入");
+  } catch (error) { showToast(error.message || "暂时无法保存"); }
+  finally { state.plannerLoading = false; render(); }
+}
+
+async function updatePlannerItem(id, patch) {
+  try {
+    const response = await fetch(`/api/actions/${encodeURIComponent(id)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(patch) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "更新失败");
+    await loadActions();
+    await loadPlannerToday();
+    render();
+  } catch (error) { showToast(error.message || "暂时无法更新"); }
+}
+
+async function deletePlannerItem(id) {
+  try {
+    const response = await fetch(`/api/actions/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!response.ok) throw new Error("删除失败");
+    await loadActions();
+    await loadPlannerToday();
+    showToast("已删除");
+    render();
+  } catch { showToast("暂时无法删除"); }
 }
 
 async function loadHabits() {
@@ -1711,6 +1817,7 @@ async function loadCloudProgress(profileId) {
   await loadIdeas();
   await loadIdeaResurfacing();
   await loadActions();
+  await loadPlannerToday();
   await loadHabits();
   await loadFocus();
   await loadReviews();
@@ -3428,6 +3535,38 @@ function renderTodayAgenda() {
   return `<section class="panel today-agenda"><div class="page-head"><h2 class="panel-title">今日日程</h2><span class="tag">${items.length}项</span></div><div>${items.map((item) => `<article><span>${item.start ? escapeHtml(new Date(item.start).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })) : "全天"}</span><strong>${escapeHtml(item.title)}</strong></article>`).join("")}</div></section>`;
 }
 
+function plannerDayModeLabel(mode) {
+  return { summer_weekday: "暑假 · 工作日", summer_weekend: "暑假 · 周末", school_weekday: "上学日", school_weekend: "周末", holiday: "假期" }[mode] || "今天";
+}
+
+function plannerItemTime(item) {
+  const value = item.startAt || item.dueAt;
+  if (!value) return "待安排";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "待安排" : date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+}
+
+function renderPlannerPreview(result, source) {
+  if (!result) return "";
+  if (result.mode === "question") return `<div class="planner-question"><small>还差一个信息</small><strong>${escapeHtml(result.question)}</strong><div>${(result.options || []).map((option) => `<button type="button" data-action="answer-planner-question" data-field="${escapeHtml(result.answerField)}" data-value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</button>`).join("")}</div></div>`;
+  const items = result.items || [];
+  return `<div class="planner-preview"><header><div><small>${source === "recommend" ? "AI建议" : "识别结果"}</small><strong>${escapeHtml(result.summary || `共${items.length}项`)}</strong></div>${items.length > 1 ? `<button type="button" data-action="accept-planner-all" data-source="${source}">全部加入</button>` : ""}</header><div>${items.map((item, index) => `<article><span>${item.startAt ? escapeHtml(plannerItemTime(item)) : item.kind === "event" ? "日程" : "Todo"}</span><div><strong>${escapeHtml(item.title)}</strong><small>${item.estimateMinutes}分钟 · ${escapeHtml(item.reason || "来自你的安排")}</small></div><button type="button" data-action="accept-planner-one" data-source="${source}" data-index="${index}">加入</button></article>`).join("")}</div></div>`;
+}
+
+function renderDayPlanner() {
+  const planner = state.planner || { scheduled: [], overdue: [], inbox: [] };
+  const scheduled = planner.scheduled || [];
+  const parsePreview = renderPlannerPreview(state.plannerParse, "parse");
+  const recommendationPreview = renderPlannerPreview(state.plannerRecommendations, "recommend");
+  return `<section class="panel day-planner"><div class="page-head"><div><h2 class="panel-title">${pixelIcon("nav-project", "")} 我的一天</h2><small>${plannerDayModeLabel(planner.dayMode)} · ${scheduled.length}项已安排</small></div><button class="planner-ai" type="button" data-action="recommend-planner" ${state.plannerLoading ? "disabled" : ""}>${state.plannerLoading ? "AI编排中..." : "AI安排今天"}</button></div>
+    <div class="planner-quick"><input id="planner-quick-title" maxlength="120" placeholder="添加 Todo" /><button type="button" data-action="planner-quick-add" aria-label="添加Todo">+</button></div>
+    ${scheduled.length ? `<div class="planner-timeline">${scheduled.map((item) => `<article class="${item.status === "done" ? "done" : ""}"><time>${escapeHtml(plannerItemTime(item))}</time>${item.legacy ? `<span class="planner-mark event"></span>` : `<button class="planner-mark ${item.itemKind === "event" ? "event" : ""}" type="button" data-action="planner-toggle" data-item-id="${item.id}" data-status="${escapeHtml(item.status)}" aria-label="${item.status === "done" ? "撤销完成" : "完成"}">${item.status === "done" ? "✓" : ""}</button>`}<div><strong>${escapeHtml(item.title)}</strong><small>${item.itemKind === "event" ? "日程" : `${item.estimateMinutes || 10}分钟`}${item.recurrence?.mode && item.recurrence.mode !== "none" ? ` · ${escapeHtml({ daily: "每天", weekdays: "工作日", weekends: "周末", weekly: "每周", custom: "自选星期" }[item.recurrence.mode] || "重复")}` : ""}${item.reminderAt ? " · 有提醒" : ""}${item.steps?.length ? ` · ${item.steps.length}步` : ""}${item.plannerReason ? ` · ${escapeHtml(item.plannerReason)}` : ""}</small></div>${item.legacy ? "" : `<button class="planner-important ${Number(item.importance) === 3 ? "active" : ""}" type="button" data-action="planner-important" data-item-id="${item.id}" data-important="${Number(item.importance) === 3 ? "1" : "0"}" aria-label="${Number(item.importance) === 3 ? "取消重要" : "标为重要"}">★</button><button class="planner-delete" type="button" data-action="planner-delete" data-item-id="${item.id}" aria-label="删除">×</button>`}</article>`).join("")}</div>` : `<div class="planner-empty"><strong>今天还没有安排</strong><span>添加一项，或让AI根据目标和未完成事项推荐。</span></div>`}
+    ${(planner.overdue || []).length ? `<div class="planner-carryover"><small>之前未完成</small>${planner.overdue.slice(0, 3).map((item) => `<button type="button" data-action="planner-carryover" data-item-id="${item.id}"><strong>${escapeHtml(item.title)}</strong><span>加入今天</span></button>`).join("")}</div>` : ""}
+    ${parsePreview}${recommendationPreview}
+    <details class="planner-add-more"><summary>添加日程或批量安排</summary><div class="planner-manual"><select id="planner-item-kind" aria-label="类型"><option value="todo">Todo</option><option value="event">日程</option></select><input id="planner-item-title" maxlength="120" placeholder="名称" /><input id="planner-item-at" type="datetime-local" aria-label="日期和时间" /><select id="planner-item-minutes" aria-label="时长"><option value="10">10分钟</option><option value="20">20分钟</option><option value="30">30分钟</option><option value="60">1小时</option></select><input id="planner-reminder-at" type="datetime-local" aria-label="提醒时间" /><select id="planner-item-repeat" aria-label="重复"><option value="none">不重复</option><option value="daily">每天</option><option value="weekdays">工作日</option><option value="weekends">周末</option><option value="weekly">每周</option></select><select id="planner-item-importance" aria-label="重要程度"><option value="2">普通</option><option value="3">重要</option><option value="1">低优先</option></select><input id="planner-item-steps" maxlength="500" placeholder="步骤，用分号分开" /><button type="button" data-action="planner-manual-add">保存</button></div><div class="planner-natural"><textarea id="planner-natural-text" rows="3" maxlength="3000" placeholder="例如：明天上午九点游泳课；下午完成科学实验记录；每天晚上阅读20分钟">${escapeHtml(state.plannerText)}</textarea><button type="button" data-action="parse-planner-text" ${state.plannerLoading ? "disabled" : ""}>让AI提取</button></div></details>
+  </section>`;
+}
+
 function renderMiniBossPanel() {
   const mini = state.bossState?.miniBoss;
   const bossIcon = state.bossState?.week?.boss?.iconPath || (state.bossState?.week?.boss?.id ? `assets/boss/icons/${state.bossState.week.boss.id}.png` : "assets/pixel/stone-clean.png");
@@ -3444,6 +3583,7 @@ function renderTodayEvidence() {
 
 function renderToday() {
   return `<section class="page-purpose"><span>今天</span><div><strong>先照顾成长底座，再推进本周项目</strong><small>固定任务保持生活节奏；主线任务每天形成一份项目证据。</small></div></section>
+    ${renderDayPlanner()}
     ${renderTodayAgenda()}
     ${renderFoundationRoutinePanel()}
     ${renderCoreMissionPanel()}
@@ -4475,6 +4615,37 @@ function answerCoach(questionId, value) {
 }
 
 document.addEventListener("click", async (event) => {
+  if (event.target.closest("[data-action='recommend-planner']")) { await requestPlannerRecommendations(); return; }
+  if (event.target.closest("[data-action='planner-quick-add']")) { await createPlannerItem(true); return; }
+  if (event.target.closest("[data-action='planner-manual-add']")) { await createPlannerItem(false); return; }
+  if (event.target.closest("[data-action='parse-planner-text']")) { await parsePlannerText(); return; }
+  const plannerQuestion = event.target.closest("[data-action='answer-planner-question']");
+  if (plannerQuestion) { await parsePlannerText({ field: plannerQuestion.dataset.field, value: plannerQuestion.dataset.value }); return; }
+  const plannerAcceptOne = event.target.closest("[data-action='accept-planner-one']");
+  if (plannerAcceptOne) {
+    const result = plannerAcceptOne.dataset.source === "recommend" ? state.plannerRecommendations : state.plannerParse;
+    const item = result?.items?.[Number(plannerAcceptOne.dataset.index)];
+    if (item) await acceptPlannerItems([item]);
+    return;
+  }
+  const plannerAcceptAll = event.target.closest("[data-action='accept-planner-all']");
+  if (plannerAcceptAll) {
+    const result = plannerAcceptAll.dataset.source === "recommend" ? state.plannerRecommendations : state.plannerParse;
+    await acceptPlannerItems(result?.items || []);
+    return;
+  }
+  const plannerCarryover = event.target.closest("[data-action='planner-carryover']");
+  if (plannerCarryover) {
+    const item = (state.planner?.overdue || []).find((candidate) => String(candidate.id) === plannerCarryover.dataset.itemId);
+    if (item) await acceptPlannerItems([{ existingActionId: item.id, kind: "todo", title: item.title, estimateMinutes: item.estimateMinutes, importance: item.importance, energy: item.energy, sourceType: "carryover", sourceRef: `action:${item.id}`, reason: "之前未完成，今天继续推进" }]);
+    return;
+  }
+  const plannerToggle = event.target.closest("[data-action='planner-toggle']");
+  if (plannerToggle) { await updatePlannerItem(plannerToggle.dataset.itemId, { status: plannerToggle.dataset.status === "done" ? "open" : "done", occurrenceDate: todayKey() }); return; }
+  const plannerImportant = event.target.closest("[data-action='planner-important']");
+  if (plannerImportant) { await updatePlannerItem(plannerImportant.dataset.itemId, { importance: plannerImportant.dataset.important === "1" ? 2 : 3 }); return; }
+  const plannerDelete = event.target.closest("[data-action='planner-delete']");
+  if (plannerDelete) { await deletePlannerItem(plannerDelete.dataset.itemId); return; }
   if (event.target.closest("[data-action='generate-daily-missions']")) { await generateDailyMissionBook(true); state.dailyPlan = null; render(); return; }
   const journeyStage = event.target.closest("[data-action='jump-journey-stage']");
   if (journeyStage) { state.page = journeyStage.dataset.page; render(); return; }
@@ -5080,6 +5251,8 @@ document.addEventListener("input", (event) => {
 });
 
 document.addEventListener("keydown", async (event) => {
+  if (event.target?.id === "planner-quick-title" && event.key === "Enter") { event.preventDefault(); await createPlannerItem(true); }
+  if (event.target?.id === "planner-natural-text" && event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); await parsePlannerText(); }
   if (event.target?.id === "action-inbox-text" && event.key === "Enter") { event.preventDefault(); await parseActionInbox(); }
   if (event.target?.id === "self-coach-question" && event.key === "Enter") { event.preventDefault(); await askSelfCoach(); }
 });

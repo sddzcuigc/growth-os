@@ -47,6 +47,7 @@ const scienceSource = readFileSync("SCIENCE.md", "utf8");
 const htmlSource = readFileSync("index.html", "utf8");
 const appSourceText = readFileSync("app.js", "utf8");
 const bossDesignSource = readFileSync("成长OS_100Boss每日小Boss与每周Boss战_完整设计_V1.0.md", "utf8");
+const plannerSkillSource = readFileSync("app-skills/growth-planner/SKILL.md", "utf8");
 
 const failures = [];
 
@@ -375,6 +376,9 @@ for (const term of ["唯一主规范", "固定成长底座", "周项目主线", 
   if (!bossDesignSource.includes(term)) failures.push(`100 Boss master design missing ${term}`);
 }
 if (!serverSource.includes("目标必须先由AI完成澄清和SMART设计") || serverSource.includes("用10分钟做一个关于")) failures.push("goal creation can still fall back to the rejected universal template");
+for (const term of ["/api/planner/today", "/api/planner/parse", "/api/planner/recommend", "/api/planner/accept", "plannerDayMode", "plannerOccursOn", "plannerSkill", "recurrence_json", "my_day_date", "CREATE TABLE IF NOT EXISTS action_occurrences", "recurring_action_completed"]) if (!serverSource.includes(term)) failures.push(`planner backend missing ${term}`);
+for (const term of ["renderDayPlanner", "AI安排今天", "planner-natural-text", "acceptPlannerItems", "之前未完成", "暑假 · 工作日"]) if (!appSourceText.includes(term)) failures.push(`planner UI missing ${term}`);
+for (const term of ["Prefer carrying forward", "summer vacation", "weekends", "weekly_project", "Return JSON only"]) if (!plannerSkillSource.includes(term)) failures.push(`growth planner skill missing ${term}`);
 
 if (failures.length) {
   console.error(failures.map((failure) => `- ${failure}`).join("\n"));

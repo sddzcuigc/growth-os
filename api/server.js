@@ -12,6 +12,8 @@ loadEnvFile(".env");
 
 const root = process.cwd();
 const bossCatalog = JSON.parse(readFileSync(join(root, "data", "boss-catalog.json"), "utf8"));
+const plannerSkill = readFileSync(join(root, "app-skills", "growth-planner", "SKILL.md"), "utf8");
+const plannerOutputSchema = JSON.parse(readFileSync(join(root, "app-skills", "growth-planner", "output.schema.json"), "utf8"));
 const port = Number(process.env.PORT || 5173);
 const host = process.env.HOST || "127.0.0.1";
 const baseUrl = process.env.SILICONFLOW_BASE_URL || "https://api.siliconflow.cn/v1";
@@ -36,6 +38,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS ideas (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, title TEXT NOT NULL, note TEXT NOT NULL, source TEXT NOT NULL, status TEXT NOT NULL, next_step TEXT NOT NULL, skill TEXT NOT NULL, ai_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS idea_resurfacings (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, idea_id INTEGER NOT NULL REFERENCES ideas(id) ON DELETE CASCADE, prompt_json TEXT NOT NULL, outcome TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS actions (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, title TEXT NOT NULL, detail TEXT NOT NULL, status TEXT NOT NULL, estimate_minutes INTEGER NOT NULL, energy TEXT NOT NULL, importance INTEGER NOT NULL, due_at TEXT NOT NULL, source TEXT NOT NULL, source_ref TEXT NOT NULL, steps_json TEXT NOT NULL, success TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS action_occurrences (id INTEGER PRIMARY KEY, action_id INTEGER NOT NULL REFERENCES actions(id) ON DELETE CASCADE, occurrence_date TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(action_id,occurrence_date));
   CREATE TABLE IF NOT EXISTS habits (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, title TEXT NOT NULL, cue TEXT NOT NULL, target_minutes INTEGER NOT NULL, frequency_json TEXT NOT NULL, active INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS habit_logs (id INTEGER PRIMARY KEY, habit_id INTEGER NOT NULL REFERENCES habits(id) ON DELETE CASCADE, log_date TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(habit_id,log_date));
   CREATE TABLE IF NOT EXISTS focus_sessions (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, action_id INTEGER REFERENCES actions(id) ON DELETE SET NULL, title TEXT NOT NULL, planned_seconds INTEGER NOT NULL, status TEXT NOT NULL, elapsed_seconds INTEGER NOT NULL, resumed_at TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT NOT NULL, outcome TEXT NOT NULL);
@@ -78,6 +81,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS focus_profile_status ON focus_sessions(profile_id,status,started_at);
   CREATE INDEX IF NOT EXISTS habits_profile_active ON habits(profile_id,active,updated_at);
   CREATE INDEX IF NOT EXISTS actions_profile_status ON actions(profile_id,status,due_at,updated_at);
+  CREATE INDEX IF NOT EXISTS action_occurrences_date ON action_occurrences(occurrence_date,status,action_id);
   CREATE INDEX IF NOT EXISTS ideas_profile_status ON ideas(profile_id,status,updated_at);
   CREATE INDEX IF NOT EXISTS idea_resurfacings_profile_time ON idea_resurfacings(profile_id,outcome,created_at);
   CREATE INDEX IF NOT EXISTS journals_profile_time ON journals(profile_id, created_at);
@@ -93,6 +97,15 @@ ensureColumn("ideas", "snoozed_until", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("actions", "not_before", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("actions", "defer_count", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("actions", "last_defer_reason", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("actions", "item_kind", "TEXT NOT NULL DEFAULT 'todo'");
+ensureColumn("actions", "start_at", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("actions", "end_at", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("actions", "reminder_at", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("actions", "recurrence_json", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("actions", "my_day_date", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("actions", "skill_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("actions", "planner_reason", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("actions", "generated", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("users", "recovery_hash", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("users", "recovery_updated_at", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("growth_goals", "plan_json", "TEXT NOT NULL DEFAULT '{}'");
@@ -174,6 +187,10 @@ async function requestHandler(request, response) {
     if (request.method === "POST" && url.pathname === "/api/actions") return handleCreateAction(request, response);
     if (request.method === "POST" && url.pathname === "/api/action-inbox/parse") return handleParseActionInbox(request, response);
     if (request.method === "POST" && url.pathname === "/api/capture/parse") return handleParseCapture(request, response);
+    if (request.method === "GET" && url.pathname === "/api/planner/today") return handlePlannerToday(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/planner/parse") return handlePlannerParse(request, response);
+    if (request.method === "POST" && url.pathname === "/api/planner/recommend") return handlePlannerRecommend(request, response);
+    if (request.method === "POST" && url.pathname === "/api/planner/accept") return handlePlannerAccept(request, response);
     if (request.method === "GET" && url.pathname === "/api/goals") return handleListGoals(request, response, url);
     if (request.method === "POST" && url.pathname === "/api/onboarding/question") return handleOnboardingQuestion(request, response);
     if (request.method === "POST" && url.pathname === "/api/onboarding/portrait") return handleOnboardingPortrait(request, response);
@@ -1329,9 +1346,130 @@ async function handleIdeaResurfacingOutcome(request, response, url) {
   sendJson(response, 200, { outcome, idea: ideaRows(row.profile_id).find((item) => item.id === row.idea_id), resurfacing: null });
 }
 
+function normalizePlannerRecurrence(value) {
+  const input = typeof value === "string" ? { mode: value } : value && typeof value === "object" ? value : {};
+  const mode = ["none", "daily", "weekdays", "weekends", "weekly", "custom"].includes(input.mode) ? input.mode : "none";
+  const weekdays = Array.isArray(input.weekdays) ? [...new Set(input.weekdays.map(Number).filter((day) => day >= 0 && day <= 6))].slice(0, 7) : [];
+  return { mode, weekdays, interval: Math.max(1, Math.min(12, Number(input.interval || 1))), rrule: mode === "daily" ? "FREQ=DAILY" : mode === "weekdays" ? "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR" : mode === "weekends" ? "FREQ=WEEKLY;BYDAY=SA,SU" : mode === "weekly" ? "FREQ=WEEKLY" : mode === "custom" && weekdays.length ? `FREQ=WEEKLY;BYDAY=${weekdays.map((day) => ["SU", "MO", "TU", "WE", "TH", "FR", "SA"][day]).join(",")}` : "" };
+}
+function plannerDayMode(dateKey) {
+  const date = new Date(`${dateKey}T12:00:00`);
+  const weekend = [0, 6].includes(date.getDay());
+  const summer = [6, 7].includes(date.getMonth());
+  return summer ? (weekend ? "summer_weekend" : "summer_weekday") : weekend ? "school_weekend" : "school_weekday";
+}
+function plannerDatePart(value) { return /^\d{4}-\d{2}-\d{2}/.test(String(value || "")) ? String(value).slice(0, 10) : ""; }
+function plannerTimePart(value, fallback = "09:00") { return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(value || "")) ? String(value).slice(11, 16) : fallback; }
+function plannerOccursOn(action, dateKey) {
+  const recurrence = action.recurrence || { mode: "none" };
+  const day = new Date(`${dateKey}T12:00:00`).getDay();
+  const anchorDate = plannerDatePart(action.startAt || action.dueAt || action.createdAt);
+  if (recurrence.mode !== "none" && anchorDate && dateKey < anchorDate) return false;
+  if (recurrence.mode === "daily") return true;
+  if (recurrence.mode === "weekdays") return day >= 1 && day <= 5;
+  if (recurrence.mode === "weekends") return day === 0 || day === 6;
+  if (recurrence.mode === "weekly") return day === new Date(`${anchorDate}T12:00:00`).getDay();
+  if (recurrence.mode === "custom") return recurrence.weekdays?.includes(day);
+  return [plannerDatePart(action.startAt), plannerDatePart(action.dueAt), action.myDayDate].includes(dateKey);
+}
+function normalizePlannerItem(raw, dateKey, fallbackSource = "user_text") {
+  const kind = raw?.kind === "event" ? "event" : "todo";
+  const validDateTime = (value) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(value || "")) ? String(value).slice(0, 16) : "";
+  const sourceType = ["carryover", "weekly_project", "daily_goal", "skill_tree", "routine_balance", "user_text"].includes(raw?.sourceType) ? raw.sourceType : fallbackSource;
+  const startAt = validDateTime(raw?.startAt);
+  const estimateMinutes = Math.max(3, Math.min(180, Number(raw?.estimateMinutes || 15)));
+  const endAt = validDateTime(raw?.endAt) || (startAt ? new Date(new Date(startAt).getTime() + estimateMinutes * 60000).toISOString().slice(0, 16) : "");
+  const dueAt = validDateTime(raw?.dueAt);
+  const explicitMyDay = /^\d{4}-\d{2}-\d{2}$/.test(String(raw?.myDayDate || "")) ? String(raw.myDayDate) : "";
+  return { existingActionId: Math.max(0, Number(raw?.existingActionId || 0)), kind, title: String(raw?.title || "").trim().slice(0, 120), detail: String(raw?.detail || "").trim().slice(0, 500), startAt, endAt, dueAt, reminderAt: validDateTime(raw?.reminderAt), estimateMinutes, importance: Math.max(1, Math.min(3, Number(raw?.importance || 2))), energy: ["low", "normal", "high"].includes(raw?.energy) ? raw.energy : "normal", recurrence: normalizePlannerRecurrence(raw?.recurrence), steps: Array.isArray(raw?.steps) ? raw.steps.map(String).map((step) => step.slice(0, 160)).filter(Boolean).slice(0, 6) : [], success: String(raw?.success || "完成后能清楚确认结果").slice(0, 180), sourceType, sourceRef: String(raw?.sourceRef || "").slice(0, 120), skillId: raw?.skillId ? normalizeSkillId(raw.skillId) : "", goalId: Math.max(0, Number(raw?.goalId || 0)), reason: String(raw?.reason || (sourceType === "user_text" ? "来自你刚才的安排" : "适合今天的成长节奏")).slice(0, 160), myDayDate: explicitMyDay || plannerDatePart(startAt || dueAt) || dateKey };
+}
+function plannerSnapshotSchedule(profileIdValue) {
+  const snapshot = db.prepare("SELECT data_json FROM snapshots WHERE profile_id=?").get(profileIdValue);
+  const data = snapshot ? parseStoredJson(snapshot.data_json, {}) : {};
+  return (Array.isArray(data["schedule-items"]) ? data["schedule-items"] : []).slice(0, 30).map((item) => ({ id: String(item.id || "legacy"), title: String(item.title || "日程").slice(0, 120), itemKind: "event", startAt: String(item.start || "").slice(0, 30), endAt: "", energy: item.energy || "normal", status: "open", legacy: true }));
+}
+function plannerTodayState(profileIdValue, dateKey) {
+  const actions = actionRows(profileIdValue);
+  const active = actions.filter((action) => !["done", "dropped"].includes(action.status));
+  const occurrenceStatus = new Map(db.prepare("SELECT action_occurrences.action_id AS actionId,action_occurrences.status FROM action_occurrences JOIN actions ON actions.id=action_occurrences.action_id WHERE actions.profile_id=? AND action_occurrences.occurrence_date=?").all(profileIdValue, dateKey).map((row) => [Number(row.actionId), row.status]));
+  const scheduled = active.filter((action) => plannerOccursOn(action, dateKey)).map((action) => {
+    if (action.recurrence?.mode !== "none" && plannerDatePart(action.startAt) !== dateKey) {
+      const time = plannerTimePart(action.startAt || action.dueAt);
+      return { ...action, startAt: `${dateKey}T${time}`, endAt: action.endAt ? `${dateKey}T${plannerTimePart(action.endAt)}` : "", status: occurrenceStatus.get(action.id) || "open", occurrence: true };
+    }
+    return action.recurrence?.mode !== "none" ? { ...action, status: occurrenceStatus.get(action.id) || "open", occurrence: true } : action;
+  });
+  const legacy = plannerSnapshotSchedule(profileIdValue).filter((item) => plannerDatePart(item.startAt) === dateKey);
+  const overdue = active.filter((action) => action.itemKind !== "event" && plannerDatePart(action.dueAt) && plannerDatePart(action.dueAt) < dateKey && !scheduled.some((item) => item.id === action.id)).slice(0, 10);
+  const inbox = active.filter((action) => action.itemKind !== "event" && !action.startAt && !action.dueAt && action.recurrence?.mode === "none").slice(0, 12);
+  return { date: dateKey, dayMode: plannerDayMode(dateKey), scheduled: [...scheduled, ...legacy].sort((a, b) => String(a.startAt || a.dueAt).localeCompare(String(b.startAt || b.dueAt))), overdue, inbox };
+}
+function parsePlannerClock(text, dateKey) {
+  const base = new Date(`${dateKey}T12:00:00`);
+  let target = new Date(base);
+  if (/后天/.test(text)) target.setDate(target.getDate() + 2);
+  else if (/明天/.test(text)) target.setDate(target.getDate() + 1);
+  const time = text.match(/(?:上午|早上|下午|晚上|中午)?\s*(\d{1,2})(?:[:：点时](\d{1,2})?)?/);
+  if (!time) return /今天|明天|后天/.test(text) ? `${serverDateKey(target)}T18:00` : "";
+  let hour = Number(time[1]);
+  const minute = Number(time[2] || 0);
+  if (/下午|晚上/.test(time[0]) && hour < 12) hour += 12;
+  if (/中午/.test(time[0]) && hour < 11) hour += 12;
+  if (hour > 23 || minute > 59) return "";
+  return `${serverDateKey(target)}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+function fallbackPlannerExtraction(text, dateKey) {
+  const parts = text.split(/\n+|[。；;]/).map((item) => item.trim()).filter((item) => item.length >= 2).slice(0, 12);
+  return parts.map((part) => {
+    const draft = fallbackInboxDraft(part);
+    const startAt = parsePlannerClock(part, dateKey) || draft.dueAt;
+    const event = /上课|课程|[语数英体音美科]课|游泳课|球课|比赛|活动|预约|看医生|出发|到达|电影|演出|会议/.test(part);
+    const recurrence = /每天/.test(part) ? "daily" : /工作日|周一到周五/.test(part) ? "weekdays" : /周末/.test(part) ? "weekends" : /每周/.test(part) ? "weekly" : "none";
+    return normalizePlannerItem({ kind: event ? "event" : "todo", ...draft, startAt: event ? startAt : "", dueAt: event ? "" : startAt, recurrence, sourceType: "user_text", reason: "从你输入的安排中提取" }, dateKey);
+  });
+}
+function fallbackPlannerRecommendations(profileIdValue, dateKey) {
+  const today = plannerTodayState(profileIdValue, dateKey);
+  const week = publicWeeklyBoss(ensureWeeklyBoss(profileIdValue, dateKey));
+  const stage = week.selection?.project?.dailyStages?.[Math.max(0, Math.min(6, (new Date(`${dateKey}T12:00:00`).getDay() || 7) - 1))];
+  const goal = goalRows(profileIdValue).find((item) => item.status === "active" && item.isPrimary) || goalRows(profileIdValue).find((item) => item.status === "active");
+  const weekend = today.dayMode.endsWith("weekend");
+  const result = today.overdue.slice(0, 2).map((action, index) => normalizePlannerItem({ existingActionId: action.id, kind: "todo", title: action.title, startAt: `${dateKey}T${index ? "14:40" : "14:00"}`, estimateMinutes: Math.min(30, action.estimateMinutes), importance: action.importance, energy: action.energy, sourceType: "carryover", sourceRef: `action:${action.id}`, skillId: action.skillId, goalId: action.goalId, reason: "这项之前没完成，今天仍然重要" }, dateKey));
+  if (stage) result.push(normalizePlannerItem({ kind: "todo", title: stage.task, startAt: `${dateKey}T${weekend ? "15:00" : "10:30"}`, estimateMinutes: 25, importance: 3, energy: "normal", sourceType: "weekly_project", sourceRef: `weekly-boss:${week.id}`, skillId: week.boss.skillId, goalId: goal?.id || 0, reason: `推进本周项目的“${stage.name}”阶段`, success: week.selection.project.successCriteria?.[0] || "留下真实项目证据" }, dateKey));
+  const balance = weekend ? [
+    { title: "自己整理床铺和今天会用到的物品", time: "08:30", minutes: 10, skill: "self-regulation", reason: "周末也保留轻量的生活自理" },
+    { title: "和家人完成一次户外活动或共同任务", time: "10:00", minutes: 40, skill: "ethics-collaboration", reason: "周末优先真实连接和共同经历" },
+    { title: "参与准备一餐或完成一项家务", time: "17:30", minutes: 20, skill: "creation", reason: "把生活技能放进真实家庭场景" },
+    { title: "自由阅读并分享一个最有意思的发现", time: "19:30", minutes: 20, skill: "communication", reason: "保持阅读，同时练习表达" },
+    { title: "用一句话记录今天最开心或最意外的事", time: "20:30", minutes: 5, skill: "metacognition", reason: "轻量回顾一天，不把周末变成上课" }
+  ] : [
+    { title: "洗漱、整理床铺并准备今天要用的物品", time: "08:00", minutes: 15, skill: "self-regulation", reason: "用稳定晨间流程开始暑假工作日" },
+    { title: "完成一段专注阅读并主动回忆三个要点", time: "09:00", minutes: 25, skill: "metacognition", reason: "暑假工作日保留稳定学习节奏" },
+    { title: "午餐后整理餐桌和自己的学习区域", time: "12:30", minutes: 10, skill: "ethics-collaboration", reason: "把生活责任变成每天都能完成的小行动" },
+    { title: "完成一组跑跳、球类或核心力量活动", time: "17:00", minutes: 30, skill: "wellbeing", reason: "全天计划必须给身体留下活动时间" },
+    { title: "向家人讲清楚今天完成的一件事", time: "19:30", minutes: 10, skill: "communication", reason: "用真实经历练习表达和交流" }
+  ];
+  for (const item of balance) if (!result.some((candidate) => candidate.skillId === item.skill)) result.push(normalizePlannerItem({ kind: "todo", title: item.title, startAt: `${dateKey}T${item.time}`, estimateMinutes: item.minutes, importance: 2, energy: "normal", sourceType: "routine_balance", skillId: item.skill, reason: item.reason }, dateKey));
+  return result.slice(0, 8);
+}
+function plannerContext(profileIdValue, dateKey) {
+  const profile = db.prepare("SELECT id,name,age FROM profiles WHERE id=?").get(profileIdValue);
+  const blueprint = db.prepare("SELECT blueprint_json FROM growth_blueprints WHERE profile_id=?").get(profileIdValue);
+  const week = publicWeeklyBoss(ensureWeeklyBoss(profileIdValue, dateKey));
+  return { localDate: dateKey, weekday: new Intl.DateTimeFormat("zh-CN", { weekday: "long" }).format(new Date(`${dateKey}T12:00:00`)), timezone: "Asia/Shanghai", dayMode: plannerDayMode(dateKey), child: profile, activeGoals: goalRows(profileIdValue).filter((item) => item.status === "active").slice(0, 3), blueprint: blueprint ? parseStoredJson(blueprint.blueprint_json, {}) : null, weeklyProject: week.selection?.project || null, todayProjectStage: week.selection?.project?.dailyStages?.[Math.max(0, Math.min(6, (new Date(`${dateKey}T12:00:00`).getDay() || 7) - 1))] || null, existing: plannerTodayState(profileIdValue, dateKey), recentFeedback: taskFeedbackRows(profileIdValue).slice(0, 8) };
+}
+async function callPlannerSkill(mode, context, input = {}) {
+  if (!apiKey) return null;
+  const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(12000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: mode === "extract" ? 0.1 : 0.35, max_tokens: 2200, response_format: { type: "json_object" }, messages: [
+    { role: "system", content: `${plannerSkill}\n\nThe output contract is:\n${JSON.stringify(plannerOutputSchema)}` },
+    { role: "user", content: JSON.stringify({ mode, context, input }) }
+  ] }) });
+  if (!apiResponse.ok) throw new Error(`planner ${apiResponse.status}`);
+  return parseJsonContent((await apiResponse.json()).choices?.[0]?.message?.content || "{}");
+}
 function actionRows(profileIdValue) {
-  return db.prepare("SELECT id,title,detail,status,estimate_minutes AS estimateMinutes,energy,importance,due_at AS dueAt,source,source_ref AS sourceRef,goal_id AS goalId,not_before AS notBefore,defer_count AS deferCount,last_defer_reason AS lastDeferReason,steps_json AS steps,success,created_at AS createdAt,updated_at AS updatedAt FROM actions WHERE profile_id=? ORDER BY CASE status WHEN 'doing' THEN 1 WHEN 'open' THEN 2 WHEN 'someday' THEN 3 WHEN 'dropped' THEN 4 ELSE 5 END,due_at='',due_at,importance DESC,updated_at DESC LIMIT 100").all(profileIdValue)
-    .map((item) => ({ ...item, steps: JSON.parse(item.steps) }));
+  return db.prepare("SELECT id,title,detail,status,estimate_minutes AS estimateMinutes,energy,importance,due_at AS dueAt,source,source_ref AS sourceRef,goal_id AS goalId,not_before AS notBefore,defer_count AS deferCount,last_defer_reason AS lastDeferReason,steps_json AS steps,success,item_kind AS itemKind,start_at AS startAt,end_at AS endAt,reminder_at AS reminderAt,recurrence_json AS recurrence,my_day_date AS myDayDate,skill_id AS skillId,planner_reason AS plannerReason,generated,created_at AS createdAt,updated_at AS updatedAt FROM actions WHERE profile_id=? ORDER BY CASE status WHEN 'doing' THEN 1 WHEN 'open' THEN 2 WHEN 'someday' THEN 3 WHEN 'dropped' THEN 4 ELSE 5 END,start_at='',start_at,due_at='',due_at,importance DESC,updated_at DESC LIMIT 200").all(profileIdValue)
+    .map((item) => ({ ...item, steps: parseStoredJson(item.steps, []), recurrence: parseStoredJson(item.recurrence, { mode: "none" }), generated: Boolean(item.generated) }));
 }
 function actionDecisionCalibration(profileIdValue) {
   const rows = db.prepare("SELECT reason,outcome,created_at AS createdAt FROM action_decisions WHERE profile_id=? ORDER BY id DESC LIMIT 20").all(profileIdValue);
@@ -1348,6 +1486,94 @@ function handleListActions(request, response, url) {
   const profileIdValue = String(url.searchParams.get("profileId") || "");
   if (!ownedProfile(user.id, profileIdValue)) return sendJson(response, 404, { error: "角色不存在" });
   sendJson(response, 200, { actions: actionRows(profileIdValue), decisionCalibration: actionDecisionCalibration(profileIdValue) });
+}
+function handlePlannerToday(request, response, url) {
+  const user = requireUser(request, response); if (!user) return;
+  const profileIdValue = String(url.searchParams.get("profileId") || "");
+  if (!ownedProfile(user.id, profileIdValue)) return sendJson(response, 404, { error: "角色不存在" });
+  const requested = String(url.searchParams.get("date") || "");
+  const dateKey = /^\d{4}-\d{2}-\d{2}$/.test(requested) ? requested : serverDateKey();
+  sendJson(response, 200, { ...plannerTodayState(profileIdValue, dateKey), skillVersion: "growth-planner@1.0.0" });
+}
+async function handlePlannerParse(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  const body = await readBodyJson(request);
+  const profileIdValue = String(body.profileId || "");
+  if (!ownedProfile(user.id, profileIdValue)) return sendJson(response, 404, { error: "角色不存在" });
+  const text = String(body.text || "").trim().slice(0, 3000);
+  if (text.length < 2) return sendJson(response, 400, { error: "请写下至少一件安排" });
+  const dateKey = /^\d{4}-\d{2}-\d{2}$/.test(String(body.date || "")) ? String(body.date) : serverDateKey();
+  const fallback = fallbackPlannerExtraction(text, dateKey);
+  let output = { mode: "ready", dayMode: plannerDayMode(dateKey), summary: `识别到${fallback.length}项安排`, items: fallback, provider: "local" };
+  try {
+    if (body.fast === true && isDemoUser(user)) throw new Error("fast local validation");
+    const ai = await callPlannerSkill("extract", plannerContext(profileIdValue, dateKey), { text, answer: body.answer || null });
+    if (ai) {
+      const items = (Array.isArray(ai.items) ? ai.items : fallback).map((item) => normalizePlannerItem(item, dateKey, "user_text")).filter((item) => item.title).slice(0, 12);
+      const question = ai.mode === "question" && !body.answer && String(ai.question || "").trim();
+      output = question ? { mode: "question", dayMode: plannerDayMode(dateKey), question: String(ai.question).slice(0, 80), answerField: ["date", "time", "duration", "type"].includes(ai.answerField) ? ai.answerField : "time", options: (Array.isArray(ai.options) ? ai.options : []).slice(0, 4).map((option) => ({ label: String(option.label || option.value).slice(0, 30), value: String(option.value || option.label).slice(0, 80) })), items, provider: "siliconflow" } : { mode: "ready", dayMode: plannerDayMode(dateKey), summary: String(ai.summary || `识别到${items.length}项安排`).slice(0, 120), items, provider: "siliconflow" };
+    }
+  } catch (error) { console.warn("Planner extraction used local fallback:", error.message); }
+  recordEvent(user.id, profileIdValue, "planner_text_parsed", { provider: output.provider, count: output.items.length, mode: output.mode });
+  sendJson(response, 200, output);
+}
+async function handlePlannerRecommend(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  const body = await readBodyJson(request);
+  const profileIdValue = String(body.profileId || "");
+  if (!ownedProfile(user.id, profileIdValue)) return sendJson(response, 404, { error: "角色不存在" });
+  const dateKey = /^\d{4}-\d{2}-\d{2}$/.test(String(body.date || "")) ? String(body.date) : serverDateKey();
+  const context = plannerContext(profileIdValue, dateKey);
+  const fallback = fallbackPlannerRecommendations(profileIdValue, dateKey);
+  let items = fallback;
+  let summary = context.dayMode === "summer_weekend" ? "暑假周末：项目、户外和家人时间更充足" : context.dayMode === "summer_weekday" ? "暑假工作日：全天有节奏，也保留大片自由时间" : "根据今天的目标和已有安排推荐";
+  let provider = "local";
+  try {
+    if (body.fast === true && isDemoUser(user)) throw new Error("fast local validation");
+    const ai = await callPlannerSkill("recommend", context, { energy: body.energy || "normal", request: "为今天推荐可选择的Todo和时间块，不直接保存" });
+    if (ai) {
+      const allowedExisting = new Set([...context.existing.overdue, ...context.existing.inbox].map((item) => Number(item.id)));
+      items = (Array.isArray(ai.items) ? ai.items : []).map((item) => normalizePlannerItem(item, dateKey, "skill_tree")).filter((item) => item.title && (!item.existingActionId || allowedExisting.has(item.existingActionId))).slice(0, 8);
+      if (!items.length) items = fallback;
+      summary = String(ai.summary || summary).slice(0, 120);
+      provider = "siliconflow";
+    }
+  } catch (error) { console.warn("Planner recommendation used local fallback:", error.message); }
+  recordEvent(user.id, profileIdValue, "planner_recommended", { provider, count: items.length, dayMode: context.dayMode });
+  sendJson(response, 200, { mode: "ready", dayMode: context.dayMode, summary, items, provider, skillVersion: "growth-planner@1.0.0" });
+}
+function insertPlannerItem(profileIdValue, item) {
+  const goalId = item.goalId && db.prepare("SELECT id FROM growth_goals WHERE id=? AND profile_id=? AND status='active'").get(item.goalId, profileIdValue) ? item.goalId : 0;
+  const duplicate = item.kind === "todo" ? findDuplicateAction(profileIdValue, item.title) : null;
+  if (duplicate) return duplicate;
+  const now = nowIso();
+  const result = db.prepare("INSERT INTO actions(profile_id,title,detail,status,estimate_minutes,energy,importance,due_at,source,source_ref,goal_id,steps_json,success,item_kind,start_at,end_at,reminder_at,recurrence_json,my_day_date,skill_id,planner_reason,generated,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+    .run(profileIdValue, item.title, item.detail, "open", item.estimateMinutes, item.energy, item.importance, item.dueAt, "planner", item.sourceRef || item.sourceType, goalId, JSON.stringify(item.steps), item.success, item.kind, item.startAt, item.endAt, item.reminderAt, JSON.stringify(item.recurrence), item.myDayDate, item.skillId, item.reason, item.sourceType === "user_text" ? 0 : 1, now, now);
+  return actionRows(profileIdValue).find((action) => action.id === Number(result.lastInsertRowid));
+}
+async function handlePlannerAccept(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  const body = await readBodyJson(request);
+  const profileIdValue = String(body.profileId || "");
+  if (!ownedProfile(user.id, profileIdValue)) return sendJson(response, 404, { error: "角色不存在" });
+  const dateKey = /^\d{4}-\d{2}-\d{2}$/.test(String(body.date || "")) ? String(body.date) : serverDateKey();
+  const items = (Array.isArray(body.items) ? body.items : []).map((item) => normalizePlannerItem(item, dateKey)).filter((item) => item.title).slice(0, 12);
+  if (!items.length) return sendJson(response, 400, { error: "没有可加入的安排" });
+  const saved = [];
+  db.exec("BEGIN");
+  try {
+    for (const item of items) {
+      if (item.existingActionId) {
+        const existing = db.prepare("SELECT actions.* FROM actions JOIN profiles ON profiles.id=actions.profile_id WHERE actions.id=? AND profiles.user_id=? AND actions.profile_id=?").get(item.existingActionId, user.id, profileIdValue);
+        if (!existing || existing.status === "done") continue;
+        db.prepare("UPDATE actions SET my_day_date=?,start_at=CASE WHEN ?!='' THEN ? ELSE start_at END,due_at=CASE WHEN ?!='' THEN ? ELSE due_at END,planner_reason=?,updated_at=? WHERE id=?").run(dateKey, item.startAt, item.startAt, item.dueAt, item.dueAt, item.reason, nowIso(), existing.id);
+        saved.push(existing.id);
+      } else saved.push(insertPlannerItem(profileIdValue, item).id);
+    }
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  recordEvent(user.id, profileIdValue, "planner_items_accepted", { count: saved.length });
+  sendJson(response, 201, { savedIds: saved, ...plannerTodayState(profileIdValue, dateKey) });
 }
 function localDateTimeValue(date, hour = 18) {
   return `${serverDateKey(date)}T${String(hour).padStart(2, "0")}:00`;
@@ -1509,10 +1735,18 @@ async function handleCreateAction(request, response) {
   const requestedGoalId = Number(body.goalId || 0);
   const goalId = requestedGoalId && db.prepare("SELECT id FROM growth_goals WHERE id=? AND profile_id=? AND status='active'").get(requestedGoalId, profileIdValue) ? requestedGoalId : 0;
   const dueAt = String(body.dueAt || "").slice(0, 30);
+  const itemKind = body.itemKind === "event" ? "event" : "todo";
+  const startAt = String(body.startAt || "").slice(0, 30);
+  const endAt = String(body.endAt || "").slice(0, 30);
+  const reminderAt = String(body.reminderAt || "").slice(0, 30);
+  const recurrence = normalizePlannerRecurrence(body.recurrence);
+  const myDayDate = /^\d{4}-\d{2}-\d{2}$/.test(String(body.myDayDate || "")) ? String(body.myDayDate) : "";
+  const skillId = body.skillId ? normalizeSkillId(body.skillId) : "";
+  const steps = Array.isArray(body.steps) ? body.steps.map(String).map((step) => step.slice(0, 160)).filter(Boolean).slice(0, 8) : [];
   const now = nowIso();
-  const result = db.prepare("INSERT INTO actions(profile_id,title,detail,status,estimate_minutes,energy,importance,due_at,source,source_ref,goal_id,steps_json,success,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-    .run(profileIdValue, title, String(body.detail || "").slice(0, 1000), "open", estimate, energy, importance, dueAt, "self", "", goalId, "[]", "", now, now);
-  recordEvent(user.id, profileIdValue, "action_created", { estimate, energy, importance, hasDue: Boolean(dueAt), goalId });
+  const result = db.prepare("INSERT INTO actions(profile_id,title,detail,status,estimate_minutes,energy,importance,due_at,source,source_ref,goal_id,steps_json,success,item_kind,start_at,end_at,reminder_at,recurrence_json,my_day_date,skill_id,planner_reason,generated,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+    .run(profileIdValue, title, String(body.detail || "").slice(0, 1000), "open", estimate, energy, importance, dueAt, String(body.source || "self").slice(0, 30), String(body.sourceRef || "").slice(0, 120), goalId, JSON.stringify(steps), String(body.success || "").slice(0, 200), itemKind, startAt, endAt, reminderAt, JSON.stringify(recurrence), myDayDate, skillId, String(body.plannerReason || "").slice(0, 200), body.generated ? 1 : 0, now, now);
+  recordEvent(user.id, profileIdValue, "action_created", { estimate, energy, importance, hasDue: Boolean(dueAt), goalId, itemKind, recurring: recurrence.mode !== "none" });
   sendJson(response, 201, actionRows(profileIdValue).find((item) => item.id === Number(result.lastInsertRowid)));
 }
 async function handleUpdateAction(request, response, url) {
@@ -1521,11 +1755,25 @@ async function handleUpdateAction(request, response, url) {
   const action = ownedAction(user.id, id);
   if (!action) return sendJson(response, 404, { error: "行动不存在" });
   const body = await readBodyJson(request);
+  const occurrenceDate = /^\d{4}-\d{2}-\d{2}$/.test(String(body.occurrenceDate || "")) ? String(body.occurrenceDate) : "";
+  const actionRecurrence = normalizePlannerRecurrence(parseStoredJson(action.recurrence_json, { mode: "none" }));
+  if (occurrenceDate && actionRecurrence.mode !== "none" && ["done", "open"].includes(body.status)) {
+    if (body.status === "done") db.prepare("INSERT INTO action_occurrences(action_id,occurrence_date,status,created_at,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(action_id,occurrence_date) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at").run(id, occurrenceDate, "done", nowIso(), nowIso());
+    else db.prepare("DELETE FROM action_occurrences WHERE action_id=? AND occurrence_date=?").run(id, occurrenceDate);
+    recordEvent(user.id, action.profile_id, body.status === "done" ? "recurring_action_completed" : "recurring_action_reopened", { actionId: id, occurrenceDate });
+    return sendJson(response, 200, { ...actionRows(action.profile_id).find((item) => item.id === id), occurrenceDate, occurrenceStatus: body.status });
+  }
   const status = ["open", "doing", "done", "someday", "dropped"].includes(body.status) ? body.status : action.status;
   const title = body.title === undefined ? action.title : String(body.title).trim().slice(0, 120);
   const dueAt = body.dueAt === undefined ? action.due_at : String(body.dueAt).slice(0, 30);
+  const startAt = body.startAt === undefined ? action.start_at : String(body.startAt).slice(0, 30);
+  const endAt = body.endAt === undefined ? action.end_at : String(body.endAt).slice(0, 30);
+  const reminderAt = body.reminderAt === undefined ? action.reminder_at : String(body.reminderAt).slice(0, 30);
+  const myDayDate = body.myDayDate === undefined ? action.my_day_date : /^\d{4}-\d{2}-\d{2}$/.test(String(body.myDayDate || "")) ? String(body.myDayDate) : "";
+  const importance = body.importance === undefined ? Number(action.importance) : Math.max(1, Math.min(3, Number(body.importance || 1)));
+  const recurrence = body.recurrence === undefined ? parseStoredJson(action.recurrence_json, { mode: "none" }) : normalizePlannerRecurrence(body.recurrence);
   const restore = (["someday", "dropped"].includes(action.status) || Boolean(action.not_before)) && ["open", "doing"].includes(status);
-  db.prepare("UPDATE actions SET title=?,status=?,due_at=?,not_before=CASE WHEN ? THEN '' ELSE not_before END,updated_at=? WHERE id=?").run(title || action.title, status, dueAt, restore ? 1 : 0, nowIso(), id);
+  db.prepare("UPDATE actions SET title=?,status=?,due_at=?,start_at=?,end_at=?,reminder_at=?,my_day_date=?,importance=?,recurrence_json=?,not_before=CASE WHEN ? THEN '' ELSE not_before END,updated_at=? WHERE id=?").run(title || action.title, status, dueAt, startAt, endAt, reminderAt, myDayDate, importance, JSON.stringify(recurrence), restore ? 1 : 0, nowIso(), id);
   if (status !== action.status) {
     if (status === "done") {
       const evidence = { actionId: id, skill: "self-regulation", estimateMinutes: action.estimate_minutes, source: action.source, shareWithAi: true };

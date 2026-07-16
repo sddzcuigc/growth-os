@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GrowthPlannerOutput",
+  "type": "object",
+  "required": ["mode", "dayMode", "items"],
+  "properties": {
+    "mode": { "enum": ["ready", "question"] },
+    "dayMode": { "enum": ["school_weekday", "school_weekend", "summer_weekday", "summer_weekend", "holiday"] },
+    "question": { "type": "string", "maxLength": 80 },
+    "answerField": { "enum": ["date", "time", "duration", "type"] },
+    "options": {
+      "type": "array",
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "required": ["label", "value"],
+        "properties": { "label": { "type": "string" }, "value": { "type": "string" } }
+      }
+    },
+    "summary": { "type": "string", "maxLength": 120 },
+    "items": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "required": ["kind", "title", "estimateMinutes", "importance", "sourceType", "reason"],
+        "properties": {
+          "existingActionId": { "type": "integer", "minimum": 0 },
+          "kind": { "enum": ["todo", "event"] },
+          "title": { "type": "string", "maxLength": 120 },
+          "detail": { "type": "string", "maxLength": 500 },
+          "startAt": { "type": "string" },
+          "endAt": { "type": "string" },
+          "dueAt": { "type": "string" },
+          "reminderAt": { "type": "string" },
+          "estimateMinutes": { "type": "integer", "minimum": 3, "maximum": 180 },
+          "importance": { "type": "integer", "minimum": 1, "maximum": 3 },
+          "energy": { "enum": ["low", "normal", "high"] },
+          "recurrence": { "enum": ["none", "daily", "weekdays", "weekends", "weekly"] },
+          "steps": { "type": "array", "maxItems": 6, "items": { "type": "string" } },
+          "success": { "type": "string", "maxLength": 180 },
+          "sourceType": { "enum": ["carryover", "weekly_project", "daily_goal", "skill_tree", "routine_balance", "user_text"] },
+          "sourceRef": { "type": "string", "maxLength": 120 },
+          "skillId": { "type": "string", "maxLength": 60 },
+          "goalId": { "type": "integer", "minimum": 0 },
+          "reason": { "type": "string", "maxLength": 160 }
+        }
+      }
+    }
+  }
+}
