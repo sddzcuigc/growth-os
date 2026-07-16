@@ -2251,6 +2251,51 @@ button {
 .core-task-list details button { padding: 5px 3px; font-size: 9px; }
 .core-missions > footer { margin-top: 8px; color: #6c5634; font-size: 9px; line-height: 1.45; }
 
+.foundation-routines { border-color: #496c3e; background: #e5edbd; }
+.routine-progress { height: 8px; margin: 8px 0 10px; border: 2px solid #4f6637; background: #a9b47b; }
+.routine-progress i { display: block; height: 100%; background: #4da53b; }
+.routine-periods { display: grid; gap: 9px; }
+.routine-periods > section { border: 2px solid #718052; background: #f4f0c9; }
+.routine-periods > section > header { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border-bottom: 2px solid #8b8c62; background: #d6dda5; }
+.routine-periods > section > header strong { font-size: 10px; }
+.routine-periods > section > header small { color: #526037; font-size: 9px; font-weight: 900; }
+.routine-periods article { display: grid; grid-template-columns: 28px minmax(0,1fr); gap: 7px; align-items: center; padding: 7px 8px; border-top: 1px solid rgba(79,83,49,.22); }
+.routine-periods article:first-of-type { border-top: 0; }
+.routine-periods article.done { background: #d2e7a1; }
+.routine-periods article button { width: 28px; height: 28px; padding: 0; border: 2px solid #4a7236; background: #6dad49; color: white; }
+.routine-periods article strong, .routine-periods article small { display: block; overflow-wrap: anywhere; }
+.routine-periods article strong { font-size: 10px; line-height: 1.35; }
+.routine-periods article small { margin-top: 2px; color: #68704b; font-size: 8px; }
+.foundation-routines > footer { margin-top: 8px; color: #5d6943; font-size: 9px; line-height: 1.45; }
+
+.today-agenda { border-color: #5b6571; background: #e6e2cc; }
+.today-agenda > div:last-child { display: grid; gap: 5px; }
+.today-agenda article { display: grid; grid-template-columns: 54px minmax(0,1fr); gap: 8px; align-items: center; padding: 7px 8px; border: 2px solid #77735f; background: #f8edc3; }
+.today-agenda article span { color: #3e6f42; font-size: 9px; font-weight: 900; }
+.today-agenda article strong { font-size: 10px; overflow-wrap: anywhere; }
+
+.boss-project-line { margin: 8px 0; padding: 7px 8px; border: 2px solid #7b653d; background: #fff0bd; }
+.boss-project-line small, .boss-project-line strong { display: block; }
+.boss-project-line small { color: #39703a; font-size: 8px; font-weight: 900; }
+.boss-project-line strong { margin-top: 2px; font-size: 10px; line-height: 1.4; }
+
+.weekly-project-contract { border-color: #49683d; background: #f3e4b7; }
+.weekly-project-contract > small { color: #3e7738; font-size: 9px; font-weight: 900; }
+.weekly-project-contract > h2 { margin: 5px 0 9px; font-size: 16px; line-height: 1.35; }
+.weekly-project-contract > div { padding: 8px; border: 2px solid #806437; background: #fff1c2; }
+.weekly-project-contract > div span, .weekly-project-contract > div strong { display: block; }
+.weekly-project-contract > div span { color: #39703a; font-size: 8px; font-weight: 900; }
+.weekly-project-contract > div strong { margin-top: 3px; font-size: 11px; line-height: 1.4; }
+.weekly-project-contract ol { display: grid; gap: 5px; margin: 9px 0; padding: 0; list-style: none; }
+.weekly-project-contract li { display: grid; grid-template-columns: 28px minmax(0,1fr); gap: 7px; align-items: center; padding: 7px; border: 2px solid #8a7958; background: #eee0b8; }
+.weekly-project-contract li.today { border-color: #36733a; background: #d7eaa5; }
+.weekly-project-contract li > b { display: grid; place-items: center; width: 28px; height: 28px; border: 2px solid #5e5d45; background: #c7b783; font-size: 10px; }
+.weekly-project-contract li.today > b { border-color: #2f6832; background: #5ca943; color: white; }
+.weekly-project-contract li strong, .weekly-project-contract li small { display: block; overflow-wrap: anywhere; }
+.weekly-project-contract li strong { font-size: 10px; }
+.weekly-project-contract li small { margin-top: 2px; color: #6a5b3e; font-size: 8px; line-height: 1.4; }
+.weekly-project-contract > footer { color: #665538; font-size: 9px; line-height: 1.45; }
+
 .mini-boss { display: grid; grid-template-columns: 58px minmax(0,1fr); gap: 10px; align-items: center; border-color: #4b4938; }
 .mini-boss > img { width: 58px; height: 58px; object-fit: contain; image-rendering: pixelated; }
 .mini-boss h2 { margin: 3px 0; font-size: 15px; }

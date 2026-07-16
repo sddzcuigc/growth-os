@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const baseUrl = "http://127.0.0.1:5173";
+const baseUrl = process.env.TEST_BASE_URL || "http://127.0.0.1:5173";
 
 function simulatedWeek() {
   const seed = new Date(Date.UTC(2040, 0, 1 + (Date.now() % 12000)));
@@ -37,6 +37,10 @@ test("six daily evidence runes defeat one weekly Boss and create a reward vouche
   assert.equal(initial.response.ok, true);
   assert.equal(initial.body.week.shieldBroken, 0);
   assert.equal(initial.body.week.hpRemaining, 40);
+  assert.ok(initial.body.week.selection.project);
+  assert.equal(initial.body.week.selection.project.dailyStages.length, 7);
+  assert.equal(initial.body.week.selection.project.successCriteria.length, 3);
+  assert.doesNotMatch(initial.body.week.selection.project.weeklyProduct, /用?\s*10\s*分钟|最小版本|做一个关于/);
 
   const blockedFinal = await call(`/api/boss/week/${initial.body.week.id}/final`, {
     method: "POST",
@@ -61,7 +65,9 @@ test("six daily evidence runes defeat one weekly Boss and create a reward vouche
     });
     assert.equal(sync.response.ok, true);
     assert.equal(sync.body.corePlan.tasks.length, 3);
+    assert.equal(sync.body.corePlan.tasks.every((task) => task.taskType === "project"), true);
     assert.equal(sync.body.miniBoss.unlockStatus, "unlocked");
+    assert.ok(sync.body.miniBoss.challenge.projectStage);
 
     const completed = await call(`/api/boss/daily/${sync.body.miniBoss.id}/complete`, {
       method: "POST",

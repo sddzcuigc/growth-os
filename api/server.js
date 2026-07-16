@@ -840,18 +840,18 @@ function fallbackGoalDraft(text) {
   const skill = /讲|表达|分享|写作/.test(text) ? "communication" : /整理|坚持|按时|习惯|专心/.test(text) ? "self-regulation" : /数据|计算|统计/.test(text) ? "data-reasoning" : /AI|人工智能|模型/.test(text) ? "ai-literacy" : /运动|睡眠|情绪|健康/.test(text) ? "wellbeing" : "creation";
   const title = text.replace(/^(我想|我希望|我要)/, "").replace(/[。！？!?]+$/g, "").trim().slice(0, 80) || "尝试一个新方向";
   const why = "这是我现在愿意投入时间探索的方向";
-  const successSignal = `四周内完成3次练习，并展示或说清楚「${title}」的一次真实进步`;
-  const firstExperiment = `用10分钟做一个关于「${title}」的最小版本`;
+  const successSignal = `四周内完成3次符合该领域规律的练习，并记录「${title}」的一次可观察进步`;
+  const firstExperiment = `先确认「${title}」的当前水平、练习条件和安全支持，再决定第一次练习`;
   return {
     title, why, successSignal, firstExperiment, skill, horizon: "one_month",
-    smart: { specific: title, measurable: "完成3次可记录练习并留下1件成果", achievable: "每次只做5到15分钟", relevant: why, timeBound: "四周内完成第一轮" },
-    objective: `我想通过喜欢的方式，让「${title}」变成看得见的能力`,
+    smart: { specific: title, measurable: "完成3次可记录练习并留下1条真实进步证据", achievable: "根据当前水平和可用支持安排练习", relevant: why, timeBound: "四周内完成第一轮" },
+    objective: `四周内按「${title}」真实的学习规律完成第一轮练习，并确认一项可观察进步`,
     keyResults: [
       { id: "kr1", title: "完成3次小练习", target: 3, unit: "次" },
-      { id: "kr2", title: "留下1件可以展示的成果", target: 1, unit: "件" },
+      { id: "kr2", title: "留下1条可以核对的进步证据", target: 1, unit: "条" },
       { id: "kr3", title: "完成2次复盘并找到有效方法", target: 2, unit: "次" }
     ],
-    weeklyPlan: ["第1周：做最小版本", "第2周：重复一次并改进", "第3周：解决一个卡点", "第4周：展示成果并复盘"]
+    weeklyPlan: ["第1周：确认现状、条件和成功标准", "第2周：按正确方法完成练习", "第3周：根据反馈解决一个卡点", "第4周：验证进步并复盘下一步"]
   };
 }
 
@@ -1021,6 +1021,7 @@ async function handleCreateGoal(request, response) {
   if (title.length < 2) return sendJson(response, 400, { error: "方向名称太短了" });
   if (isVagueGoalText(`${title} ${body.objective || ""}`)) return sendJson(response, 422, { error: "不能把能力方向当作目标，请先补充一件具体要完成的事" });
   if (goalRows(profileIdValue).some((goal) => goal.status !== "done" && (normalizedTitle(goal.title) === normalizedTitle(title) || serverTitleSimilarity(goal.title, title) >= 0.82))) return sendJson(response, 409, { error: "这个方向已经点亮了，可以继续原来的旅程" });
+  if (!body.objective || !body.successSignal || !body.firstExperiment || !body.smart || !Array.isArray(body.keyResults) || body.keyResults.length !== 3 || !Array.isArray(body.weeklyPlan) || body.weeklyPlan.length < 3) return sendJson(response, 422, { error: "目标必须先由AI完成澄清和SMART设计，不能直接套用通用模板" });
   const now = nowIso();
   const fallback = fallbackGoalDraft(title);
   const plan = normalizeGoalPlan(body, fallback);
@@ -3052,6 +3053,9 @@ function publicWeeklyBoss(row) {
   const world = worldById(boss?.worldId);
   return { id: Number(row.id), profileId: row.profile_id, weekStart: row.week_start, boss, world: world ? { id: world.id, index: world.index, name: world.name, domain: world.domain, assetPath: world.assetPath } : null, difficulty: row.difficulty, sourceBlueprintId: row.source_blueprint_id, sourceProjectId: row.source_project_id, shieldTotal: Number(row.shield_total), shieldBroken: Number(row.shield_broken), hpTotal: Number(row.hp_total), hpRemaining: Number(row.hp_remaining), status: row.status, selection: JSON.parse(row.selection_json) };
 }
+function hasRejectedGoalTemplate(value) {
+  return /用?\s*10\s*分钟|最小版本|做一个关于|第[一二三四1234]周[：:]\s*(做最小|重复一次|解决一个卡点|展示成果)/.test(String(value || ""));
+}
 function selectWeeklyBoss(profileIdValue, weekStart) {
   const goal = goalRows(profileIdValue).find((item) => item.status === "active" && item.isPrimary) || goalRows(profileIdValue).find((item) => item.status === "active");
   const blueprintRow = db.prepare("SELECT blueprint_json,updated_at FROM growth_blueprints WHERE profile_id=?").get(profileIdValue);
@@ -3062,12 +3066,55 @@ function selectWeeklyBoss(profileIdValue, weekStart) {
   const history = db.prepare("SELECT boss_id FROM weekly_boss_runs WHERE profile_id=? ORDER BY week_start DESC LIMIT 6").all(profileIdValue).map((item) => item.boss_id);
   const counts = new Map(db.prepare("SELECT boss_id,COUNT(*) AS count FROM weekly_boss_runs WHERE profile_id=? GROUP BY boss_id").all(profileIdValue).map((item) => [item.boss_id, Number(item.count)]));
   const candidates = world.bosses.map((boss) => ({ boss, score: 30 + (goal ? 20 : 8) + (blueprint ? 15 : 5) + (10 - (counts.get(boss.id) || 0) * 3) + (history[0] === boss.id && history[1] === boss.id ? -100 : 0) + bossHash(`${goal?.objective || ""}:${boss.id}`) % 11 })).sort((a, b) => b.score - a.score || a.boss.id.localeCompare(b.boss.id));
-  return { boss: candidates[0].boss, goal, blueprintRow, selection: { algorithm: "blueprint30+friction20+interest15+evidence15+project10+age5+resources5", score: candidates[0].score, reasons: [goal ? `当前SMART目标：${goal.objective || goal.title}` : "当前需要建立行动底座", blueprint?.priorities?.[0]?.reason || "来自当前成长蓝图", `匹配${world.domain}`].filter(Boolean), candidateIds: candidates.slice(0, 3).map((item) => item.boss.id) } };
+  const boss = candidates[0].boss;
+  const createdAt = goal?.createdAt ? new Date(goal.createdAt).getTime() : Date.now();
+  const weekIndex = Math.max(0, Math.min(3, Math.floor((new Date(`${weekStart}T12:00:00`).getTime() - createdAt) / 604800000)));
+  const rawWeeklyTarget = goal?.weeklyPlan?.[weekIndex] || goal?.successSignal || goal?.objective || goal?.title || "";
+  const safePhysical = /游泳|潜水|骑车|攀岩|滑雪|滑冰|烹饪|用火/.test(`${goal?.title || ""} ${goal?.objective || ""}`);
+  const weeklyTarget = safePhysical && /游泳|潜水/.test(`${goal?.title || ""} ${goal?.objective || ""}`)
+    ? "在合格教练或具备救护能力的成人全程近距离陪同下，完成一次水平评估或适龄训练，并记录下一步建议"
+    : rawWeeklyTarget && !hasRejectedGoalTemplate(rawWeeklyTarget)
+      ? String(rawWeeklyTarget).replace(/^第[一二三四1234]周[：:]\s*/, "").slice(0, 160)
+      : `完成一次可观察的${boss.skillName}实践，保存过程证据并说清一项进步`;
+  const dailyStages = safePhysical ? [
+    { name: "确认现状", task: "和合格教练或具备相应保护能力的成人确认当前水平、安全条件与本周标准" },
+    { name: "观察示范", task: "观察一次正确示范，说出两个动作或安全要点" },
+    { name: "第一次练习", task: "在合格成人全程近距离保护下完成一次符合当前水平的练习" },
+    { name: "针对练习", task: "针对一个具体卡点练习，并记录哪里比上次更稳定" },
+    { name: "接受反馈", task: "请教练或保护成人给出一条反馈，按反馈再练一次" },
+    { name: "验证进步", task: `在同等安全条件下完成“${weeklyTarget}”，保存可观察证据` },
+    { name: "复盘下一步", task: `说清本周怎样使用了${boss.skillName}，并由成人确认下一步练习建议` }
+  ] : [
+    { name: "定义问题", task: `说清本周要解决的问题，并描述“${weeklyTarget}”完成时能看到什么` },
+    { name: "寻找资料", task: "阅读或观察一份可靠资料，记下两个有用发现" },
+    { name: "设计方案", task: "把周成果拆成三步，选出今天能完成的一步" },
+    { name: "完成初次实践", task: `完成“${weeklyTarget}”的第一次真实实践并保存过程` },
+    { name: "测试改进", task: "请一位家人体验或听讲，根据一个反馈改进" },
+    { name: "展示成果", task: "完成展示、讲解或真实使用，并保存一份证据" },
+    { name: "复盘迁移", task: `总结这周怎样使用了${boss.skillName}，下次还能用在哪里` }
+  ];
+  const project = {
+    title: `${boss.skillName}周项目`,
+    drivingQuestion: goal ? `这一周，我怎样用一个真实成果推进“${goal.objective || goal.title}”？` : `这一周，我怎样做出一个能证明${boss.skillName}进步的小成果？`,
+    weeklyProduct: weeklyTarget,
+    audience: "自己与一位可信任的家人",
+    successCriteria: ["有一个能看见或讲清的成果", `至少使用一次${boss.skillName}方法`, "根据反馈改进一次"],
+    dailyStages
+  };
+  return { boss, goal, blueprintRow, selection: { algorithm: "blueprint30+friction20+interest15+evidence15+project10+age5+resources5", score: candidates[0].score, reasons: [goal ? `当前SMART目标：${goal.objective || goal.title}` : "当前需要建立行动底座", blueprint?.priorities?.[0]?.reason || "来自当前成长蓝图", `匹配${world.domain}`].filter(Boolean), candidateIds: candidates.slice(0, 3).map((item) => item.boss.id), project } };
 }
 function ensureWeeklyBoss(profileIdValue, dateKey = serverDateKey()) {
   const weekStart = weekStartForDate(dateKey);
   let row = db.prepare("SELECT * FROM weekly_boss_runs WHERE profile_id=? AND week_start=?").get(profileIdValue, weekStart);
-  if (row) return row;
+  if (row) {
+    const selection = JSON.parse(row.selection_json || "{}");
+    if (!selection.project || hasRejectedGoalTemplate(selection.project.weeklyProduct) || hasRejectedGoalTemplate(JSON.stringify(selection.project.dailyStages || []))) {
+      selection.project = selectWeeklyBoss(profileIdValue, weekStart).selection.project;
+      db.prepare("UPDATE weekly_boss_runs SET selection_json=?,updated_at=? WHERE id=?").run(JSON.stringify(selection), nowIso(), row.id);
+      row = db.prepare("SELECT * FROM weekly_boss_runs WHERE id=?").get(row.id);
+    }
+    return row;
+  }
   const picked = selectWeeklyBoss(profileIdValue, weekStart);
   const previousWins = Number(db.prepare("SELECT COUNT(*) AS count FROM weekly_boss_runs WHERE profile_id=? AND boss_id=? AND status='defeated'").get(profileIdValue, picked.boss.id)?.count || 0);
   const difficulty = ["bronze", "silver", "gold", "diamond", "legend"][Math.min(4, previousWins)];
@@ -3079,7 +3126,9 @@ function miniBossChallenge(weeklyRow, dateKey) {
   const boss = bossById(weeklyRow.boss_id);
   const day = new Date(`${dateKey}T12:00:00`).getDay() || 7;
   const template = miniBossTemplates[Math.min(5, Math.max(0, day - 1))];
-  return { template, challenge: { title: template.title, instruction: template.instruction(boss), bossLine: `${boss.name}正在用“${boss.attackNarrative}”反击。`, success: "完成真实回答或行动，并由孩子确认", skillId: boss.skillId, sourceBossId: boss.id } };
+  const selection = JSON.parse(weeklyRow.selection_json || "{}");
+  const projectStage = selection.project?.dailyStages?.[Math.min(6, Math.max(0, day - 1))];
+  return { template, challenge: { title: `${template.title} · ${projectStage?.name || "今日项目"}`, instruction: projectStage ? `${projectStage.task}。完成后，${template.instruction(boss)}` : template.instruction(boss), bossLine: `${boss.name}正在用“${boss.attackNarrative}”反击。`, success: "完成今天的项目阶段，留下真实回答、作品或行动证据", skillId: boss.skillId, sourceBossId: boss.id, projectStage } };
 }
 function bossState(profileIdValue, dateKey = serverDateKey()) {
   const weeklyRow = ensureWeeklyBoss(profileIdValue, dateKey);
@@ -3108,7 +3157,7 @@ async function handleSyncDailyBoss(request, response) {
   const dateKey = bossDateForRequest(user, body.date);
   const weekly = ensureWeeklyBoss(profileIdValue, dateKey);
   const allowed = new Set(["pending", "completed", "adjusted_completed", "withdrawn", "recovery_completed"]);
-  const tasks = (Array.isArray(body.tasks) ? body.tasks : []).slice(0, 3).map((task, index) => ({ id: String(task.id || `core-${index + 1}`).slice(0, 100), title: String(task.title || "今日核心任务").slice(0, 160), status: allowed.has(task.status) ? task.status : "pending", sourceRef: String(task.sourceRef || "").slice(0, 120), adjustment: String(task.adjustment || "").slice(0, 120) }));
+  const tasks = (Array.isArray(body.tasks) ? body.tasks : []).slice(0, 3).map((task, index) => ({ id: String(task.id || `core-${index + 1}`).slice(0, 100), title: String(task.title || "今日核心任务").slice(0, 160), status: allowed.has(task.status) ? task.status : "pending", sourceRef: String(task.sourceRef || "").slice(0, 120), adjustment: String(task.adjustment || "").slice(0, 120), taskType: "project" }));
   if (!tasks.length) return sendJson(response, 400, { error: "每天需要1到3项合理核心任务" });
   const complete = tasks.every((task) => ["completed", "adjusted_completed", "withdrawn", "recovery_completed"].includes(task.status));
   const now = nowIso();
@@ -3239,6 +3288,8 @@ function normalizeMissionTask(item, base) {
     contextUsed: requestedSources.length ? requestedSources : [...allowedSources].slice(0, 4),
     reward: Math.max(1, Math.min(8, Number(base.reward || 3))),
     personalized: Boolean(base.personalized),
+    track: base.track === "routine" ? "routine" : "elective",
+    schedule: base.schedule || null,
     micro: true
   };
 }

@@ -46,6 +46,7 @@ const serverSource = readFileSync("api/server.js", "utf8");
 const scienceSource = readFileSync("SCIENCE.md", "utf8");
 const htmlSource = readFileSync("index.html", "utf8");
 const appSourceText = readFileSync("app.js", "utf8");
+const bossDesignSource = readFileSync("成长OS_100Boss每日小Boss与每周Boss战_完整设计_V1.0.md", "utf8");
 
 const failures = [];
 
@@ -237,7 +238,7 @@ for (const term of [">今天</b>", ">世界</b>", ">蓝图</b>", ">Boss</b>", ">
 for (const term of ["CREATE TABLE IF NOT EXISTS weekly_boss_runs", "CREATE TABLE IF NOT EXISTS daily_core_plans", "CREATE TABLE IF NOT EXISTS daily_mini_bosses", "CREATE TABLE IF NOT EXISTS growth_evidence", "CREATE TABLE IF NOT EXISTS reward_drops", "CREATE TABLE IF NOT EXISTS reward_vouchers", "/api/boss/catalog", "/api/boss/week", "/api/boss/daily/sync", "handleWeeklyBossFinal", "handleChooseBossReward", "handleApproveRewardVoucher"]) {
   if (!serverSource.includes(term)) failures.push(`weekly Boss backend missing ${term}`);
 }
-for (const term of ["renderWeeklyBossSummary", "renderCoreMissionPanel", "renderMiniBossPanel", "renderBossWorlds", "renderRewardBackpack", "只看1到3项核心任务", "六枚证据符文", "合理调整后的任务也能解锁"]) {
+for (const term of ["renderWeeklyBossSummary", "renderCoreMissionPanel", "renderMiniBossPanel", "renderBossWorlds", "renderRewardBackpack", "只看1到3项核心任务", "六枚证据符文", "合理调整后的项目任务也能解锁"]) {
   if (!appSourceText.includes(term)) failures.push(`weekly Boss workflow missing ${term}`);
 }
 if (appSourceText.includes('<div class="action-quick-add"')) failures.push("legacy multi-field quick-add is still rendered");
@@ -364,6 +365,16 @@ const todayRenderer = appSourceText.slice(appSourceText.indexOf("function render
 if (todayRenderer.indexOf("renderCoreMissionPanel()") > todayRenderer.indexOf("renderWeeklyBossSummary(true)")) {
   failures.push("today tasks must appear before the weekly boss summary");
 }
+for (const term of ["routineSchedule", "dailyRoutineTasks", "renderFoundationRoutinePanel", "每日成长底座", "主线项目", "renderTodayAgenda", "renderDailyTodoBook()", "weeklyProjectTask"]) {
+  if (!appSourceText.includes(term)) failures.push(`foundation/project todo workflow missing ${term}`);
+}
+for (const term of ["drivingQuestion", "weeklyProduct", "successCriteria", "dailyStages", "projectStage", "taskType: \"project\""]) {
+  if (!serverSource.includes(term)) failures.push(`project-based Boss contract missing ${term}`);
+}
+for (const term of ["唯一主规范", "固定成长底座", "周项目主线", "自选探索", "项目契约", "三轨任务系统", "weeklyProjectId", "RoutineTemplate", "固定底座未全部完成但项目主线完成，小Boss仍可解锁"]) {
+  if (!bossDesignSource.includes(term)) failures.push(`100 Boss master design missing ${term}`);
+}
+if (!serverSource.includes("目标必须先由AI完成澄清和SMART设计") || serverSource.includes("用10分钟做一个关于")) failures.push("goal creation can still fall back to the rejected universal template");
 
 if (failures.length) {
   console.error(failures.map((failure) => `- ${failure}`).join("\n"));
