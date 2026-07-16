@@ -48,8 +48,9 @@ test("planner persists Todo/events, carries unfinished work and distinguishes su
   assert.equal(parsed.body.items.length, 3);
   assert.ok(parsed.body.items.some((item) => item.kind === "event"));
   assert.ok(parsed.body.items.some((item) => item.recurrence.mode === "daily"));
-  const tomorrow = await call("/api/planner/parse", { method: "POST", body: JSON.stringify({ profileId: profile.id, date: "2040-07-04", fast: true, text: "明天整理科学实验记录" }) });
+  const tomorrow = await call("/api/planner/parse", { method: "POST", body: JSON.stringify({ profileId: profile.id, date: "2040-07-04", fast: true, text: "明天上午九点整理科学实验记录" }) });
   assert.equal(tomorrow.body.items[0].dueAt.slice(0, 10), "2040-07-05");
+  assert.equal(tomorrow.body.items[0].dueAt.slice(11, 16), "09:00");
   assert.equal(tomorrow.body.items[0].myDayDate, "2040-07-05");
 
   const recommendations = await call("/api/planner/recommend", { method: "POST", body: JSON.stringify({ profileId: profile.id, date: "2040-07-04", energy: "normal", fast: true }) });

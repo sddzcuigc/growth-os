@@ -1404,15 +1404,23 @@ function plannerTodayState(profileIdValue, dateKey) {
   const inbox = active.filter((action) => action.itemKind !== "event" && !action.startAt && !action.dueAt && action.recurrence?.mode === "none").slice(0, 12);
   return { date: dateKey, dayMode: plannerDayMode(dateKey), scheduled: [...scheduled, ...legacy].sort((a, b) => String(a.startAt || a.dueAt).localeCompare(String(b.startAt || b.dueAt))), overdue, inbox };
 }
+function plannerChineseNumber(value) {
+  const text = String(value || "");
+  const digits = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+  if (text === "十") return 10;
+  if (text.startsWith("十")) return 10 + (digits[text[1]] || 0);
+  if (text.endsWith("十")) return (digits[text[0]] || 0) * 10;
+  return digits[text] || Number(text);
+}
 function parsePlannerClock(text, dateKey) {
   const base = new Date(`${dateKey}T12:00:00`);
   let target = new Date(base);
   if (/后天/.test(text)) target.setDate(target.getDate() + 2);
   else if (/明天/.test(text)) target.setDate(target.getDate() + 1);
-  const time = text.match(/(?:上午|早上|下午|晚上|中午)?\s*(\d{1,2})(?:[:：点时](\d{1,2})?)?/);
+  const time = text.match(/(?:上午|早上|下午|晚上|中午)?\s*(\d{1,2}|[一二两三四五六七八九十]{1,3})(?:[:：点时](\d{1,2}|半)?)?/);
   if (!time) return /今天|明天|后天/.test(text) ? `${serverDateKey(target)}T18:00` : "";
-  let hour = Number(time[1]);
-  const minute = Number(time[2] || 0);
+  let hour = plannerChineseNumber(time[1]);
+  const minute = time[2] === "半" ? 30 : Number(time[2] || 0);
   if (/下午|晚上/.test(time[0]) && hour < 12) hour += 12;
   if (/中午/.test(time[0]) && hour < 11) hour += 12;
   if (hour > 23 || minute > 59) return "";
