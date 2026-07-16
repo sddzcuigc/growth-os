@@ -1669,12 +1669,16 @@ function toggleDone(taskId) {
       title: completedQuest?.title || "成长任务",
       skill: completedQuest?.skill || "self-regulation",
       category: completedQuest?.category || completedQuest?.type || "成长",
-      micro: Boolean(completedQuest?.micro)
+      micro: Boolean(completedQuest?.micro),
+      stage: Number(completedQuest?.stage || 1),
+      difficulty: completedQuest?.difficulty || "入门",
+      success: completedQuest?.success || "完成这一小步",
+      contextUsed: completedQuest?.contextUsed || []
     };
     if (completedQuest) {
       rememberRecommendation(completedQuest, "completed");
-      queueCloudSync({ kind: "completion", summary: `${child().name}完成了「${completedQuest.title}」，获得${reward}经验`, evidence: { taskId, skill: completedQuest.skill, reward } });
-      trackEvent("quest_completed", { taskId, skill: completedQuest.skill, reward });
+      queueCloudSync({ kind: "completion", summary: `${child().name}完成了「${completedQuest.title}」第${completedQuest.stage || 1}关，获得${reward}经验`, evidence: { taskId, skill: completedQuest.skill, reward, stage: completedQuest.stage || 1, difficulty: completedQuest.difficulty || "入门", contextUsed: completedQuest.contextUsed || [] } });
+      trackEvent("quest_completed", { taskId, skill: completedQuest.skill, reward, stage: completedQuest.stage || 1, contextCount: completedQuest.contextUsed?.length || 0 });
     }
   }
   setCompletions(completions);
@@ -2434,20 +2438,74 @@ function dailyTodoTitle(task, age) {
   return age <= 7 ? title.replace("一小段中文", "三个认真写好的字").replace("一行清楚的英文", "三个清楚的英文字母").replace("估算一次家庭购物要花多少钱", "数一数今天用到的物品") : title;
 }
 
+const dailyStageRules = [
+  { stage: 1, difficulty: "入门", multiplier: 1, success: "看懂要求，在需要时接受提示并完成" },
+  { stage: 2, difficulty: "熟练", multiplier: 1.1, success: "尽量独立完成，只在卡住时要一个提示" },
+  { stage: 3, difficulty: "挑战", multiplier: 1.2, success: "独立完成，并自己检查一次结果" },
+  { stage: 4, difficulty: "进阶", multiplier: 1.35, success: "完成后发现一个问题，再改进一版" },
+  { stage: 5, difficulty: "迁移", multiplier: 1.5, success: "换一个新情境再用一次，或把方法教给别人" }
+];
+
+function dailyTaskStage(task, age) {
+  const overallLevel = economyState().level;
+  const baseSkill = child().skills.find((item) => item.id === task.skill);
+  const artifactCount = state.artifacts.filter((item) => normalizeSkillId(item.skill) === task.skill).length;
+  const matchingFeedback = state.taskFeedback.filter((item) => normalizeSkillId(item.skill) === task.skill).slice(0, 6);
+  const hardCount = matchingFeedback.filter((item) => ["too_hard", "stuck"].includes(item.difficulty)).length;
+  const easyCount = matchingFeedback.filter((item) => item.difficulty === "too_easy").length;
+  const energy = getCoachSession().answers.energy || getPrefs().energy || "normal";
+  let stage = 1 + Math.floor(Math.max(0, overallLevel - 1) / 3);
+  if (Number(baseSkill?.progress || 0) >= 55) stage += 1;
+  if (Number(baseSkill?.progress || 0) >= 75) stage += 1;
+  if (artifactCount >= 2) stage += 1;
+  if (easyCount >= hardCount + 2) stage += 1;
+  if (hardCount >= easyCount + 2) stage -= 1;
+  if (energy === "low" && task.minutes >= 8) stage -= 1;
+  if (age <= 7) stage = Math.min(stage, 4);
+  return Math.max(1, Math.min(5, stage));
+}
+
+function dailyTaskSources(task) {
+  const sources = [];
+  const priorities = state.growthBlueprint?.priorities || [];
+  const answers = getCoachSession().answers || {};
+  const contextProfile = getContextProfile();
+  if (priorities.some((item) => item.skill === task.skill)) sources.push("AI成长蓝图");
+  if (state.goals.some((goal) => goal.status === "active" && normalizeSkillId(goal.skill) === task.skill)) sources.push("SMART目标");
+  if (state.taskFeedback.some((item) => normalizeSkillId(item.skill) === task.skill)) sources.push("历史任务体验");
+  if (state.journals.some((item) => item.shareWithAi) && ["表达", "未来", "学习"].includes(task.category)) sources.push("近期日记");
+  if (answers.energy || answers.interest || answers.friction) sources.push("今日状态");
+  if (contextProfile["current-interest"] && dailyTodoVariants[task.id]) sources.push("兴趣画像");
+  if (["健康", "生活", "责任"].includes(task.category)) sources.push("家庭成长档案");
+  sources.push("未来技能树");
+  sources.push("学习科学知识库");
+  return [...new Set(sources)].slice(0, 4);
+}
+
 function dailyTodoCatalog() {
   const age = Number.parseInt(child().shortAge, 10) || 8;
   const priorities = new Set((state.growthBlueprint?.priorities || []).map((item) => item.skill));
-  return dailyTodoDefinitions.map((task) => ({
-    ...task,
-    id: `daily-${task.id}`,
-    micro: true,
-    type: task.category,
-    energy: task.minutes <= 5 ? "low" : "normal",
-    why: `练习${skillDisplayName(task.skill)}，留下今天的真实证据。`,
-    reflect: "这次是自己完成，还是需要了帮助？",
-    personalized: priorities.has(task.skill),
-    title: dailyTodoTitle(task, age)
-  }));
+  return dailyTodoDefinitions.map((task) => {
+    const stage = dailyTaskStage(task, age);
+    const rule = dailyStageRules[stage - 1];
+    const contextUsed = dailyTaskSources(task);
+    return {
+      ...task,
+      id: `daily-${task.id}`,
+      micro: true,
+      type: task.category,
+      stage,
+      difficulty: rule.difficulty,
+      success: rule.success,
+      contextUsed,
+      minutes: Math.max(2, Math.round(task.minutes * rule.multiplier)),
+      energy: task.minutes <= 5 ? "low" : "normal",
+      why: `根据${contextUsed.slice(0, 2).join("和")}，练习${skillDisplayName(task.skill)}。`,
+      reflect: "这次是自己完成，还是需要了帮助？",
+      personalized: priorities.has(task.skill),
+      title: dailyTodoTitle(task, age)
+    };
+  });
 }
 
 function questById(taskId) {
@@ -3100,15 +3158,17 @@ function renderDailyTodoBook() {
   const categories = ["健康", "学习", "生活", "责任", "表达", "未来"];
   const done = tasks.filter((task) => isDone(task.id)).length;
   const personalized = tasks.filter((task) => task.personalized && !isDone(task.id)).slice(0, 6);
+  const stages = [...new Set(tasks.map((task) => task.stage))].sort();
   return `<section class="panel daily-todo-book">
     <div class="page-head"><div><h2 class="panel-title">${pixelIcon("skill-check", "")} 今日任务册</h2><small>覆盖身体、学习、生活与未来能力</small></div><span class="tag">${done}/${tasks.length}</span></div>
     <div class="todo-book-progress"><span><i style="width:${Math.round(done / tasks.length * 100)}%"></i></span><strong>${done ? `今天已完成${done}项` : "从任意一项开始"}</strong></div>
+    <div class="todo-stage-summary"><strong>当前关卡 ${stages.map((stage) => `Lv.${stage}`).join(" / ")}</strong><span>经验升级会提高关卡；状态差或连续卡住会临时降阶</span></div>
     ${personalized.length ? `<div class="todo-ai-focus"><small>AI根据当前成长蓝图标记</small><p>${[...new Set(personalized.map((task) => skillDisplayName(task.skill)))].join(" · ")}相关任务会显示星标</p></div>` : ""}
     <div class="todo-tier-legend"><span>基础：每日生活底座</span><span>成长：建议练习</span><span>探索：有余力再做</span></div>
     <div class="todo-category-list">${categories.map((category) => {
       const categoryTasks = tasks.filter((task) => task.category === category);
       const categoryDone = categoryTasks.filter((task) => isDone(task.id)).length;
-      return `<details open><summary><strong>${category}</strong><span>${categoryDone}/${categoryTasks.length}</span></summary><div>${categoryTasks.map((task) => `<article class="${isDone(task.id) ? "done" : ""} ${task.personalized ? "personalized" : ""}"><button type="button" data-action="toggle-task" data-task-id="${escapeHtml(task.id)}" aria-label="${isDone(task.id) ? "撤销" : "完成"}${escapeHtml(task.title)}"><i>${isDone(task.id) ? "✓" : ""}</i></button><div><strong>${task.personalized ? "★ " : ""}${escapeHtml(task.title)}</strong><small>${task.minutes}分钟 · ${escapeHtml(task.tier)} · ${escapeHtml(skillDisplayName(task.skill))}</small></div><em>+${task.reward}</em></article>`).join("")}</div></details>`;
+      return `<details open><summary><strong>${category}</strong><span>${categoryDone}/${categoryTasks.length}</span></summary><div>${categoryTasks.map((task) => `<article class="${isDone(task.id) ? "done" : ""} ${task.personalized ? "personalized" : ""}"><button type="button" data-action="toggle-task" data-task-id="${escapeHtml(task.id)}" aria-label="${isDone(task.id) ? "撤销" : "完成"}${escapeHtml(task.title)}"><i>${isDone(task.id) ? "✓" : ""}</i></button><div><strong>${task.personalized ? "★ " : ""}${escapeHtml(task.title)}</strong><small>${task.minutes}分钟 · 第${task.stage}关 ${escapeHtml(task.difficulty)} · ${escapeHtml(skillDisplayName(task.skill))}</small><small class="todo-source">来源：${task.contextUsed.map(escapeHtml).join(" / ")}</small><small class="todo-success">过关：${escapeHtml(task.success)}</small></div><em>+${task.reward}</em></article>`).join("")}</div></details>`;
     }).join("")}</div>
     <footer>任务册是选择空间，不要求全部完成。AI会根据完成、跳过和复盘继续调整。</footer>
   </section>`;

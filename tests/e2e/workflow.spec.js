@@ -63,6 +63,18 @@ test("new child follows one growth loop and uses real economy", async ({ page })
   await expect(page.getByText("今日任务册")).toBeVisible();
   await expect(page.locator(".daily-todo-book article")).toHaveCount(37);
   const firstMicroTask = page.locator(".daily-todo-book article").first();
+  await expect(firstMicroTask).toContainText("第1关");
+  await expect(firstMicroTask).toContainText("来源：");
+  await expect(firstMicroTask).toContainText("未来技能树");
+  await page.evaluate(() => {
+    localStorage.setItem("talent-os-e2e-profile-bonus-rewards", JSON.stringify({ "stage-test": { xp: 460, gems: 0, label: "关卡测试" } }));
+    window.render();
+  });
+  await expect(page.locator(".daily-todo-book article").first()).toContainText("第2关");
+  await page.evaluate(() => {
+    localStorage.removeItem("talent-os-e2e-profile-bonus-rewards");
+    window.render();
+  });
   await firstMicroTask.locator("button").click();
   await expect(firstMicroTask).toHaveClass(/done/);
   await firstMicroTask.locator("button").click();

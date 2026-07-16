@@ -2776,7 +2776,7 @@ function blueprintEvidence(profileIdValue) {
   const data = snapshot ? JSON.parse(snapshot.data_json || "{}") : {};
   const portrait = data["onboarding-portrait"] || data.onboardingPortrait || null;
   const completionDays = data.completions && typeof data.completions === "object" ? data.completions : {};
-  const dailyCompletions = Object.entries(completionDays).slice(-7).flatMap(([date, tasks]) => Object.entries(tasks || {}).map(([taskId, item]) => ({ taskId, date, title: String(item?.title || "").slice(0, 100), skill: normalizeSkillId(item?.skill || "self-regulation"), category: String(item?.category || "成长").slice(0, 30), micro: Boolean(item?.micro) }))).slice(-120);
+  const dailyCompletions = Object.entries(completionDays).slice(-7).flatMap(([date, tasks]) => Object.entries(tasks || {}).map(([taskId, item]) => ({ taskId, date, title: String(item?.title || "").slice(0, 100), skill: normalizeSkillId(item?.skill || "self-regulation"), category: String(item?.category || "成长").slice(0, 30), micro: Boolean(item?.micro), stage: Math.max(1, Math.min(5, Number(item?.stage || 1))), difficulty: String(item?.difficulty || "入门").slice(0, 20), contextUsed: (Array.isArray(item?.contextUsed) ? item.contextUsed : []).map(String).slice(0, 4) }))).slice(-120);
   const journals = journalRows(profileIdValue).filter((item) => item.shareWithAi).slice(0, 8).map((item) => ({ id: item.id, content: item.content.slice(0, 500), tags: item.tags, at: item.createdAt }));
   const feedback = taskFeedbackRows(profileIdValue, 16);
   const artifacts = artifactRows(profileIdValue, 16).filter((item) => item.shareWithAi).map(({ id, title, skill, type, caption, createdAt }) => ({ id, title, skill, type, caption, createdAt }));
@@ -2793,7 +2793,7 @@ function blueprintFingerprint(evidence) {
 
 function skillEvidenceScore(skillId, evidence) {
   let score = 0;
-  score += evidence.dailyCompletions.filter((item) => item.skill === skillId).length * 0.45;
+  score += evidence.dailyCompletions.filter((item) => item.skill === skillId).reduce((sum, item) => sum + 0.3 + item.stage * 0.08, 0);
   for (const item of evidence.feedback) {
     if (item.skill !== skillId) continue;
     score += item.difficulty === "too_hard" || item.difficulty === "stuck" ? 4 : item.difficulty === "just_right" ? 2 : 1;

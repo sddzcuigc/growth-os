@@ -2240,6 +2240,29 @@ button {
   background: #d8edb1;
 }
 
+.todo-stage-summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+  margin: 7px 0;
+  padding: 6px 8px;
+  border: 1px solid #5b7436;
+  background: #e5efbd;
+}
+
+.todo-stage-summary strong {
+  color: #27642c;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.todo-stage-summary span {
+  color: #65542f;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
 .todo-ai-focus small {
   color: #2a642d;
   font-weight: 800;
@@ -2351,6 +2374,16 @@ button {
 .todo-category-list article small {
   display: block;
   letter-spacing: 0;
+}
+
+.todo-category-list article .todo-source {
+  color: #37713a;
+  line-height: 1.35;
+}
+
+.todo-category-list article .todo-success {
+  color: #76552c;
+  line-height: 1.35;
 }
 
 .todo-category-list article strong {
