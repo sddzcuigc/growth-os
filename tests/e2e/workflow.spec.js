@@ -10,6 +10,27 @@ const profile = {
   consentVersion: "child-data-v1"
 };
 
+const categories = ["健康", "学习", "生活", "责任", "表达", "未来"];
+const missionTasks = categories.flatMap((category, categoryIndex) => Array.from({ length: 4 }, (_, index) => ({
+  id: `mission-${categoryIndex + 1}-${index + 1}`,
+  slot: `slot-${categoryIndex + 1}-${index + 1}`,
+  title: `${category}主线关卡${index + 1}`,
+  category,
+  skill: category === "健康" ? "wellbeing" : category === "未来" ? "creation" : "self-regulation",
+  minutes: 5 + index,
+  tier: index < 2 ? "基础" : index === 2 ? "成长" : "探索",
+  stage: 2,
+  difficulty: "独立尝试",
+  success: `完成一次可观察的${category}小行动`,
+  why: "由当前画像、SMART目标和今日状态共同编排",
+  contextUsed: ["孩子确认画像", "SMART目标", "未来技能树"],
+  reward: 3,
+  personalized: index === 0,
+  micro: true
+})));
+const missionBook = { date: "2026-07-16", headline: "搭建作品主线 · 今日任务册", rationale: "围绕搭建作品主线，同时照顾健康、学习和真实生活。", provider: "siliconflow", goalId: 1, goalTitle: "把喜欢的搭建变成看得见的作品", tasks: missionTasks };
+const dailyPlan = { id: 7, status: "ready", checkin: { energy: "normal", minutes: 10, intent: "create" }, plan: { title: missionTasks[0].title, sourceType: "mission", sourceId: missionTasks[0].id, minutes: missionTasks[0].minutes, provider: "siliconflow", why: missionTasks[0].why, firstStep: "先准备需要的材料", support: "先自己试，卡住再看提示", goalTitle: missionBook.goalTitle, keyResultTitle: "完成3次小练习" } };
+
 test.use({ viewport: { width: 430, height: 932 }, deviceScaleFactor: 1 });
 
 test("new child follows one growth loop and uses real economy", async ({ page }) => {
@@ -23,12 +44,19 @@ test("new child follows one growth loop and uses real economy", async ({ page })
   }));
   await page.route("**/api/goals?profileId=e2e-profile", (route) => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify({ goals: [{ id: 1, title: "我想做出自己的作品", objective: "把喜欢的搭建变成看得见的作品", why: "这是我真正愿意探索的方向", successSignal: "四周完成3次练习并展示1件作品", firstExperiment: "用10分钟搭出最小版本", skill: "creation", horizon: "one_month", status: "active", progress: 20, evidenceCount: 1, activeSteps: 1, smart: { specific: "完成一个搭建作品", measurable: "3次练习和1件成果", achievable: "每次10分钟", relevant: "来自我的搭建兴趣", timeBound: "四周" }, keyResults: [{ id: "kr1", title: "完成3次小练习", target: 3, unit: "次" }, { id: "kr2", title: "留下1件可展示成果", target: 1, unit: "件" }, { id: "kr3", title: "完成2次复盘", target: 2, unit: "次" }], weeklyPlan: ["最小版本", "改进", "解决卡点", "展示复盘"] }] })
+    body: JSON.stringify({ goals: [{ id: 1, title: "我想做出自己的作品", objective: "把喜欢的搭建变成看得见的作品", why: "这是我真正愿意探索的方向", successSignal: "四周完成3次练习并展示1件作品", firstExperiment: "用10分钟搭出最小版本", skill: "creation", horizon: "one_month", status: "active", isPrimary: true, progress: 20, evidenceCount: 1, journalCount: 1, reflectionCount: 1, activeSteps: 1, smart: { specific: "完成一个搭建作品", measurable: "3次练习和1件成果", achievable: "每次10分钟", relevant: "来自我的搭建兴趣", timeBound: "四周" }, keyResults: [{ id: "kr1", title: "完成3次小练习", target: 3, unit: "次" }, { id: "kr2", title: "留下1件可展示成果", target: 1, unit: "件" }, { id: "kr3", title: "完成2次复盘", target: 2, unit: "次" }], weeklyPlan: ["最小版本", "改进", "解决卡点", "展示复盘"] }] })
   }));
   await page.route("**/api/growth-blueprint?profileId=e2e-profile", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({ stale: true, blueprint: { version: 2, provider: "siliconflow", updatedAt: "2026-07-15T08:00:00.000Z", childSummary: "我喜欢把搭建兴趣变成作品，清楚的第一步能帮助我自己开始。", priorities: [{ skill: "self-regulation", name: "自我调节", role: "底座", confidence: 0.76, reason: "先练会自己开始、检查和收尾。", evidence: ["需要清楚的第一步"], practices: ["准备-执行-检查-归位", "自己选最小步骤"] }, { skill: "creation", name: "创造项目", role: "探索", confidence: 0.71, reason: "把真实兴趣变成可以展示和改进的作品。", evidence: ["搭建作品目标"], practices: ["做最小版本", "展示并改一版"] }], fourWeekPath: [{ skill: "self-regulation", objective: "四周内独立完成3次任务闭环", keyResults: ["完成3次小练习", "留下1个检查记录", "完成2次复盘"], firstExperiment: "整理一次任务材料并自己检查" }, { skill: "creation", objective: "四周内完成一个搭建作品", keyResults: ["做3个小版本", "解决1个真实问题", "展示1次"], firstExperiment: "用10分钟搭出最小版本" }], nextQuestion: "最近哪一次你是自己找到开始办法的？", adjustment: "孩子的更正始终优先。" } })
   }));
+  await page.route("**/api/daily-missions?profileId=e2e-profile", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ book: missionBook }) }));
+  await page.route("**/api/daily-missions/generate", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ book: missionBook }) }));
+  await page.route("**/api/daily-plan?profileId=e2e-profile", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ dailyPlan }) }));
+  await page.route("**/api/daily-plan/7", async (route) => {
+    if (route.request().method() !== "PATCH") return route.continue();
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...dailyPlan, status: "started" }) });
+  });
 
   await page.goto("http://127.0.0.1:5173/");
   await expect(page.getByText("AI先认识我")).toBeVisible();
@@ -59,27 +87,27 @@ test("new child follows one growth loop and uses real economy", async ({ page })
     window.render();
   });
   for (const tab of await page.locator(".tab").all()) await expect(tab).toBeEnabled();
-  for (const label of ["今天", "灵感", "能力", "计划", "记录"]) await expect(page.locator(".tabbar")).toContainText(label);
-  await expect(page.getByText("今日任务册")).toBeVisible();
-  await expect(page.locator(".daily-todo-book article")).toHaveCount(37);
+  for (const label of ["今天", "信号", "蓝图", "路线", "证据"]) await expect(page.locator(".tabbar")).toContainText(label);
+  await expect(page.getByText(missionBook.headline)).toBeVisible();
+  await expect(page.locator(".daily-todo-book article")).toHaveCount(24);
+  await expect(page.locator(".daily-compass h2")).toHaveText(missionTasks[0].title);
   const firstMicroTask = page.locator(".daily-todo-book article").first();
-  await expect(firstMicroTask).toContainText("第1关");
+  await expect(firstMicroTask).toContainText("第2关");
   await expect(firstMicroTask).toContainText("来源：");
   await expect(firstMicroTask).toContainText("未来技能树");
-  await page.evaluate(() => {
-    localStorage.setItem("talent-os-e2e-profile-bonus-rewards", JSON.stringify({ "stage-test": { xp: 460, gems: 0, label: "关卡测试" } }));
-    window.render();
-  });
-  await expect(page.locator(".daily-todo-book article").first()).toContainText("第2关");
-  await page.evaluate(() => {
-    localStorage.removeItem("talent-os-e2e-profile-bonus-rewards");
-    window.render();
-  });
+  await page.getByRole("button", { name: "现在开始" }).click();
+  await expect(firstMicroTask).toHaveClass(/current-mission/);
   await firstMicroTask.locator("button").click();
   await expect(firstMicroTask).toHaveClass(/done/);
   await firstMicroTask.locator("button").click();
   await expect(firstMicroTask).not.toHaveClass(/done/);
   await page.screenshot({ path: "qa/workflow-daily-todo-book.png" });
+
+  for (const [pageId, heading] of [["discover", "主线信号站"], ["plan", "当前主线路线台"], ["execute", "主线成长日记"], ["profile", missionBook.headline]]) {
+    await page.locator(`.tab[data-page='${pageId}']`).click();
+    await expect(page.getByText("把喜欢的搭建变成看得见的作品").first()).toBeVisible();
+    await expect(page.getByText(heading).first()).toBeVisible();
+  }
 
   await page.getByRole("button", { name: "打开宝石营地" }).click();
   await expect(page.getByText("宝石营地")).toBeVisible();
@@ -100,7 +128,7 @@ test("new child follows one growth loop and uses real economy", async ({ page })
   await page.screenshot({ path: "qa/workflow-gem-store.png" });
 
   await page.getByRole("button", { name: "关闭设置" }).click();
-  await page.getByRole("button", { name: "能力" }).click();
+  await page.getByRole("button", { name: "蓝图" }).click();
   await expect(page.getByText("AI成长蓝图")).toBeVisible();
   await expect(page.getByText("日记或行动带来了新证据")).toBeVisible();
   await expect(page.getByText("自我调节").first()).toBeVisible();

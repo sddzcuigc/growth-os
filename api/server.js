@@ -50,8 +50,10 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS self_coach_answers (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, question TEXT NOT NULL, answer TEXT NOT NULL, confidence TEXT NOT NULL, evidence_json TEXT NOT NULL, next_question TEXT NOT NULL, provider TEXT NOT NULL, feedback TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS action_decisions (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, action_id INTEGER NOT NULL REFERENCES actions(id) ON DELETE CASCADE, reason TEXT NOT NULL, outcome TEXT NOT NULL, note TEXT NOT NULL, created_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS growth_blueprints (profile_id TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE, blueprint_json TEXT NOT NULL, evidence_fingerprint TEXT NOT NULL, provider TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS daily_mission_books (profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, mission_date TEXT NOT NULL, book_json TEXT NOT NULL, context_fingerprint TEXT NOT NULL, provider TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(profile_id,mission_date));
   CREATE INDEX IF NOT EXISTS action_decisions_action_time ON action_decisions(action_id,created_at);
   CREATE INDEX IF NOT EXISTS blueprints_profile_time ON growth_blueprints(profile_id,updated_at);
+  CREATE INDEX IF NOT EXISTS mission_books_profile_date ON daily_mission_books(profile_id,mission_date);
   CREATE INDEX IF NOT EXISTS self_coach_profile_time ON self_coach_answers(profile_id,created_at);
   CREATE INDEX IF NOT EXISTS goals_profile_status ON growth_goals(profile_id,status,updated_at);
   CREATE INDEX IF NOT EXISTS rescues_action_time ON action_rescues(action_id,created_at);
@@ -83,6 +85,17 @@ ensureColumn("actions", "last_defer_reason", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("users", "recovery_hash", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("users", "recovery_updated_at", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("growth_goals", "plan_json", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("growth_goals", "is_primary", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("journals", "goal_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("task_feedback", "goal_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("artifacts", "goal_id", "INTEGER NOT NULL DEFAULT 0");
+for (const profile of db.prepare("SELECT DISTINCT profile_id FROM growth_goals WHERE status='active'").all()) {
+  const primary = db.prepare("SELECT id FROM growth_goals WHERE profile_id=? AND status='active' AND is_primary=1 LIMIT 1").get(profile.profile_id);
+  if (!primary) {
+    const latest = db.prepare("SELECT id FROM growth_goals WHERE profile_id=? AND status='active' ORDER BY updated_at DESC,id DESC LIMIT 1").get(profile.profile_id);
+    if (latest) db.prepare("UPDATE growth_goals SET is_primary=1 WHERE id=?").run(latest.id);
+  }
+}
 const skillNameToId = {
   自我调节: "self-regulation",
   会学会想: "metacognition",
@@ -155,6 +168,8 @@ async function requestHandler(request, response) {
     if (request.method === "POST" && url.pathname === "/api/onboarding/portrait") return handleOnboardingPortrait(request, response);
     if (request.method === "GET" && url.pathname === "/api/growth-blueprint") return handleGetGrowthBlueprint(request, response, url);
     if (request.method === "POST" && url.pathname === "/api/growth-blueprint/refresh") return handleRefreshGrowthBlueprint(request, response);
+    if (request.method === "GET" && url.pathname === "/api/daily-missions") return handleGetDailyMissions(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/daily-missions/generate") return handleGenerateDailyMissions(request, response);
     if (request.method === "POST" && url.pathname === "/api/goals/shape") return handleShapeGoal(request, response);
     if (request.method === "POST" && url.pathname === "/api/goals") return handleCreateGoal(request, response);
     if (request.method === "PATCH" && /^\/api\/goals\/\d+$/.test(url.pathname)) return handleUpdateGoal(request, response, url);
@@ -532,7 +547,7 @@ function handleMetrics(request, response, url) {
 }
 
 function journalRows(profileIdValue) {
-  return db.prepare("SELECT id,source,prompt,content,tags_json AS tags,ai_context AS shareWithAi,created_at AS createdAt FROM journals WHERE profile_id=? ORDER BY id DESC LIMIT 30").all(profileIdValue)
+  return db.prepare("SELECT id,source,prompt,content,tags_json AS tags,ai_context AS shareWithAi,goal_id AS goalId,created_at AS createdAt FROM journals WHERE profile_id=? ORDER BY id DESC LIMIT 30").all(profileIdValue)
     .map((item) => ({ ...item, tags: JSON.parse(item.tags), shareWithAi: Boolean(item.shareWithAi) }));
 }
 function handleListJournal(request, response, url) {
@@ -551,11 +566,12 @@ async function handleCreateJournal(request, response) {
   const content = String(body.content || "").trim().slice(0, 4000);
   const tags = Array.isArray(body.tags) ? body.tags.map(String).map((tag) => tag.slice(0, 24)).slice(0, 8) : [];
   const shareWithAi = body.shareWithAi !== false;
+  const goalId = activeGoalId(profileIdValue, body.goalId);
   if (content.length < 2) return sendJson(response, 400, { error: "至少写下一句话" });
   const createdAt = nowIso();
-  const result = db.prepare("INSERT INTO journals(profile_id,source,prompt,content,tags_json,ai_context,created_at) VALUES(?,?,?,?,?,?,?)").run(profileIdValue, source, prompt, content, JSON.stringify(tags), shareWithAi ? 1 : 0, createdAt);
+  const result = db.prepare("INSERT INTO journals(profile_id,source,prompt,content,tags_json,ai_context,goal_id,created_at) VALUES(?,?,?,?,?,?,?,?)").run(profileIdValue, source, prompt, content, JSON.stringify(tags), shareWithAi ? 1 : 0, goalId, createdAt);
   const safeSummary = `第一人称日记：${content.replace(/\s+/g, " ").slice(0, 180)}`;
-  const memoryResult = db.prepare("INSERT INTO memories(profile_id,kind,summary,evidence_json,created_at) VALUES(?,?,?,?,?)").run(profileIdValue, "journal", safeSummary, JSON.stringify({ journalId: Number(result.lastInsertRowid), source, tags, shareWithAi }), createdAt);
+  const memoryResult = db.prepare("INSERT INTO memories(profile_id,kind,summary,evidence_json,created_at) VALUES(?,?,?,?,?)").run(profileIdValue, "journal", safeSummary, JSON.stringify({ journalId: Number(result.lastInsertRowid), source, tags, shareWithAi, goalId }), createdAt);
   if (shareWithAi) evolveHypotheses(profileIdValue, { id: Number(memoryResult.lastInsertRowid), kind: "journal", summary: safeSummary, evidence: { journalId: Number(result.lastInsertRowid), tags }, shareWithAi });
   recordEvent(user.id, profileIdValue, "journal_saved", { source, shareWithAi, tagCount: tags.length, lengthBand: content.length < 80 ? "short" : content.length < 240 ? "medium" : "long" });
   sendJson(response, 201, journalRows(profileIdValue)[0]);
@@ -740,15 +756,27 @@ function retractStrategyEvidence(profileIdValue, refs) {
 }
 
 function goalRows(profileIdValue) {
-  return db.prepare("SELECT * FROM growth_goals WHERE profile_id=? ORDER BY CASE status WHEN 'active' THEN 1 WHEN 'paused' THEN 2 ELSE 3 END,updated_at DESC,id DESC").all(profileIdValue).map((row) => {
+  return db.prepare("SELECT * FROM growth_goals WHERE profile_id=? ORDER BY CASE WHEN status='active' AND is_primary=1 THEN 0 WHEN status='active' THEN 1 WHEN status='paused' THEN 2 ELSE 3 END,updated_at DESC,id DESC").all(profileIdValue).map((row) => {
     const actionStats = db.prepare("SELECT SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) AS done,SUM(CASE WHEN status!='done' THEN 1 ELSE 0 END) AS active FROM actions WHERE profile_id=? AND goal_id=?").get(profileIdValue, row.id);
     const ideaStats = db.prepare("SELECT SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) AS done,SUM(CASE WHEN status!='done' THEN 1 ELSE 0 END) AS active FROM ideas WHERE profile_id=? AND goal_id=?").get(profileIdValue, row.id);
-    const artifactCount = Number(db.prepare("SELECT COUNT(*) AS count FROM artifacts JOIN actions ON artifacts.task_key=('action:' || actions.id) WHERE artifacts.profile_id=? AND actions.goal_id=?").get(profileIdValue, row.id)?.count || 0);
+    const artifactCount = Number(db.prepare("SELECT COUNT(DISTINCT artifacts.id) AS count FROM artifacts LEFT JOIN actions ON artifacts.task_key=('action:' || actions.id) WHERE artifacts.profile_id=? AND (artifacts.goal_id=? OR actions.goal_id=?)").get(profileIdValue, row.id, row.id)?.count || 0);
+    const reflectionCount = Number(db.prepare("SELECT COUNT(*) AS count FROM task_feedback WHERE profile_id=? AND goal_id=?").get(profileIdValue, row.id)?.count || 0);
+    const journalCount = Number(db.prepare("SELECT COUNT(*) AS count FROM journals WHERE profile_id=? AND goal_id=?").get(profileIdValue, row.id)?.count || 0);
     const evidenceCount = Number(actionStats?.done || 0) + Number(ideaStats?.done || 0) + artifactCount;
     const activeSteps = Number(actionStats?.active || 0) + Number(ideaStats?.active || 0);
     const plan = parseStoredJson(row.plan_json, {});
-    return { id: Number(row.id), title: row.title, why: row.why_text, successSignal: row.success_signal, firstExperiment: row.first_experiment, skill: row.skill, horizon: row.horizon, status: row.status, smart: plan.smart || {}, objective: plan.objective || row.title, keyResults: Array.isArray(plan.keyResults) ? plan.keyResults : [], weeklyPlan: Array.isArray(plan.weeklyPlan) ? plan.weeklyPlan : [], evidenceCount, activeSteps, progress: row.status === "done" ? 100 : Math.min(90, evidenceCount * 20 + activeSteps * 5), createdAt: row.created_at, updatedAt: row.updated_at };
+    return { id: Number(row.id), title: row.title, why: row.why_text, successSignal: row.success_signal, firstExperiment: row.first_experiment, skill: row.skill, horizon: row.horizon, status: row.status, isPrimary: Boolean(row.is_primary), smart: plan.smart || {}, objective: plan.objective || row.title, keyResults: Array.isArray(plan.keyResults) ? plan.keyResults : [], weeklyPlan: Array.isArray(plan.weeklyPlan) ? plan.weeklyPlan : [], evidenceCount, reflectionCount, journalCount, activeSteps, progress: row.status === "done" ? 100 : Math.min(90, evidenceCount * 20 + activeSteps * 5), createdAt: row.created_at, updatedAt: row.updated_at };
   });
+}
+function activeGoalId(profileIdValue, requestedId = 0) {
+  const requested = Number(requestedId || 0);
+  if (requested && db.prepare("SELECT id FROM growth_goals WHERE id=? AND profile_id=? AND status='active'").get(requested, profileIdValue)) return requested;
+  return Number(db.prepare("SELECT id FROM growth_goals WHERE profile_id=? AND status='active' ORDER BY is_primary DESC,updated_at DESC,id DESC LIMIT 1").get(profileIdValue)?.id || 0);
+}
+function promotePrimaryGoal(profileIdValue) {
+  db.prepare("UPDATE growth_goals SET is_primary=0 WHERE profile_id=?").run(profileIdValue);
+  const next = db.prepare("SELECT id FROM growth_goals WHERE profile_id=? AND status='active' ORDER BY updated_at DESC,id DESC LIMIT 1").get(profileIdValue);
+  if (next) db.prepare("UPDATE growth_goals SET is_primary=1 WHERE id=?").run(next.id);
 }
 function ownedGoal(userId, id) {
   return db.prepare("SELECT growth_goals.* FROM growth_goals JOIN profiles ON profiles.id=growth_goals.profile_id WHERE growth_goals.id=? AND profiles.user_id=?").get(id, userId);
@@ -922,7 +950,8 @@ async function handleCreateGoal(request, response) {
   const now = nowIso();
   const fallback = fallbackGoalDraft(title);
   const plan = normalizeGoalPlan(body, fallback);
-  const result = db.prepare("INSERT INTO growth_goals(profile_id,title,why_text,success_signal,first_experiment,skill,horizon,status,created_at,updated_at,plan_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)").run(profileIdValue, title, String(body.why || "").slice(0, 220), String(body.successSignal || "").slice(0, 240), String(body.firstExperiment || "").slice(0, 220), normalizeSkillId(body.skill || "creation"), ["one_month", "three_months"].includes(body.horizon) ? body.horizon : "one_month", "active", now, now, JSON.stringify(plan));
+  db.prepare("UPDATE growth_goals SET is_primary=0 WHERE profile_id=?").run(profileIdValue);
+  const result = db.prepare("INSERT INTO growth_goals(profile_id,title,why_text,success_signal,first_experiment,skill,horizon,status,created_at,updated_at,plan_json,is_primary) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)").run(profileIdValue, title, String(body.why || "").slice(0, 220), String(body.successSignal || "").slice(0, 240), String(body.firstExperiment || "").slice(0, 220), normalizeSkillId(body.skill || "creation"), ["one_month", "three_months"].includes(body.horizon) ? body.horizon : "one_month", "active", now, now, JSON.stringify(plan));
   recordEvent(user.id, profileIdValue, "goal_created", { skill: normalizeSkillId(body.skill || "creation"), horizon: body.horizon || "one_month" });
   sendJson(response, 201, goalRows(profileIdValue).find((goal) => goal.id === Number(result.lastInsertRowid)));
 }
@@ -934,7 +963,9 @@ async function handleUpdateGoal(request, response, url) {
   const body = await readBodyJson(request);
   const status = ["active", "paused", "done"].includes(body.status) ? body.status : goal.status;
   if (status === "active" && goal.status !== "active" && goalRows(goal.profile_id).filter((item) => item.status === "active").length >= 3) return sendJson(response, 409, { error: "同时保留三个方向就够了" });
-  db.prepare("UPDATE growth_goals SET status=?,updated_at=? WHERE id=?").run(status, nowIso(), id);
+  if (status === "active") db.prepare("UPDATE growth_goals SET is_primary=0 WHERE profile_id=?").run(goal.profile_id);
+  db.prepare("UPDATE growth_goals SET status=?,is_primary=?,updated_at=? WHERE id=?").run(status, status === "active" ? 1 : 0, nowIso(), id);
+  if (status !== "active" && goal.is_primary) promotePrimaryGoal(goal.profile_id);
   recordEvent(user.id, goal.profile_id, "goal_status_changed", { status });
   sendJson(response, 200, goalRows(goal.profile_id).find((item) => item.id === id));
 }
@@ -947,7 +978,11 @@ function handleDeleteGoal(request, response, url) {
   try {
     db.prepare("UPDATE actions SET goal_id=0 WHERE profile_id=? AND goal_id=?").run(goal.profile_id, id);
     db.prepare("UPDATE ideas SET goal_id=0 WHERE profile_id=? AND goal_id=?").run(goal.profile_id, id);
+    db.prepare("UPDATE journals SET goal_id=0 WHERE profile_id=? AND goal_id=?").run(goal.profile_id, id);
+    db.prepare("UPDATE task_feedback SET goal_id=0 WHERE profile_id=? AND goal_id=?").run(goal.profile_id, id);
+    db.prepare("UPDATE artifacts SET goal_id=0 WHERE profile_id=? AND goal_id=?").run(goal.profile_id, id);
     db.prepare("DELETE FROM growth_goals WHERE id=?").run(id);
+    if (goal.is_primary) promotePrimaryGoal(goal.profile_id);
     recordEvent(user.id, goal.profile_id, "goal_deleted", {});
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
@@ -1954,7 +1989,7 @@ function handleDeleteFamilyBrief(request, response, url) {
   sendJson(response, 200, { ok: true });
 }
 function publicTaskFeedback(row) {
-  return { id: Number(row.id), taskKey: row.task_key, taskTitle: row.task_title, skill: row.skill, mode: row.mode, difficulty: row.difficulty, enjoyment: row.enjoyment, support: row.support, motivation: row.motivation || "unknown", note: row.note, feedbackDate: row.feedback_date, createdAt: row.created_at, updatedAt: row.updated_at };
+  return { id: Number(row.id), taskKey: row.task_key, taskTitle: row.task_title, skill: row.skill, mode: row.mode, difficulty: row.difficulty, enjoyment: row.enjoyment, support: row.support, motivation: row.motivation || "unknown", note: row.note, goalId: Number(row.goal_id || 0), feedbackDate: row.feedback_date, createdAt: row.created_at, updatedAt: row.updated_at };
 }
 function taskFeedbackRows(profileIdValue, limit = 40) {
   return db.prepare("SELECT * FROM task_feedback WHERE profile_id=? ORDER BY updated_at DESC,id DESC LIMIT ?").all(profileIdValue, limit).map(publicTaskFeedback);
@@ -2007,15 +2042,16 @@ async function handleCreateTaskFeedback(request, response) {
   const mode = String(body.mode || "practice").trim().slice(0, 30);
   const note = String(body.note || "").trim().slice(0, 500);
   const feedbackDate = /^\d{4}-\d{2}-\d{2}$/.test(body.feedbackDate) ? body.feedbackDate : nowIso().slice(0, 10);
+  const goalId = activeGoalId(profileIdValue, body.goalId);
   const now = nowIso();
-  db.prepare("INSERT INTO task_feedback(profile_id,task_key,task_title,skill,mode,difficulty,enjoyment,support,motivation,note,feedback_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(profile_id,task_key,feedback_date) DO UPDATE SET task_title=excluded.task_title,skill=excluded.skill,mode=excluded.mode,difficulty=excluded.difficulty,enjoyment=excluded.enjoyment,support=excluded.support,motivation=excluded.motivation,note=excluded.note,updated_at=excluded.updated_at")
-    .run(profileIdValue, taskKey, taskTitle, skill, mode, difficulty, enjoyment, support, motivation, note, feedbackDate, now, now);
+  db.prepare("INSERT INTO task_feedback(profile_id,task_key,task_title,skill,mode,difficulty,enjoyment,support,motivation,note,goal_id,feedback_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(profile_id,task_key,feedback_date) DO UPDATE SET task_title=excluded.task_title,skill=excluded.skill,mode=excluded.mode,difficulty=excluded.difficulty,enjoyment=excluded.enjoyment,support=excluded.support,motivation=excluded.motivation,note=excluded.note,goal_id=excluded.goal_id,updated_at=excluded.updated_at")
+    .run(profileIdValue, taskKey, taskTitle, skill, mode, difficulty, enjoyment, support, motivation, note, goalId, feedbackDate, now, now);
   recordEvent(user.id, profileIdValue, "task_feedback_saved", { difficulty, enjoyment, support, motivation, skill, mode });
   const entries = taskFeedbackRows(profileIdValue);
   sendJson(response, 201, { entry: entries.find((entry) => entry.taskKey === taskKey && entry.feedbackDate === feedbackDate), calibration: feedbackCalibration(entries) });
 }
 function publicArtifact(row) {
-  return { id: Number(row.id), taskKey: row.task_key, title: row.title, skill: row.skill, type: row.artifact_type, caption: row.caption, content: row.content_text, linkUrl: row.link_url, mediaMime: row.media_mime, hasMedia: Boolean(row.media_data), shareWithAi: Boolean(row.ai_context), mediaUrl: row.media_data ? `/api/artifacts/${row.id}/media` : "", versionNumber: Number(row.versionNumber || 1), versionCount: Number(row.versionCount || 1), createdAt: row.created_at, updatedAt: row.updated_at };
+  return { id: Number(row.id), taskKey: row.task_key, title: row.title, skill: row.skill, type: row.artifact_type, caption: row.caption, content: row.content_text, linkUrl: row.link_url, mediaMime: row.media_mime, hasMedia: Boolean(row.media_data), shareWithAi: Boolean(row.ai_context), goalId: Number(row.goal_id || 0), mediaUrl: row.media_data ? `/api/artifacts/${row.id}/media` : "", versionNumber: Number(row.versionNumber || 1), versionCount: Number(row.versionCount || 1), createdAt: row.created_at, updatedAt: row.updated_at };
 }
 function artifactRows(profileIdValue, limit = 60) {
   const rows = db.prepare("SELECT * FROM artifacts WHERE profile_id=? ORDER BY created_at ASC,id ASC LIMIT ?").all(profileIdValue, limit);
@@ -2060,6 +2096,7 @@ async function handleCreateArtifact(request, response) {
   const caption = String(body.caption || "").trim().slice(0, 500);
   const contentText = String(body.content || "").trim().slice(0, 4000);
   const shareWithAi = body.shareWithAi !== false;
+  const goalId = activeGoalId(profileIdValue, body.goalId);
   if (title.length < 2) return sendJson(response, 400, { error: "给作品取一个名字" });
   let linkUrl = "";
   let mediaMime = "";
@@ -2079,7 +2116,7 @@ async function handleCreateArtifact(request, response) {
     mediaData = match[2];
   }
   const now = nowIso();
-  const result = db.prepare("INSERT INTO artifacts(profile_id,task_key,title,skill,artifact_type,caption,content_text,link_url,media_mime,media_data,ai_context,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)").run(profileIdValue, taskKey, title, skill, type, caption, contentText, linkUrl, mediaMime, mediaData, shareWithAi ? 1 : 0, now, now);
+  const result = db.prepare("INSERT INTO artifacts(profile_id,task_key,title,skill,artifact_type,caption,content_text,link_url,media_mime,media_data,ai_context,goal_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(profileIdValue, taskKey, title, skill, type, caption, contentText, linkUrl, mediaMime, mediaData, shareWithAi ? 1 : 0, goalId, now, now);
   const row = db.prepare("SELECT * FROM artifacts WHERE id=?").get(Number(result.lastInsertRowid));
   if (shareWithAi) createArtifactMemory(profileIdValue, row);
   recordEvent(user.id, profileIdValue, "artifact_saved", { type, skill, shareWithAi, hasTask: taskKey !== "self" });
@@ -2166,6 +2203,24 @@ function dailyPlanCandidates(profileIdValue, checkin, excluded = [], swapContext
   const feedbackCalibration = dailyPlanFeedbackCalibration(profileIdValue);
   const goalsById = new Map(goalRows(profileIdValue).filter((goal) => goal.status === "active").map((goal) => [goal.id, goal]));
   const candidates = [];
+  const missionBook = currentDailyMissionBook(profileIdValue);
+  const snapshotRow = db.prepare("SELECT data_json FROM snapshots WHERE profile_id=?").get(profileIdValue);
+  const snapshotData = snapshotRow ? parseStoredJson(snapshotRow.data_json, {}) : {};
+  const completedMissions = new Set(Object.keys(snapshotData.completions?.[serverDateKey()] || {}));
+  for (const mission of missionBook?.tasks || []) {
+    const ref = `mission:${mission.id}`;
+    if (excludedSet.has(ref) || completedMissions.has(String(mission.id))) continue;
+    let score = mission.tier === "基础" ? 62 : mission.tier === "成长" ? 72 : 48;
+    if (mission.personalized) score += 22;
+    if (Number(mission.minutes) <= available) score += 24; else score -= Math.min(24, Number(mission.minutes) - available);
+    if (checkin.energy === "low") score += Number(mission.minutes) <= 5 ? 20 : -18;
+    if (checkin.intent === "create" && ["creation", "communication"].includes(mission.skill)) score += 26;
+    if (checkin.intent === "learn" && ["metacognition", "communication", "data-reasoning", "ai-literacy"].includes(mission.skill)) score += 22;
+    if (checkin.intent === "reset" && ["self-regulation", "wellbeing"].includes(mission.skill)) score += 26;
+    if (swapContext.reason === "too_big") score += Number(mission.minutes) <= 5 ? 28 : -20;
+    if (swapContext.reason === "not_interesting" && swapContext.previousSourceType === "mission") score += mission.personalized ? 8 : 0;
+    candidates.push({ ref, sourceType: "mission", sourceId: String(mission.id), goalId: missionBook.goalId || 0, goalTitle: missionBook.goalTitle || "当前成长主线", keyResultTitle: mission.keyResultTitle || "", title: mission.title, detail: mission.why, minutes: Math.min(available, Number(mission.minutes || 5)), energy: Number(mission.minutes) <= 5 ? "low" : "normal", score, firstStep: mission.success, whyHint: mission.why || `它来自今天同一份AI任务册`, contextUsed: mission.contextUsed || [] });
+  }
   for (const action of actionRows(profileIdValue).filter((item) => ["open", "doing"].includes(item.status) && (!item.notBefore || new Date(item.notBefore).getTime() <= Date.now()))) {
     const ref = `action:${action.id}`;
     if (excludedSet.has(ref)) continue;
@@ -2248,7 +2303,9 @@ async function handleGenerateDailyPlan(request, response) {
   const checkin = { energy: lighter ? "low" : ["low", "normal", "high"].includes(body.energy) ? body.energy : previous?.checkin.energy || "normal", minutes: lighter ? 5 : [5, 10, 20, 30].includes(Number(body.minutes)) ? Number(body.minutes) : Number(previous?.checkin.minutes || 10), intent: ["finish", "create", "learn", "reset", "recharge"].includes(body.intent) ? body.intent : previous?.checkin.intent || "finish" };
   const excluded = [...new Set([...(previous?.excluded || []), ...(swap && previous?.plan.ref ? [previous.plan.ref] : [])])].slice(-12);
   const recommendationCalibration = dailyPlanFeedbackCalibration(profileIdValue);
-  const candidates = dailyPlanCandidates(profileIdValue, checkin, excluded, { reason: swapReason, previousSourceType: previous?.plan?.sourceType || "" });
+  const allCandidates = dailyPlanCandidates(profileIdValue, checkin, excluded, { reason: swapReason, previousSourceType: previous?.plan?.sourceType || "" });
+  const missionCandidates = allCandidates.filter((candidate) => candidate.sourceType === "mission");
+  const candidates = missionCandidates.length ? missionCandidates : allCandidates;
   if (!candidates.length) return sendJson(response, 409, { error: "今天的候选都看过了，先休息一下吧" });
   const fallback = candidates[0];
   const calibration = feedbackCalibration(taskFeedbackRows(profileIdValue));
@@ -2385,7 +2442,8 @@ async function callSiliconFlowPlan(payload) {
             "你是6-10岁儿童的成长计划设计师。",
             "计划必须来自孩子技能树、长期画像、复盘、已有周计划、近期日程和安全新闻上下文。",
             "长期记忆只作为可修正的行为证据，不得把它当作固定人格标签。",
-            "每周只设一个清楚目标，拆成3-5个可独立完成的里程碑。",
+            "只能围绕payload.planningContext.currentJourney规划，不得发明、替换或并列建立第二个成长目标。",
+            "weeklyGoal只是当前SMART Objective的本周切片，拆成3-5个可独立完成的里程碑。没有currentJourney时，只生成建立主线前的准备步骤。",
             "日程繁忙时减少任务量，新闻只用作安全的项目灵感。",
             "禁止诊断、贴标签、制造焦虑或成人化竞争。",
             "只返回合法JSON。"
@@ -2394,9 +2452,9 @@ async function callSiliconFlowPlan(payload) {
         {
           role: "user",
           content: JSON.stringify({
-            task: "生成一份个性化本周成长计划",
+            task: "把唯一当前成长主线编排成个性化本周路线",
             outputSchema: {
-              weeklyGoal: "一句孩子看得懂的本周目标",
+              weeklyGoal: "当前SMART主线在本周推进到哪里，不能另建目标",
               focusSkill: "八类能力之一的id",
               constraints: "如何适配日程和能量",
               rationale: "为什么此刻选这个目标，最多60字",
@@ -2869,6 +2927,87 @@ async function handleRefreshGrowthBlueprint(request, response) {
   db.prepare("INSERT INTO growth_blueprints(profile_id,blueprint_json,evidence_fingerprint,provider,created_at,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(profile_id) DO UPDATE SET blueprint_json=excluded.blueprint_json,evidence_fingerprint=excluded.evidence_fingerprint,provider=excluded.provider,updated_at=excluded.updated_at").run(profileIdValue, JSON.stringify(result.blueprint), fingerprint, result.provider, existing?.created_at || now, now);
   recordEvent(user.id, profileIdValue, "blueprint_refreshed", { provider: result.provider, priorities: result.blueprint.priorities.map((item) => item.skill), evidenceSummary: result.blueprint.evidenceSummary });
   sendJson(response, 200, { blueprint: { ...result.blueprint, provider: result.provider, updatedAt: now }, stale: false });
+}
+
+function publicDailyMissionBook(row) {
+  if (!row) return null;
+  return { ...JSON.parse(row.book_json), provider: row.provider, updatedAt: row.updated_at };
+}
+
+function currentDailyMissionBook(profileIdValue) {
+  return publicDailyMissionBook(db.prepare("SELECT * FROM daily_mission_books WHERE profile_id=? AND mission_date=?").get(profileIdValue, serverDateKey()));
+}
+
+function balancedMissionFallback(baseTasks) {
+  const categories = ["健康", "学习", "生活", "责任", "表达", "未来"];
+  return categories.flatMap((category) => baseTasks.filter((task) => task.category === category).slice(0, 4)).slice(0, 24);
+}
+
+function normalizeMissionTask(item, base) {
+  const allowedSources = new Set(base.contextUsed || []);
+  const requestedSources = (Array.isArray(item?.contextUsed) ? item.contextUsed : base.contextUsed || []).map(String).filter((source) => allowedSources.has(source)).slice(0, 4);
+  return {
+    id: base.id,
+    slot: base.slot,
+    title: String(item?.title || base.title).slice(0, 80),
+    category: base.category,
+    skill: normalizeSkillId(base.skill),
+    minutes: Math.max(2, Math.min(30, Number(item?.minutes || base.minutes))),
+    tier: ["基础", "成长", "探索"].includes(item?.tier) ? item.tier : base.tier,
+    stage: Math.max(1, Math.min(5, Number(base.stage || 1))),
+    difficulty: String(base.difficulty || "入门").slice(0, 20),
+    success: String(item?.success || base.success).slice(0, 140),
+    why: String(item?.why || base.why).slice(0, 160),
+    contextUsed: requestedSources.length ? requestedSources : [...allowedSources].slice(0, 4),
+    reward: Math.max(1, Math.min(8, Number(base.reward || 3))),
+    personalized: Boolean(base.personalized),
+    micro: true
+  };
+}
+
+async function generateDailyMissionBook(profile, body, baseTasks) {
+  const fallbackTasks = balancedMissionFallback(baseTasks).map((task) => normalizeMissionTask(task, task));
+  const mainGoal = Array.isArray(body.activeGoals) ? body.activeGoals[0] : null;
+  const fallback = { date: serverDateKey(), headline: "今天的成长关卡", rationale: "任务来自成长蓝图、当前状态和真实生活底座。", blueprintVersion: Number(body.blueprint?.version || 0), goalId: Number(mainGoal?.id || 0), goalTitle: String(mainGoal?.objective || "当前成长主线").slice(0, 140), tasks: fallbackTasks };
+  if (!apiKey) return { book: fallback, provider: "local" };
+  try {
+    const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(60000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.48, max_tokens: 1200, response_format: { type: "json_object" }, messages: [
+      { role: "system", content: "你是6-12岁儿童的每日成长关卡设计师。系统已固定健康、学习、生活、责任、表达、未来六类各4个安全任务槽。你只需根据孩子画像、成长蓝图、SMART目标、日记体验和今日状态，为每类设计4个短小且形式不同的具体活动。不得诊断、贴标签、制造焦虑，不暗示24项必须全部完成。严格返回六类精简JSON，不要解释。" },
+      { role: "user", content: JSON.stringify({ child: body.child, confirmedPortrait: body.confirmedPortrait, blueprint: body.blueprint, activeGoals: body.activeGoals, today: body.today, recentJournal: body.recentJournal, taskExperience: body.taskExperience, schedule: body.schedule, knowledgeFramework: body.knowledgeFramework, categoryExamples: Object.fromEntries(["健康", "学习", "生活", "责任", "表达", "未来"].map((category) => [category, fallbackTasks.filter((task) => task.category === category).map(({ title, stage, success }) => ({ title, stage, success }))])), output: { headline: "今日任务册短标题", rationale: "最多60字说明适配理由", categories: [{ category: "六类之一", activities: [{ title: "活动，最多24字", success: "可观察标准，最多32字" }] }] } }) }
+    ] }) });
+    if (!apiResponse.ok) throw new Error(`daily missions ${apiResponse.status}`);
+    const json = parseJsonContent((await apiResponse.json()).choices?.[0]?.message?.content || "{}");
+    const categories = ["健康", "学习", "生活", "责任", "表达", "未来"];
+    const categoryPlans = new Map((Array.isArray(json.categories) ? json.categories : []).map((item) => [String(item?.category || ""), Array.isArray(item?.activities) ? item.activities : []]));
+    const tasks = categories.flatMap((category) => fallbackTasks.filter((task) => task.category === category).slice(0, 4).map((base, index) => normalizeMissionTask(categoryPlans.get(category)?.[index] || base, base)));
+    return { provider: "siliconflow", book: { ...fallback, headline: String(json.headline || fallback.headline).slice(0, 100), rationale: String(json.rationale || fallback.rationale).slice(0, 200), tasks } };
+  } catch (error) { console.warn("Daily mission book used local fallback:", error.message); return { book: fallback, provider: "local" }; }
+}
+
+function handleGetDailyMissions(request, response, url) {
+  const user = requireUser(request, response); if (!user) return;
+  const profileIdValue = String(url.searchParams.get("profileId") || "");
+  if (!ownedProfile(user.id, profileIdValue)) return sendJson(response, 404, { error: "角色不存在" });
+  sendJson(response, 200, { book: currentDailyMissionBook(profileIdValue) });
+}
+
+async function handleGenerateDailyMissions(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  const body = await readBodyJson(request);
+  const profileIdValue = String(body.profileId || "");
+  const profile = ownedProfile(user.id, profileIdValue);
+  if (!profile) return sendJson(response, 404, { error: "角色不存在" });
+  const baseTasks = (Array.isArray(body.baseTasks) ? body.baseTasks : []).slice(0, 42).map((task, index) => ({ ...task, id: String(task.id || `mission-${index}`).slice(0, 100), slot: String(task.slot || task.id || `slot-${index}`).slice(0, 100), title: String(task.title || "成长小任务").slice(0, 100), category: ["健康", "学习", "生活", "责任", "表达", "未来"].includes(task.category) ? task.category : "学习", skill: normalizeSkillId(task.skill), contextUsed: (Array.isArray(task.contextUsed) ? task.contextUsed : []).map(String).slice(0, 4) }));
+  if (baseTasks.length < 18) return sendJson(response, 400, { error: "今日任务候选不足" });
+  const fingerprintPayload = { portrait: body.confirmedPortrait, blueprint: body.blueprint, activeGoals: body.activeGoals, today: body.today, recentJournal: body.recentJournal, taskExperience: body.taskExperience, schedule: body.schedule, baseTasks: baseTasks.map(({ slot, title, stage, contextUsed }) => ({ slot, title, stage, contextUsed })) };
+  const fingerprint = stableHash(JSON.stringify(fingerprintPayload));
+  const existing = db.prepare("SELECT * FROM daily_mission_books WHERE profile_id=? AND mission_date=?").get(profileIdValue, serverDateKey());
+  if (existing && existing.context_fingerprint === fingerprint && body.force !== true) return sendJson(response, 200, { book: publicDailyMissionBook(existing), cached: true });
+  const result = await generateDailyMissionBook(profile, body, baseTasks);
+  const now = nowIso();
+  db.prepare("INSERT INTO daily_mission_books(profile_id,mission_date,book_json,context_fingerprint,provider,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(profile_id,mission_date) DO UPDATE SET book_json=excluded.book_json,context_fingerprint=excluded.context_fingerprint,provider=excluded.provider,updated_at=excluded.updated_at").run(profileIdValue, serverDateKey(), JSON.stringify(result.book), fingerprint, result.provider, existing?.created_at || now, now);
+  recordEvent(user.id, profileIdValue, "daily_missions_generated", { provider: result.provider, taskCount: result.book.tasks.length, blueprintVersion: result.book.blueprintVersion });
+  sendJson(response, 200, { book: { ...result.book, provider: result.provider, updatedAt: now }, cached: false });
 }
 
 function normalizeSteps(steps) {
