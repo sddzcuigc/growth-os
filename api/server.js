@@ -11,6 +11,7 @@ loadEnvFile(".env.local");
 loadEnvFile(".env");
 
 const root = process.cwd();
+const bossCatalog = JSON.parse(readFileSync(join(root, "data", "boss-catalog.json"), "utf8"));
 const port = Number(process.env.PORT || 5173);
 const host = process.env.HOST || "127.0.0.1";
 const baseUrl = process.env.SILICONFLOW_BASE_URL || "https://api.siliconflow.cn/v1";
@@ -51,9 +52,19 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS action_decisions (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, action_id INTEGER NOT NULL REFERENCES actions(id) ON DELETE CASCADE, reason TEXT NOT NULL, outcome TEXT NOT NULL, note TEXT NOT NULL, created_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS growth_blueprints (profile_id TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE, blueprint_json TEXT NOT NULL, evidence_fingerprint TEXT NOT NULL, provider TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS daily_mission_books (profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, mission_date TEXT NOT NULL, book_json TEXT NOT NULL, context_fingerprint TEXT NOT NULL, provider TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(profile_id,mission_date));
+  CREATE TABLE IF NOT EXISTS weekly_boss_runs (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, boss_id TEXT NOT NULL, difficulty TEXT NOT NULL, week_start TEXT NOT NULL, source_blueprint_id TEXT NOT NULL, source_project_id TEXT NOT NULL, shield_total INTEGER NOT NULL, shield_broken INTEGER NOT NULL, hp_total INTEGER NOT NULL, hp_remaining INTEGER NOT NULL, status TEXT NOT NULL, selection_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(profile_id,week_start));
+  CREATE TABLE IF NOT EXISTS daily_core_plans (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, plan_date TEXT NOT NULL, weekly_boss_run_id INTEGER NOT NULL REFERENCES weekly_boss_runs(id) ON DELETE CASCADE, tasks_json TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(profile_id,plan_date));
+  CREATE TABLE IF NOT EXISTS daily_mini_bosses (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, weekly_boss_run_id INTEGER NOT NULL REFERENCES weekly_boss_runs(id) ON DELETE CASCADE, boss_date TEXT NOT NULL, template_type TEXT NOT NULL, unlock_status TEXT NOT NULL, challenge_json TEXT NOT NULL, evidence_id INTEGER NOT NULL DEFAULT 0, xp INTEGER NOT NULL, gems INTEGER NOT NULL, rune_type TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(profile_id,boss_date));
+  CREATE TABLE IF NOT EXISTS growth_evidence (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, skill_id TEXT NOT NULL, source_type TEXT NOT NULL, source_id TEXT NOT NULL, evidence_level INTEGER NOT NULL, summary TEXT NOT NULL, observable_json TEXT NOT NULL, child_confirmed INTEGER NOT NULL, guardian_confirmed INTEGER, ai_context INTEGER NOT NULL, created_at TEXT NOT NULL, UNIQUE(profile_id,source_type,source_id));
+  CREATE TABLE IF NOT EXISTS reward_drops (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, weekly_boss_run_id INTEGER NOT NULL REFERENCES weekly_boss_runs(id) ON DELETE CASCADE, candidates_json TEXT NOT NULL, chosen_reward_id TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(weekly_boss_run_id));
+  CREATE TABLE IF NOT EXISTS reward_vouchers (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, reward_catalog_id TEXT NOT NULL, acquired_at TEXT NOT NULL, expires_at TEXT NOT NULL, status TEXT NOT NULL, updated_at TEXT NOT NULL);
   CREATE INDEX IF NOT EXISTS action_decisions_action_time ON action_decisions(action_id,created_at);
   CREATE INDEX IF NOT EXISTS blueprints_profile_time ON growth_blueprints(profile_id,updated_at);
   CREATE INDEX IF NOT EXISTS mission_books_profile_date ON daily_mission_books(profile_id,mission_date);
+  CREATE INDEX IF NOT EXISTS boss_runs_profile_week ON weekly_boss_runs(profile_id,week_start,status);
+  CREATE INDEX IF NOT EXISTS mini_boss_profile_date ON daily_mini_bosses(profile_id,boss_date,unlock_status);
+  CREATE INDEX IF NOT EXISTS growth_evidence_profile_skill ON growth_evidence(profile_id,skill_id,evidence_level,created_at);
+  CREATE INDEX IF NOT EXISTS reward_vouchers_profile_status ON reward_vouchers(profile_id,status,acquired_at);
   CREATE INDEX IF NOT EXISTS self_coach_profile_time ON self_coach_answers(profile_id,created_at);
   CREATE INDEX IF NOT EXISTS goals_profile_status ON growth_goals(profile_id,status,updated_at);
   CREATE INDEX IF NOT EXISTS rescues_action_time ON action_rescues(action_id,created_at);
@@ -170,6 +181,14 @@ async function requestHandler(request, response) {
     if (request.method === "POST" && url.pathname === "/api/growth-blueprint/refresh") return handleRefreshGrowthBlueprint(request, response);
     if (request.method === "GET" && url.pathname === "/api/daily-missions") return handleGetDailyMissions(request, response, url);
     if (request.method === "POST" && url.pathname === "/api/daily-missions/generate") return handleGenerateDailyMissions(request, response);
+    if (request.method === "GET" && url.pathname === "/api/boss/catalog") return handleBossCatalog(request, response);
+    if (request.method === "GET" && url.pathname === "/api/boss/week") return handleGetWeeklyBoss(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/boss/daily/sync") return handleSyncDailyBoss(request, response);
+    if (request.method === "POST" && /^\/api\/boss\/daily\/\d+\/complete$/.test(url.pathname)) return handleCompleteMiniBoss(request, response, url);
+    if (request.method === "POST" && /^\/api\/boss\/week\/\d+\/final$/.test(url.pathname)) return handleWeeklyBossFinal(request, response, url);
+    if (request.method === "POST" && /^\/api\/boss\/rewards\/\d+\/choose$/.test(url.pathname)) return handleChooseBossReward(request, response, url);
+    if (request.method === "POST" && /^\/api\/boss\/vouchers\/\d+\/approve$/.test(url.pathname)) return handleApproveRewardVoucher(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/boss/vouchers") return handleListRewardVouchers(request, response, url);
     if (request.method === "POST" && url.pathname === "/api/goals/shape") return handleShapeGoal(request, response);
     if (request.method === "POST" && url.pathname === "/api/goals") return handleCreateGoal(request, response);
     if (request.method === "PATCH" && /^\/api\/goals\/\d+$/.test(url.pathname)) return handleUpdateGoal(request, response, url);
@@ -2983,6 +3002,209 @@ async function handleRefreshGrowthBlueprint(request, response) {
   db.prepare("INSERT INTO growth_blueprints(profile_id,blueprint_json,evidence_fingerprint,provider,created_at,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(profile_id) DO UPDATE SET blueprint_json=excluded.blueprint_json,evidence_fingerprint=excluded.evidence_fingerprint,provider=excluded.provider,updated_at=excluded.updated_at").run(profileIdValue, JSON.stringify(result.blueprint), fingerprint, result.provider, existing?.created_at || now, now);
   recordEvent(user.id, profileIdValue, "blueprint_refreshed", { provider: result.provider, priorities: result.blueprint.priorities.map((item) => item.skill), evidenceSummary: result.blueprint.evidenceSummary });
   sendJson(response, 200, { blueprint: { ...result.blueprint, provider: result.provider, updatedAt: now }, stale: false });
+}
+
+const bossRewardCatalog = [
+  { id: "digital_theme", name: "世界主题皮肤", category: "digital", rarity: "common", guardianApprovalRequired: false },
+  { id: "boss_story", name: "Boss故事章节", category: "digital", rarity: "common", guardianApprovalRequired: false },
+  { id: "avatar_costume", name: "角色新服装", category: "digital", rarity: "rare", guardianApprovalRequired: false },
+  { id: "project_material", name: "十元项目材料券", category: "creation", rarity: "rare", guardianApprovalRequired: true },
+  { id: "family_game", name: "家长专属游戏30分钟", category: "family", rarity: "rare", guardianApprovalRequired: true },
+  { id: "library_choice", name: "图书馆自由选书券", category: "adventure", rarity: "epic", guardianApprovalRequired: true },
+  { id: "outdoor_explore", name: "户外自由探索30分钟", category: "adventure", rarity: "rare", guardianApprovalRequired: true },
+  { id: "creative_hour", name: "个人兴趣专属一小时", category: "time", rarity: "epic", guardianApprovalRequired: true },
+  { id: "family_captain", name: "家庭队长一天", category: "honor", rarity: "epic", guardianApprovalRequired: true },
+  { id: "work_display", name: "作品装框展示券", category: "creation", rarity: "rare", guardianApprovalRequired: true },
+  { id: "peace_replay", name: "和平重赛券", category: "communication", rarity: "rare", guardianApprovalRequired: true },
+  { id: "weekend_project", name: "周末项目共创券", category: "family", rarity: "epic", guardianApprovalRequired: true }
+];
+const coarseSkillWorld = { "self-regulation": "W01", metacognition: "W02", "data-reasoning": "W03", creation: "W04", communication: "W05", "ethics-collaboration": "W06", "ai-literacy": "W07", wellbeing: "W09" };
+const miniBossTemplates = [
+  { type: "flash", rune: "weakness", title: "闪电回答", instruction: (boss) => `用一句话说出${boss.name}最怕的一个办法。` },
+  { type: "strategy", rune: "method", title: "策略选择", instruction: (boss) => `从今天用过的方法里选一个，说说它怎样削弱${boss.name}。` },
+  { type: "action", rune: "action", title: "限时行动", instruction: (boss) => `用2分钟再做一次今天最关键的小动作，给${boss.name}一次真实攻击。` },
+  { type: "strategy", rune: "resilience", title: "Boss反击", instruction: () => "说出今天哪里卡住了，以及你换了什么办法继续。" },
+  { type: "truth", rune: "transfer", title: "换场景追击", instruction: () => "找一个不同场景，说出同一种方法还能怎样使用。" },
+  { type: "create", rune: "result", title: "成果锻造", instruction: () => "留下一个能看见的成果、记录或讲解，作为本周武器。" }
+];
+
+function bossHash(value) { return [...String(value || "")].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) >>> 0, 17); }
+function bossById(id) { return bossCatalog.bosses.find((boss) => boss.id === id); }
+function worldById(id) { return bossCatalog.worlds.find((world) => world.id === id); }
+function isDemoUser(user) { return ["admin@growth-os.local", "builtin-admin@growth-os.local"].includes(user.email); }
+function bossDateForRequest(user, value) { return isDemoUser(user) && /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) ? String(value) : serverDateKey(); }
+function weekStartForDate(dateKey) {
+  const date = new Date(`${dateKey}T12:00:00`);
+  const day = date.getDay() || 7;
+  return serverDateKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() - day + 1));
+}
+function publicMiniBoss(row) {
+  if (!row) return null;
+  return { id: Number(row.id), date: row.boss_date, weeklyBossRunId: Number(row.weekly_boss_run_id), templateType: row.template_type, unlockStatus: row.unlock_status, challenge: JSON.parse(row.challenge_json), evidenceId: Number(row.evidence_id || 0), xp: Number(row.xp), gems: Number(row.gems), runeType: row.rune_type };
+}
+function publicRewardDrop(row) {
+  if (!row) return null;
+  return { id: Number(row.id), weeklyBossRunId: Number(row.weekly_boss_run_id), candidates: JSON.parse(row.candidates_json).map((id) => bossRewardCatalog.find((reward) => reward.id === id)).filter(Boolean), chosenRewardId: row.chosen_reward_id, status: row.status };
+}
+function publicWeeklyBoss(row) {
+  if (!row) return null;
+  const boss = bossById(row.boss_id);
+  const world = worldById(boss?.worldId);
+  return { id: Number(row.id), profileId: row.profile_id, weekStart: row.week_start, boss, world: world ? { id: world.id, index: world.index, name: world.name, domain: world.domain, assetPath: world.assetPath } : null, difficulty: row.difficulty, sourceBlueprintId: row.source_blueprint_id, sourceProjectId: row.source_project_id, shieldTotal: Number(row.shield_total), shieldBroken: Number(row.shield_broken), hpTotal: Number(row.hp_total), hpRemaining: Number(row.hp_remaining), status: row.status, selection: JSON.parse(row.selection_json) };
+}
+function selectWeeklyBoss(profileIdValue, weekStart) {
+  const goal = goalRows(profileIdValue).find((item) => item.status === "active" && item.isPrimary) || goalRows(profileIdValue).find((item) => item.status === "active");
+  const blueprintRow = db.prepare("SELECT blueprint_json,updated_at FROM growth_blueprints WHERE profile_id=?").get(profileIdValue);
+  const blueprint = blueprintRow ? JSON.parse(blueprintRow.blueprint_json) : null;
+  const skill = normalizeSkillId(goal?.skill || blueprint?.priorities?.[0]?.skill || "self-regulation");
+  const worldId = coarseSkillWorld[skill] || "W08";
+  const world = worldById(worldId);
+  const history = db.prepare("SELECT boss_id FROM weekly_boss_runs WHERE profile_id=? ORDER BY week_start DESC LIMIT 6").all(profileIdValue).map((item) => item.boss_id);
+  const counts = new Map(db.prepare("SELECT boss_id,COUNT(*) AS count FROM weekly_boss_runs WHERE profile_id=? GROUP BY boss_id").all(profileIdValue).map((item) => [item.boss_id, Number(item.count)]));
+  const candidates = world.bosses.map((boss) => ({ boss, score: 30 + (goal ? 20 : 8) + (blueprint ? 15 : 5) + (10 - (counts.get(boss.id) || 0) * 3) + (history[0] === boss.id && history[1] === boss.id ? -100 : 0) + bossHash(`${goal?.objective || ""}:${boss.id}`) % 11 })).sort((a, b) => b.score - a.score || a.boss.id.localeCompare(b.boss.id));
+  return { boss: candidates[0].boss, goal, blueprintRow, selection: { algorithm: "blueprint30+friction20+interest15+evidence15+project10+age5+resources5", score: candidates[0].score, reasons: [goal ? `当前SMART目标：${goal.objective || goal.title}` : "当前需要建立行动底座", blueprint?.priorities?.[0]?.reason || "来自当前成长蓝图", `匹配${world.domain}`].filter(Boolean), candidateIds: candidates.slice(0, 3).map((item) => item.boss.id) } };
+}
+function ensureWeeklyBoss(profileIdValue, dateKey = serverDateKey()) {
+  const weekStart = weekStartForDate(dateKey);
+  let row = db.prepare("SELECT * FROM weekly_boss_runs WHERE profile_id=? AND week_start=?").get(profileIdValue, weekStart);
+  if (row) return row;
+  const picked = selectWeeklyBoss(profileIdValue, weekStart);
+  const previousWins = Number(db.prepare("SELECT COUNT(*) AS count FROM weekly_boss_runs WHERE profile_id=? AND boss_id=? AND status='defeated'").get(profileIdValue, picked.boss.id)?.count || 0);
+  const difficulty = ["bronze", "silver", "gold", "diamond", "legend"][Math.min(4, previousWins)];
+  const now = nowIso();
+  const result = db.prepare("INSERT INTO weekly_boss_runs(profile_id,boss_id,difficulty,week_start,source_blueprint_id,source_project_id,shield_total,shield_broken,hp_total,hp_remaining,status,selection_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(profileIdValue, picked.boss.id, difficulty, weekStart, picked.blueprintRow?.updated_at || "unversioned", String(picked.goal?.id || ""), 6, 0, 40, 40, "active", JSON.stringify(picked.selection), now, now);
+  return db.prepare("SELECT * FROM weekly_boss_runs WHERE id=?").get(Number(result.lastInsertRowid));
+}
+function miniBossChallenge(weeklyRow, dateKey) {
+  const boss = bossById(weeklyRow.boss_id);
+  const day = new Date(`${dateKey}T12:00:00`).getDay() || 7;
+  const template = miniBossTemplates[Math.min(5, Math.max(0, day - 1))];
+  return { template, challenge: { title: template.title, instruction: template.instruction(boss), bossLine: `${boss.name}正在用“${boss.attackNarrative}”反击。`, success: "完成真实回答或行动，并由孩子确认", skillId: boss.skillId, sourceBossId: boss.id } };
+}
+function bossState(profileIdValue, dateKey = serverDateKey()) {
+  const weeklyRow = ensureWeeklyBoss(profileIdValue, dateKey);
+  const core = db.prepare("SELECT * FROM daily_core_plans WHERE profile_id=? AND plan_date=?").get(profileIdValue, dateKey);
+  const mini = db.prepare("SELECT * FROM daily_mini_bosses WHERE profile_id=? AND boss_date=?").get(profileIdValue, dateKey);
+  const drop = db.prepare("SELECT * FROM reward_drops WHERE weekly_boss_run_id=?").get(weeklyRow.id);
+  const evidence = db.prepare("SELECT growth_evidence.id,growth_evidence.skill_id AS skillId,growth_evidence.source_type AS sourceType,growth_evidence.source_id AS sourceId,growth_evidence.evidence_level AS level,growth_evidence.summary,growth_evidence.observable_json AS observableFacts,growth_evidence.child_confirmed AS childConfirmed,growth_evidence.guardian_confirmed AS guardianConfirmed,growth_evidence.ai_context AS shareWithAi,growth_evidence.created_at AS createdAt FROM growth_evidence JOIN daily_mini_bosses ON growth_evidence.source_type='mini_boss' AND CAST(growth_evidence.source_id AS INTEGER)=daily_mini_bosses.id WHERE growth_evidence.profile_id=? AND daily_mini_bosses.weekly_boss_run_id=? ORDER BY growth_evidence.id DESC").all(profileIdValue, weeklyRow.id).map((item) => ({ ...item, observableFacts: JSON.parse(item.observableFacts), childConfirmed: Boolean(item.childConfirmed), guardianConfirmed: item.guardianConfirmed == null ? null : Boolean(item.guardianConfirmed), shareWithAi: Boolean(item.shareWithAi) }));
+  return { week: publicWeeklyBoss(weeklyRow), corePlan: core ? { id: Number(core.id), date: core.plan_date, tasks: JSON.parse(core.tasks_json), status: core.status } : null, miniBoss: publicMiniBoss(mini), evidence, rewardDrop: publicRewardDrop(drop) };
+}
+function handleBossCatalog(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  sendJson(response, 200, { version: bossCatalog.version, worlds: bossCatalog.worlds.map((world) => ({ ...world, bosses: world.bosses.map((boss) => ({ id: boss.id, name: boss.name, skillId: boss.skillId, skillName: boss.skillName, rank: boss.rank, portraitPath: boss.portraitPath, iconPath: boss.iconPath })) })), totalBosses: bossCatalog.bosses.length });
+}
+function handleGetWeeklyBoss(request, response, url) {
+  const user = requireUser(request, response); if (!user) return;
+  const profileIdValue = String(url.searchParams.get("profileId") || "");
+  if (!ownedProfile(user.id, profileIdValue)) return sendJson(response, 404, { error: "角色不存在" });
+  const dateKey = bossDateForRequest(user, url.searchParams.get("date"));
+  sendJson(response, 200, bossState(profileIdValue, dateKey));
+}
+async function handleSyncDailyBoss(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  const body = await readBodyJson(request);
+  const profileIdValue = String(body.profileId || "");
+  if (!ownedProfile(user.id, profileIdValue)) return sendJson(response, 404, { error: "角色不存在" });
+  const dateKey = bossDateForRequest(user, body.date);
+  const weekly = ensureWeeklyBoss(profileIdValue, dateKey);
+  const allowed = new Set(["pending", "completed", "adjusted_completed", "withdrawn", "recovery_completed"]);
+  const tasks = (Array.isArray(body.tasks) ? body.tasks : []).slice(0, 3).map((task, index) => ({ id: String(task.id || `core-${index + 1}`).slice(0, 100), title: String(task.title || "今日核心任务").slice(0, 160), status: allowed.has(task.status) ? task.status : "pending", sourceRef: String(task.sourceRef || "").slice(0, 120), adjustment: String(task.adjustment || "").slice(0, 120) }));
+  if (!tasks.length) return sendJson(response, 400, { error: "每天需要1到3项合理核心任务" });
+  const complete = tasks.every((task) => ["completed", "adjusted_completed", "withdrawn", "recovery_completed"].includes(task.status));
+  const now = nowIso();
+  db.prepare("INSERT INTO daily_core_plans(profile_id,plan_date,weekly_boss_run_id,tasks_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(profile_id,plan_date) DO UPDATE SET tasks_json=excluded.tasks_json,status=excluded.status,updated_at=excluded.updated_at").run(profileIdValue, dateKey, weekly.id, JSON.stringify(tasks), complete ? "completed" : "confirmed", now, now);
+  let mini = db.prepare("SELECT * FROM daily_mini_bosses WHERE profile_id=? AND boss_date=?").get(profileIdValue, dateKey);
+  if (!mini) {
+    const { template, challenge } = miniBossChallenge(weekly, dateKey);
+    const result = db.prepare("INSERT INTO daily_mini_bosses(profile_id,weekly_boss_run_id,boss_date,template_type,unlock_status,challenge_json,evidence_id,xp,gems,rune_type,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(profileIdValue, weekly.id, dateKey, template.type, complete ? "unlocked" : "locked", JSON.stringify(challenge), 0, 8, 1, template.rune, now, now);
+    mini = db.prepare("SELECT * FROM daily_mini_bosses WHERE id=?").get(Number(result.lastInsertRowid));
+  } else if (mini.unlock_status !== "completed") {
+    db.prepare("UPDATE daily_mini_bosses SET unlock_status=?,updated_at=? WHERE id=?").run(complete ? "unlocked" : "locked", now, mini.id);
+  }
+  recordEvent(user.id, profileIdValue, "daily_core_plan_synced", { date: dateKey, taskCount: tasks.length, complete });
+  sendJson(response, 200, bossState(profileIdValue, dateKey));
+}
+async function handleCompleteMiniBoss(request, response, url) {
+  const user = requireUser(request, response); if (!user) return;
+  const id = Number(url.pathname.split("/").at(-2));
+  const row = db.prepare("SELECT daily_mini_bosses.* FROM daily_mini_bosses JOIN profiles ON profiles.id=daily_mini_bosses.profile_id WHERE daily_mini_bosses.id=? AND profiles.user_id=?").get(id, user.id);
+  if (!row) return sendJson(response, 404, { error: "小Boss不存在" });
+  if (row.unlock_status === "completed") return sendJson(response, 200, { ...bossState(row.profile_id, row.boss_date), rewarded: false });
+  if (row.unlock_status !== "unlocked") return sendJson(response, 409, { error: "完成今天全部核心任务后才会解锁小Boss" });
+  const body = await readBodyJson(request);
+  const challenge = JSON.parse(row.challenge_json);
+  const now = nowIso();
+  db.exec("BEGIN");
+  try {
+    const evidenceResult = db.prepare("INSERT INTO growth_evidence(profile_id,skill_id,source_type,source_id,evidence_level,summary,observable_json,child_confirmed,guardian_confirmed,ai_context,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)").run(row.profile_id, challenge.skillId, "mini_boss", String(row.id), 2, String(body.summary || `完成${challenge.title}`).slice(0, 220), JSON.stringify([String(body.observableFact || challenge.success).slice(0, 220)]), 1, null, body.shareWithAi === false ? 0 : 1, now);
+    db.prepare("UPDATE daily_mini_bosses SET unlock_status='completed',evidence_id=?,updated_at=? WHERE id=?").run(Number(evidenceResult.lastInsertRowid), now, row.id);
+    db.prepare("UPDATE weekly_boss_runs SET shield_broken=MIN(shield_total,shield_broken+1),hp_remaining=MAX(0,hp_remaining-3),status=CASE WHEN shield_broken+1>=shield_total THEN 'final_ready' ELSE status END,updated_at=? WHERE id=?").run(now, row.weekly_boss_run_id);
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  recordEvent(user.id, row.profile_id, "mini_boss_completed", { miniBossId: id, rune: row.rune_type, xp: row.xp, gems: row.gems });
+  sendJson(response, 200, { ...bossState(row.profile_id, row.boss_date), rewarded: true, reward: { xp: Number(row.xp), gems: Number(row.gems), runeType: row.rune_type } });
+}
+async function handleWeeklyBossFinal(request, response, url) {
+  const user = requireUser(request, response); if (!user) return;
+  const id = Number(url.pathname.split("/").at(-2));
+  const row = db.prepare("SELECT weekly_boss_runs.* FROM weekly_boss_runs JOIN profiles ON profiles.id=weekly_boss_runs.profile_id WHERE weekly_boss_runs.id=? AND profiles.user_id=?").get(id, user.id);
+  if (!row) return sendJson(response, 404, { error: "周Boss不存在" });
+  if (row.status === "defeated") return sendJson(response, 200, bossState(row.profile_id, row.week_start));
+  if (Number(row.shield_broken) < Number(row.shield_total)) return sendJson(response, 409, { error: "还需要集齐6枚每日符文才能进入周Boss决战" });
+  const body = await readBodyJson(request);
+  const evidence = db.prepare("SELECT growth_evidence.evidence_level FROM growth_evidence JOIN daily_mini_bosses ON growth_evidence.source_type='mini_boss' AND CAST(growth_evidence.source_id AS INTEGER)=daily_mini_bosses.id WHERE growth_evidence.profile_id=? AND daily_mini_bosses.weekly_boss_run_id=?").all(row.profile_id, row.id);
+  const damage = Math.min(50, Number(row.shield_broken) * 4 + evidence.reduce((sum, item) => sum + Number(item.evidence_level) * 2, 0) + (String(body.reflection || "").trim().length >= 4 ? 6 : 0));
+  const defeated = damage >= 40;
+  const now = nowIso();
+  db.prepare("UPDATE weekly_boss_runs SET hp_remaining=?,status=?,updated_at=? WHERE id=?").run(Math.max(0, 40 - damage), defeated ? "defeated" : "retreated", now, id);
+  if (defeated) {
+    const start = bossHash(`${row.profile_id}:${row.week_start}:${row.boss_id}`) % bossRewardCatalog.length;
+    const candidates = [0, 3, 7].map((offset) => bossRewardCatalog[(start + offset) % bossRewardCatalog.length].id);
+    db.prepare("INSERT OR IGNORE INTO reward_drops(profile_id,weekly_boss_run_id,candidates_json,chosen_reward_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)").run(row.profile_id, id, JSON.stringify(candidates), "", "offered", now, now);
+  }
+  recordEvent(user.id, row.profile_id, "weekly_boss_final", { bossRunId: id, damage, defeated });
+  sendJson(response, 200, { ...bossState(row.profile_id, row.week_start), damage, defeated, reward: defeated ? { xp: damage >= 50 ? 100 : 80, gems: 8 } : { xp: 20, gems: 0 } });
+}
+async function handleChooseBossReward(request, response, url) {
+  const user = requireUser(request, response); if (!user) return;
+  const id = Number(url.pathname.split("/").at(-2));
+  const row = db.prepare("SELECT reward_drops.* FROM reward_drops JOIN profiles ON profiles.id=reward_drops.profile_id WHERE reward_drops.id=? AND profiles.user_id=?").get(id, user.id);
+  if (!row) return sendJson(response, 404, { error: "奖励宝箱不存在" });
+  if (row.status !== "offered") return sendJson(response, 409, { error: "奖励已经选择" });
+  const body = await readBodyJson(request);
+  const rewardId = String(body.rewardId || "");
+  const candidates = JSON.parse(row.candidates_json);
+  if (!candidates.includes(rewardId)) return sendJson(response, 400, { error: "只能从三个候选奖励中选择" });
+  const reward = bossRewardCatalog.find((item) => item.id === rewardId);
+  const now = nowIso();
+  const expires = new Date(Date.now() + 30 * 86400000).toISOString();
+  db.exec("BEGIN");
+  let voucherId;
+  try {
+    db.prepare("UPDATE reward_drops SET chosen_reward_id=?,status='chosen',updated_at=? WHERE id=?").run(rewardId, now, id);
+    const result = db.prepare("INSERT INTO reward_vouchers(profile_id,reward_catalog_id,acquired_at,expires_at,status,updated_at) VALUES(?,?,?,?,?,?)").run(row.profile_id, rewardId, now, expires, reward.guardianApprovalRequired ? "reserved" : "approved", now);
+    voucherId = Number(result.lastInsertRowid);
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  recordEvent(user.id, row.profile_id, "boss_reward_chosen", { rewardId, voucherId });
+  sendJson(response, 200, { voucher: { id: voucherId, reward, status: reward.guardianApprovalRequired ? "reserved" : "approved", acquiredAt: now, expiresAt: expires } });
+}
+async function handleApproveRewardVoucher(request, response, url) {
+  const user = requireUser(request, response); if (!user) return;
+  const id = Number(url.pathname.split("/").at(-2));
+  const row = db.prepare("SELECT reward_vouchers.* FROM reward_vouchers JOIN profiles ON profiles.id=reward_vouchers.profile_id WHERE reward_vouchers.id=? AND profiles.user_id=?").get(id, user.id);
+  if (!row) return sendJson(response, 404, { error: "奖励券不存在" });
+  if (!['reserved','approved'].includes(row.status)) return sendJson(response, 409, { error: "当前奖励状态不能确认" });
+  db.prepare("UPDATE reward_vouchers SET status='approved',updated_at=? WHERE id=?").run(nowIso(), id);
+  recordEvent(user.id, row.profile_id, "reward_voucher_approved", { voucherId: id });
+  sendJson(response, 200, { ok: true });
+}
+function handleListRewardVouchers(request, response, url) {
+  const user = requireUser(request, response); if (!user) return;
+  const profileIdValue = String(url.searchParams.get("profileId") || "");
+  if (!ownedProfile(user.id, profileIdValue)) return sendJson(response, 404, { error: "角色不存在" });
+  const vouchers = db.prepare("SELECT id,reward_catalog_id AS rewardId,acquired_at AS acquiredAt,expires_at AS expiresAt,status FROM reward_vouchers WHERE profile_id=? ORDER BY id DESC").all(profileIdValue).map((item) => ({ ...item, reward: bossRewardCatalog.find((reward) => reward.id === item.rewardId) }));
+  sendJson(response, 200, { vouchers });
 }
 
 function publicDailyMissionBook(row) {

@@ -5,8 +5,11 @@
   "type": "module",
   "scripts": {
     "start": "node api/server.js",
-    "check": "node --check app.js && node --check api/server.js && node scripts/validate-product-logic.mjs",
-    "test:e2e": "playwright test tests/e2e/workflow.spec.js --reporter=line"
+    "build:boss-catalog": "node scripts/build-boss-catalog.mjs",
+    "import:boss-assets": "node scripts/import-boss-assets.mjs",
+    "check": "node --check app.js && node --check api/server.js && node scripts/build-boss-catalog.mjs && node scripts/validate-product-logic.mjs",
+    "test:boss-api": "node --test tests/api/boss-system.test.mjs",
+    "test:e2e": "playwright test tests/e2e --reporter=line"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1"

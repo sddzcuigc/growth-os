@@ -201,7 +201,7 @@ for (const term of ["2 * 1024 * 1024", "image/jpeg", "audio/mpeg", "x-content-ty
 }
 if (!serverSource.includes("if (shareWithAi) createArtifactMemory") || !serverSource.includes("retractArtifactMemory(row.profile_id, id)")) failures.push("artifact privacy does not control AI memory");
 if (!serverSource.includes("serverDateKey(new Date(item.createdAt)) >= weekStart") || serverSource.includes("item.createdAt.slice(0, 10) >= weekStart")) failures.push("weekly evidence uses UTC date slicing instead of local dates");
-for (const term of ["今天只选一种节奏", "当前主线 · 现在先过这一关", "quick-daily-start", "start-daily-plan", "swap-daily-plan", "lighten-daily-plan", "renderDailyCompass", "generateDailyPlan", "loadDailyPlan", "做完了吗", "去记录"]) {
+for (const term of ["今天只选一种节奏", "当前主线 · 现在先过这一关", "quick-daily-start", "start-daily-plan", "swap-daily-plan", "lighten-daily-plan", "renderDailyCompass", "generateDailyPlan", "loadDailyPlan"]) {
   if (!appSourceText.includes(term)) failures.push(`daily adaptive compass missing ${term}`);
 }
 for (const term of ["只能从候选中选择一个ref，不创造新任务", "sourceType: \"recharge\"", "daily_plan_swapped", "daily_plan_lightened", "excluded_json"]) {
@@ -233,7 +233,13 @@ for (const term of ["goalQuestion", "goalClarifications", "answer-goal-clarifica
 if (appSourceText.includes("function onboardingGoalDraft()")) failures.push("onboarding still uses a local goal template");
 for (const term of ["ensureBuiltInDemoAccount", "builtin-admin@growth-os.local", 'loginName === "admin"', '"崔护"', '"9岁3个月"']) if (!serverSource.includes(term)) failures.push(`built-in demo account missing ${term}`);
 for (const term of ["内置测试：账号 admin", "邮箱或测试账号"]) if (!htmlSource.includes(term)) failures.push(`built-in demo login UI missing ${term}`);
-for (const term of [">今天</b>", ">想法</b>", ">目标</b>", ">安排</b>", ">记录</b>"]) if (!htmlSource.includes(term)) failures.push(`workflow navigation missing ${term}`);
+for (const term of [">今天</b>", ">世界</b>", ">蓝图</b>", ">Boss</b>", ">背包</b>"]) if (!htmlSource.includes(term)) failures.push(`workflow navigation missing ${term}`);
+for (const term of ["CREATE TABLE IF NOT EXISTS weekly_boss_runs", "CREATE TABLE IF NOT EXISTS daily_core_plans", "CREATE TABLE IF NOT EXISTS daily_mini_bosses", "CREATE TABLE IF NOT EXISTS growth_evidence", "CREATE TABLE IF NOT EXISTS reward_drops", "CREATE TABLE IF NOT EXISTS reward_vouchers", "/api/boss/catalog", "/api/boss/week", "/api/boss/daily/sync", "handleWeeklyBossFinal", "handleChooseBossReward", "handleApproveRewardVoucher"]) {
+  if (!serverSource.includes(term)) failures.push(`weekly Boss backend missing ${term}`);
+}
+for (const term of ["renderWeeklyBossSummary", "renderCoreMissionPanel", "renderMiniBossPanel", "renderBossWorlds", "renderRewardBackpack", "只看1到3项核心任务", "六枚证据符文", "合理调整后的任务也能解锁"]) {
+  if (!appSourceText.includes(term)) failures.push(`weekly Boss workflow missing ${term}`);
+}
 if (appSourceText.includes('<div class="action-quick-add"')) failures.push("legacy multi-field quick-add is still rendered");
 for (const term of ["/api/auth/recovery/rotate", "/api/auth/recovery/reset", "recoveryCode", "normalizeRecoveryCode", "dummyRecoveryHash", "consumeRecoveryAttempt", "DELETE FROM sessions WHERE user_id", "recovery_hash", "recovery_updated_at"]) {
   if (!serverSource.includes(term)) failures.push(`account recovery security missing ${term}`);

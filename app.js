@@ -425,10 +425,10 @@ const experienceLabels = {
 
 const pageNames = {
   profile: "今日",
-  discover: "灵感",
-  skills: "能力",
-  plan: "计划",
-  execute: "记录"
+  discover: "世界",
+  skills: "蓝图",
+  plan: "Boss",
+  execute: "背包"
 };
 
 const gemStoreItems = [
@@ -696,6 +696,10 @@ const state = {
   dailySwapOpen: false,
   dailyPlanFeedback: [],
   dailyRecommendationCalibration: { sampleSize: 0, reasonCounts: {}, activeSignals: [], preferTiny: false, preferClear: false, avoidedSourceTypes: [] },
+  bossState: null,
+  bossCatalog: null,
+  rewardVouchers: [],
+  bossLoading: false,
   showPlanningDetails: false,
   showQuestCoach: false,
   actionInboxResult: null,
@@ -759,11 +763,11 @@ function showRecoveryCode(code) {
 }
 
 const tutorialSteps = [
-  { icon: "face", kicker: "第一步 · AI先认识你", title: "确认一份可以修改的画像", copy: "注册后先回答几个具体问题。AI会总结它怎样理解你，你可以改正后再建立目标。" },
-  { icon: "question", kicker: "第二步 · 今天", title: "只选今天的节奏", copy: "轻松、正常、挑战或休息。选一个后，系统直接给出一件具体的事。" },
-  { icon: "quest", kicker: "第三步 · 做一小步", title: "在同一张卡片开始和完成", copy: "不合适可以换一个或变轻；做完直接点“我做完了”，经验会立刻到账。" },
-  { icon: "gem", kicker: "第四步 · 记录", title: "只回答难不难、有没有趣", copy: "没有作文，也没有标准答案。真实反馈会改变下一次推荐。" },
-  { icon: "map", kicker: "第五步 · 同一条主线", title: "想法、目标和安排各做一件事", copy: "想法收线索，目标看方向，安排管本周；它们最终都服务于“今天”的下一步。" }
+  { icon: "face", kicker: "第一步 · AI先认识你", title: "先确认一份可以修改的画像", copy: "AI先问具体问题，再总结它怎样理解你。你确认或改正后，系统才开始规划。" },
+  { icon: "map", kicker: "第二步 · 蓝图与世界", title: "一次只选择一条成长主线", copy: "画像连接未来能力树，形成成长蓝图；本周只匹配一只最值得挑战的Boss。" },
+  { icon: "quest", kicker: "第三步 · 今天", title: "只看1到3项核心任务", copy: "任务来自蓝图和现实责任。不合适可以缩小、替换、延期或恢复，不会因为合理调整受罚。" },
+  { icon: "gem", kicker: "第四步 · 每日小Boss", title: "完成核心任务，解锁一次能力挑战", copy: "回答或做出真实行动，就会留下证据、打破一层护盾，并获得经验和宝石。" },
+  { icon: "question", kicker: "第五步 · 周Boss与奖励", title: "六天证据汇成一次周决战", copy: "证据足够才结算。击败Boss后奖励三选一，现实奖励还需要家长确认。" }
 ];
 
 function escapeHtml(value) {
@@ -1069,6 +1073,129 @@ async function loadDailyMissionBook() {
     const response = await fetch(`/api/daily-missions?profileId=${encodeURIComponent(state.childId)}`);
     if (response.ok) state.dailyMissionBook = (await response.json()).book || null;
   } catch {}
+}
+
+function defaultBossCoreTasks() {
+  const candidates = [];
+  if (state.dailyPlan?.plan && state.dailyPlan.plan.sourceType !== "recharge") {
+    candidates.push({ id: `plan-${state.dailyPlan.id}`, title: state.dailyPlan.plan.title, status: state.dailyPlan.status === "completed" || dailyPlanSourceDone() ? "completed" : "pending", sourceRef: `${state.dailyPlan.plan.sourceType}:${state.dailyPlan.plan.sourceId}`, adjustment: "" });
+  }
+  for (const task of dailyTodoCatalog().filter((item) => item.personalized)) {
+    if (candidates.some((item) => item.sourceRef === `mission:${task.id}`)) continue;
+    candidates.push({ id: `mission-${task.id}`, title: task.title, status: isDone(task.id) ? "completed" : "pending", sourceRef: `mission:${task.id}`, adjustment: "" });
+    if (candidates.length >= 3) break;
+  }
+  if (!candidates.length) candidates.push({ id: "core-first-step", title: currentJourney()?.firstExperiment || "完成今天最重要的一小步", status: "pending", sourceRef: "blueprint:first-step", adjustment: "" });
+  return candidates.slice(0, 3);
+}
+
+async function loadRewardVouchers() {
+  if (!currentProfile()) return;
+  try {
+    const response = await fetch(`/api/boss/vouchers?profileId=${encodeURIComponent(state.childId)}`);
+    if (response.ok) state.rewardVouchers = (await response.json()).vouchers || [];
+  } catch {}
+}
+
+async function loadBossSystem() {
+  if (!currentProfile()) return;
+  try {
+    const [weekResponse, catalogResponse] = await Promise.all([
+      fetch(`/api/boss/week?profileId=${encodeURIComponent(state.childId)}`),
+      state.bossCatalog ? Promise.resolve(null) : fetch("/api/boss/catalog")
+    ]);
+    if (weekResponse.ok) state.bossState = await weekResponse.json();
+    if (catalogResponse?.ok) state.bossCatalog = await catalogResponse.json();
+    await loadRewardVouchers();
+    if (!state.bossState?.corePlan) await syncBossCorePlan(defaultBossCoreTasks(), true);
+  } catch {}
+}
+
+async function syncBossCorePlan(tasks, quiet = false) {
+  if (!currentProfile() || state.bossLoading) return;
+  state.bossLoading = true;
+  if (!quiet) render();
+  try {
+    const response = await fetch("/api/boss/daily/sync", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, tasks: (tasks || defaultBossCoreTasks()).slice(0, 3) }) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "核心计划暂时无法保存");
+    state.bossState = result;
+  } catch (error) { if (!quiet) showToast(error.message || "核心计划暂时无法保存"); }
+  finally { state.bossLoading = false; if (!quiet) render(); }
+}
+
+async function toggleBossCoreTask(taskId) {
+  const tasks = (state.bossState?.corePlan?.tasks || defaultBossCoreTasks()).map((task) => task.id === taskId ? { ...task, status: task.status === "completed" || task.status === "adjusted_completed" ? "pending" : task.adjustment ? "adjusted_completed" : "completed" } : task);
+  await syncBossCorePlan(tasks);
+  if (state.bossState?.miniBoss?.unlockStatus === "unlocked") showToast("核心任务完成，小Boss已经解锁");
+}
+
+async function adjustBossCoreTask(taskId, mode) {
+  const tasks = (state.bossState?.corePlan?.tasks || defaultBossCoreTasks()).map((task) => {
+    if (task.id !== taskId) return task;
+    if (mode === "shrink") return { ...task, title: `最小版：${task.title}`, adjustment: "已缩小到5分钟", status: "pending" };
+    if (mode === "recovery") return { ...task, title: "喝水、伸展并做3次慢呼吸", adjustment: "恢复模式", status: "pending" };
+    if (mode === "defer") return { ...task, adjustment: "合理延期，不扣经验", status: "withdrawn" };
+    const replacement = dailyTodoCatalog().find((candidate) => !tasks.some((item) => item.sourceRef === `mission:${candidate.id}`));
+    return replacement ? { id: `mission-${replacement.id}`, title: replacement.title, sourceRef: `mission:${replacement.id}`, adjustment: "已替换", status: "pending" } : task;
+  });
+  await syncBossCorePlan(tasks);
+}
+
+async function completeMiniBoss() {
+  const mini = state.bossState?.miniBoss;
+  const answer = document.querySelector("#mini-boss-evidence")?.value.trim() || "";
+  if (!mini || mini.unlockStatus !== "unlocked") return;
+  if (answer.length < 2) { showToast("请留下一个真实回答或行动证据"); return; }
+  state.bossLoading = true;
+  render();
+  try {
+    const response = await fetch(`/api/boss/daily/${encodeURIComponent(mini.id)}/complete`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ summary: answer, observableFact: answer, shareWithAi: true }) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "小Boss结算失败");
+    state.bossState = result;
+    if (result.rewarded) grantBonusReward(`mini-boss:${mini.id}`, { xp: result.reward.xp, gems: result.reward.gems, label: "击败每日小Boss并获得符文" });
+  } catch (error) { showToast(error.message || "小Boss结算失败"); }
+  finally { state.bossLoading = false; render(); }
+}
+
+async function finishWeeklyBoss() {
+  const week = state.bossState?.week;
+  const reflection = document.querySelector("#weekly-boss-reflection")?.value.trim() || "";
+  if (!week || reflection.length < 4) { showToast("先说说这周用了什么方法"); return; }
+  state.bossLoading = true;
+  render();
+  try {
+    const response = await fetch(`/api/boss/week/${encodeURIComponent(week.id)}/final`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reflection }) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "周Boss决战暂时无法结算");
+    state.bossState = result;
+    if (result.defeated) grantBonusReward(`weekly-boss:${week.id}`, { xp: result.reward.xp, gems: result.reward.gems, label: "击败本周能力Boss" });
+  } catch (error) { showToast(error.message || "周Boss决战暂时无法结算"); }
+  finally { state.bossLoading = false; render(); }
+}
+
+async function chooseBossReward(dropId, rewardId) {
+  try {
+    const response = await fetch(`/api/boss/rewards/${encodeURIComponent(dropId)}/choose`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rewardId }) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "奖励选择失败");
+    await loadRewardVouchers();
+    await loadBossSystem();
+    showToast(result.voucher.status === "reserved" ? "奖励已放入背包，等待家长确认" : "奖励已放入背包");
+    render();
+  } catch (error) { showToast(error.message || "奖励选择失败"); }
+}
+
+async function approveBossVoucher(id) {
+  try {
+    const response = await fetch(`/api/boss/vouchers/${encodeURIComponent(id)}/approve`, { method: "POST" });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "确认失败");
+    await loadRewardVouchers();
+    showToast("家长已确认，奖励可以预约兑现");
+    render();
+  } catch (error) { showToast(error.message || "确认失败"); }
 }
 
 async function generateWeeklyReview() {
@@ -1598,6 +1725,7 @@ async function loadCloudProgress(profileId) {
   await loadDailyMissionBook();
   await loadDailyPlan();
   await loadDailyPlanFeedback();
+  await loadBossSystem();
   if (!state.dailyMissionBook) setTimeout(async () => {
     await generateDailyMissionBook(false, true, true);
     generateDailyMissionBook(true, true, false);
@@ -3182,16 +3310,77 @@ function renderHabitRhythm() {
     </section>`;
 }
 
+function bossDifficultyLabel(value) { return { bronze: "青铜", silver: "白银", gold: "黄金", diamond: "钻石", legend: "传说" }[value] || "青铜"; }
+function runeLabel(value) { return { weakness: "弱点", method: "方法", action: "行动", resilience: "韧性", transfer: "迁移", result: "成果" }[value] || "证据"; }
+
+function renderWeeklyBossSummary(compact = false) {
+  const week = state.bossState?.week;
+  if (!week) return `<section class="panel boss-loading"><strong>正在匹配本周能力Boss</strong><p>规则引擎会读取蓝图，不会让AI自由创造无关关卡。</p></section>`;
+  const hpPercent = Math.round((week.hpRemaining / week.hpTotal) * 100);
+  const bossVisual = compact ? (week.boss.iconPath || `assets/boss/icons/${week.boss.id}.png`) : (week.boss.portraitPath || `assets/boss/portraits/${week.boss.id}.png`);
+  return `<section class="panel weekly-boss-card ${compact ? "compact" : ""}">
+    <header><img class="boss-portrait" src="${escapeHtml(bossVisual)}" alt="${escapeHtml(week.boss.name)}" /><div><small>${escapeHtml(week.world.name)} · ${bossDifficultyLabel(week.difficulty)}</small><h2>${escapeHtml(week.boss.name)}</h2><em>${escapeHtml(week.boss.skillName)}</em></div></header>
+    <p class="boss-attack">${escapeHtml(week.boss.attackNarrative)}</p>
+    <div class="boss-hp"><span><i style="width:${hpPercent}%"></i></span><strong>${week.hpRemaining}/${week.hpTotal}</strong></div>
+    <div class="boss-shields" aria-label="Boss护盾">${Array.from({ length: week.shieldTotal }, (_, index) => `<span class="${index < week.shieldBroken ? "broken" : ""}">${index < week.shieldBroken ? "✓" : index + 1}</span>`).join("")}</div>
+    ${compact ? `<button type="button" data-action="jump-journey-stage" data-page="plan">查看本周Boss</button>` : `<div class="boss-victory"><small>本周胜利证据</small><strong>${escapeHtml(week.boss.victoryEvidence)}</strong></div>`}
+  </section>`;
+}
+
+function renderCoreMissionPanel() {
+  const tasks = state.bossState?.corePlan?.tasks || defaultBossCoreTasks();
+  const completed = tasks.filter((task) => ["completed", "adjusted_completed", "withdrawn", "recovery_completed"].includes(task.status)).length;
+  return `<section class="panel core-missions"><div class="page-head"><div><h2 class="panel-title">${pixelIcon("skill-check", "")} 今日核心打卡</h2><small>只需完成经过确认的合理计划</small></div><span class="tag">${completed}/${tasks.length}</span></div>
+    <div class="core-progress"><i style="width:${tasks.length ? Math.round(completed / tasks.length * 100) : 0}%"></i></div>
+    <div class="core-task-list">${tasks.map((task) => { const done = ["completed", "adjusted_completed", "withdrawn", "recovery_completed"].includes(task.status); return `<article class="${done ? "done" : ""}"><button class="core-check" type="button" data-action="boss-core-toggle" data-task-id="${escapeHtml(task.id)}" aria-label="${done ? "撤销完成" : "完成"}">${done ? "✓" : ""}</button><div><strong>${escapeHtml(task.title)}</strong><small>${task.adjustment ? escapeHtml(task.adjustment) : "来自当前蓝图、责任和身体状态"}</small></div>${done ? "" : `<details><summary>调整</summary><div><button type="button" data-action="adjust-boss-core" data-mode="shrink" data-task-id="${escapeHtml(task.id)}">缩小</button><button type="button" data-action="adjust-boss-core" data-mode="replace" data-task-id="${escapeHtml(task.id)}">替换</button><button type="button" data-action="adjust-boss-core" data-mode="defer" data-task-id="${escapeHtml(task.id)}">延期</button><button type="button" data-action="adjust-boss-core" data-mode="recovery" data-task-id="${escapeHtml(task.id)}">恢复</button></div></details>`}</article>`; }).join("")}</div>
+    <footer>支线不会替代核心责任；合理缩小、替换、延期或恢复不会扣经验。</footer>
+  </section>`;
+}
+
+function renderMiniBossPanel() {
+  const mini = state.bossState?.miniBoss;
+  const bossIcon = state.bossState?.week?.boss?.iconPath || (state.bossState?.week?.boss?.id ? `assets/boss/icons/${state.bossState.week.boss.id}.png` : "assets/pixel/stone-clean.png");
+  if (!mini) return `<section class="panel mini-boss locked"><img src="${escapeHtml(bossIcon)}" alt="" /><div><small>每日小Boss</small><h2>等待核心计划确认</h2><p>先确定今天1–3项合理核心任务。</p></div></section>`;
+  if (mini.unlockStatus === "locked") return `<section class="panel mini-boss locked"><img src="${escapeHtml(bossIcon)}" alt="" /><div><small>每日小Boss · 未解锁</small><h2>完成今天的核心打卡</h2><p>合理调整后的任务也能解锁，不需要硬撑。</p></div></section>`;
+  if (mini.unlockStatus === "completed") return `<section class="panel mini-boss completed"><img src="assets/pixel/gem-icon.png" alt="" /><div><small>${runeLabel(mini.runeType)}符文已入账</small><h2>今日小Boss已击败</h2><p>周Boss护盾已打破一层，真实证据已保存。</p></div></section>`;
+  return `<section class="panel mini-boss unlocked"><header><div><small>已解锁 · ${mini.xp}经验 + ${mini.gems}宝石</small><h2>${escapeHtml(mini.challenge.title)}</h2></div><img src="${escapeHtml(bossIcon)}" alt="" /></header><p class="boss-line">${escapeHtml(mini.challenge.bossLine)}</p><strong>${escapeHtml(mini.challenge.instruction)}</strong><textarea id="mini-boss-evidence" rows="3" maxlength="300" placeholder="写下回答，或说说刚才真实做了什么"></textarea><button class="primary-action" type="button" data-action="complete-mini-boss" ${state.bossLoading ? "disabled" : ""}>${state.bossLoading ? "正在结算..." : "完成攻击，获得符文"}</button></section>`;
+}
+
+function renderTodayEvidence() {
+  const feedbackTasks = feedbackTaskOptions();
+  return `<details class="advanced-section standalone today-evidence"><summary>告诉AI今天真实发生了什么</summary><section class="panel reflection-panel simple-page">${feedbackTasks.length ? `<label class="feedback-task-picker">刚完成的事<select id="reflect-task">${feedbackTasks.map((task) => `<option value="${escapeHtml(task.key)}">${escapeHtml(task.title)}</option>`).join("")}</select></label><div class="reflection-grid compact"><label>难不难<select id="reflect-difficulty"><option value="just_right">刚刚好</option><option value="too_easy">太简单</option><option value="too_hard">太难</option><option value="stuck">卡住了</option></select></label><label>有没有趣<select id="reflect-fun"><option value="fun">有趣</option><option value="neutral">一般</option><option value="boring">无聊</option></select></label></div><textarea id="reflect-note" rows="2" placeholder="还有一句想告诉AI的话（可以不写）"></textarea><select id="reflect-mood" hidden><option selected>平静</option></select><select id="reflect-support" hidden><option value="none" selected>让我自己试</option></select><input type="radio" name="reflect-motivation" value="unknown" checked hidden /><button class="primary-action" type="button" data-action="save-reflection">保存，调整下一步</button>` : `<p class="empty-state">完成一项核心任务后，这里会出现两个很短的问题。</p>`}</section><section class="panel journal-panel"><div class="page-head"><h2 class="panel-title">一句成长日记</h2><span class="tag">${state.journals.length}篇</span></div><button type="button" data-action="ask-journal-question" ${state.journalLoading ? "disabled" : ""}>${state.journalLoading ? "AI正在想..." : "让AI问我一句"}</button>${state.journalPrompt ? `<article class="journal-prompt"><strong>${escapeHtml(state.journalPrompt.question)}</strong></article>` : ""}<textarea id="journal-content" rows="3" maxlength="4000" placeholder="我今天发现……">${escapeHtml(state.journalDraft)}</textarea><label class="journal-ai-consent"><input id="journal-ai-context" type="checkbox" ${state.journalShareWithAi ? "checked" : ""} />允许AI以后参考</label><div class="journal-save-row"><input id="journal-tags" maxlength="100" value="${escapeHtml(state.journalTags)}" placeholder="标签（可不填）" /><button type="button" data-action="save-journal">记下来</button></div></section></details>`;
+}
+
 function renderToday() {
-  return `
-    <section class="page-purpose"><span>今天</span><div><strong>只做当前最合适的一步</strong><small>做完再记录，AI会自动调整下一步。</small></div></section>
-    ${renderDailyCompass()}
-    ${renderDailyTodoBook()}
-    <section class="panel today-evidence-bridge">
-      <div><h2 class="panel-title">${pixelIcon("nav-execute", "")} 做完了吗？</h2><p>回答难不难、有没有趣，下一次就会更适合你。</p></div>
-      <button type="button" data-action="jump-journey-stage" data-page="execute">去记录</button>
-    </section>
-  `;
+  return `<section class="page-purpose"><span>今天</span><div><strong>完成核心任务，解锁每日小Boss</strong><small>今天只看1–3项合理计划；调整不会被惩罚。</small></div></section>
+    ${renderWeeklyBossSummary(true)}
+    ${renderCoreMissionPanel()}
+    ${renderMiniBossPanel()}
+    ${renderTodayEvidence()}`;
+}
+
+function renderBossPage() {
+  const week = state.bossState?.week;
+  if (!week) return renderWeeklyBossSummary();
+  const runes = (state.bossState.evidence || []).filter((item) => item.sourceType === "mini_boss");
+  return `<section class="page-purpose"><span>Boss</span><div><strong>一周只挑战一种关键能力</strong><small>认识、练习、独立、困难、迁移、成果，最后综合决战。</small></div></section>${renderWeeklyBossSummary()}
+    <section class="panel rune-board"><div class="page-head"><h2 class="panel-title">六枚证据符文</h2><span class="tag">${week.shieldBroken}/6</span></div><div>${["weakness","method","action","resilience","transfer","result"].map((rune, index) => `<span class="${index < week.shieldBroken ? "earned" : ""}"><b>${index < week.shieldBroken ? "✓" : index + 1}</b>${runeLabel(rune)}</span>`).join("")}</div></section>
+    <section class="panel boss-trace"><h2 class="panel-title">为什么是这只Boss</h2>${week.selection.reasons.map((reason) => `<p>${escapeHtml(reason)}</p>`).join("")}<small>目录 ${escapeHtml(week.boss.id)} · 技能 ${escapeHtml(week.boss.skillId)} · 蓝图版本 ${escapeHtml(week.sourceBlueprintId)}</small></section>
+    <section class="panel boss-final ${week.status}"><small>周日综合决战</small><h2>${escapeHtml(week.boss.finalChallengeTemplate)}</h2>${week.status === "final_ready" ? `<textarea id="weekly-boss-reflection" rows="3" placeholder="这周我用了什么方法？下次想怎样调整？"></textarea><button class="primary-action" type="button" data-action="finish-weekly-boss">开始决战</button>` : week.status === "defeated" ? `<strong>Boss已击败，奖励三选一已送到背包。</strong>` : `<p>还需 ${Math.max(0, week.shieldTotal - week.shieldBroken)} 枚每日符文。证据不足不会判定孩子失败。</p>`}</section>
+    ${runes.length ? `<section class="panel evidence-timeline"><h2 class="panel-title">本周真实证据</h2>${runes.map((item) => `<article><span>E${item.level}</span><div><strong>${escapeHtml(item.summary)}</strong><small>${escapeHtml(item.createdAt.slice(0,10))}</small></div></article>`).join("")}</section>` : ""}`;
+}
+
+function renderBossWorlds() {
+  const catalog = state.bossCatalog;
+  const activeWorld = state.bossState?.week?.world?.id;
+  if (!catalog) return `<section class="panel boss-loading"><strong>正在读取100能力Boss目录</strong></section>`;
+  return `<section class="page-purpose"><span>世界</span><div><strong>10个能力世界，不是100项压力清单</strong><small>孩子端只看当前正在升级的能力，完整目录用于系统规划。</small></div></section><section class="panel world-map"><header><h2 class="panel-title">未来能力世界地图</h2><span>${catalog.totalBosses} Boss · ${escapeHtml(catalog.version)}</span></header><div>${catalog.worlds.map((world) => `<article class="${world.id === activeWorld ? "active" : ""}" style="--world-cover:url('${escapeHtml(world.assetPath || `assets/boss/worlds/${world.id}.png`)}')"><div><small>${escapeHtml(world.id)} · ${world.bosses.length}项能力</small><strong>${escapeHtml(world.name)}</strong><p>${escapeHtml(world.domain)}</p></div>${world.id === activeWorld ? "<b>本周</b>" : ""}</article>`).join("")}</div></section>`;
+}
+
+function renderRewardBackpack() {
+  const drop = state.bossState?.rewardDrop;
+  const statusLabel = { reserved: "等待家长确认", approved: "可预约兑现", redeemed: "已兑现", expired: "已过期", gifted: "已转赠" };
+  return `<section class="page-purpose"><span>背包</span><div><strong>奖励来自真实里程碑</strong><small>每日小Boss只掉数字奖励；现实奖励只来自周Boss并需家长确认。</small></div></section>${drop?.status === "offered" ? `<section class="panel reward-choice"><small>周Boss强奖励 · 三选一</small><h2>选择最想要的一项</h2><div>${drop.candidates.map((reward) => `<article><img src="assets/pixel/chest.png" alt="" /><strong>${escapeHtml(reward.name)}</strong><small>${escapeHtml(reward.rarity)} · ${reward.guardianApprovalRequired ? "需家长确认" : "数字奖励"}</small><button type="button" data-action="choose-boss-reward" data-drop-id="${drop.id}" data-reward-id="${escapeHtml(reward.id)}">选这个</button></article>`).join("")}</div></section>` : ""}<section class="panel reward-backpack"><div class="page-head"><h2 class="panel-title">${pixelIcon("chest", "")} 我的奖励券</h2><span class="tag">${state.rewardVouchers.length}</span></div><div>${state.rewardVouchers.map((voucher) => `<article><img src="assets/pixel/chest.png" alt="" /><div><strong>${escapeHtml(voucher.reward?.name || voucher.rewardId)}</strong><small>${escapeHtml(statusLabel[voucher.status] || voucher.status)} · 有效至 ${escapeHtml(voucher.expiresAt.slice(0,10))}</small></div>${voucher.status === "reserved" ? `<button type="button" data-action="approve-boss-voucher" data-voucher-id="${voucher.id}">家长确认</button>` : ""}</article>`).join("") || `<p class="empty-state">击败周Boss后，会出现三个可选择的奖励。</p>`}</div></section><details class="advanced-section standalone"><summary>为什么奖励这样设计</summary><section class="panel"><p class="section-note">基本尊重、照顾、安全、睡眠和必要教育支持永远不是奖励。宝石只用于数字世界，现实奖励需要家庭确认。</p></section></details>`;
 }
 
 function renderDailyTodoBook() {
@@ -3601,9 +3790,10 @@ function renderSkills() {
   const c = child();
   const blueprint = state.growthBlueprint;
   const priorities = blueprint?.priorities || [];
-  return `<section class="page-purpose"><span>目标</span><div><strong>知道现在要变好什么</strong><small>AI只保留一条当前主线，再用SMART和OKR把它说清楚。</small></div></section>
-    ${renderGrowthGoals()}
+  return `<section class="page-purpose"><span>蓝图</span><div><strong>画像连接未来能力，再决定本周挑战</strong><small>AI提出规划，孩子可以纠正；系统只保留一条当前主线。</small></div></section>
+    ${renderGrowthBlueprint()}
     <section class="panel compact-blueprint"><div class="page-head"><h2 class="panel-title">${pixelIcon("skill-ai", "")} 重点能力</h2><span class="tag">2个方向</span></div><div class="compact-priorities">${priorities.slice(0, 2).map((item) => `<article><span>${escapeHtml(item.role || "重点")}</span><strong>${escapeHtml(item.name || skillDisplayName(item.skill))}</strong><p>${escapeHtml(item.reason)}</p></article>`).join("") || `<p class="empty-state">目标确认后，AI会挑出两个最值得练的能力。</p>`}</div><button type="button" data-action="refresh-growth-blueprint" ${state.growthBlueprintLoading ? "disabled" : ""}>${state.growthBlueprintLoading ? "AI正在更新..." : "根据最新记录更新"}</button></section>
+    <details class="advanced-section standalone"><summary>查看SMART目标与OKR</summary>${renderGrowthGoals()}</details>
     <details class="advanced-section standalone"><summary>查看完整能力树</summary><section class="panel skill-board">${c.skills.map((skill) => `<article class="skill-node kid-skill-node"><div class="skill-badge">${pixelIcon(pixelIconBySkill[skill.id] || "skill-book", "")}</div><div><strong>${skill.name} Lv.${skill.level}</strong><p>${skillFramework[skill.id]?.childMeaning || skill.science}</p><div class="bar-track"><span style="width:${skillProgress(skill)}%"></span></div></div></article>`).join("")}</section></details>`;
 }
 
@@ -4070,10 +4260,10 @@ function renderReflect() {
 function render() {
   const pageRenderers = {
     profile: renderToday,
-    discover: renderRecommendations,
+    discover: renderBossWorlds,
     skills: renderSkills,
-    plan: renderSelf,
-    execute: renderReflect
+    plan: renderBossPage,
+    execute: renderRewardBackpack
   };
 
   updateShell();
@@ -4196,6 +4386,16 @@ document.addEventListener("click", async (event) => {
   if (event.target.closest("[data-action='generate-daily-missions']")) { await generateDailyMissionBook(true); state.dailyPlan = null; render(); return; }
   const journeyStage = event.target.closest("[data-action='jump-journey-stage']");
   if (journeyStage) { state.page = journeyStage.dataset.page; render(); return; }
+  const bossCoreToggle = event.target.closest("[data-action='boss-core-toggle']");
+  if (bossCoreToggle) { await toggleBossCoreTask(bossCoreToggle.dataset.taskId); return; }
+  const bossCoreAdjust = event.target.closest("[data-action='adjust-boss-core']");
+  if (bossCoreAdjust) { await adjustBossCoreTask(bossCoreAdjust.dataset.taskId, bossCoreAdjust.dataset.mode); return; }
+  if (event.target.closest("[data-action='complete-mini-boss']")) { await completeMiniBoss(); return; }
+  if (event.target.closest("[data-action='finish-weekly-boss']")) { await finishWeeklyBoss(); return; }
+  const bossRewardChoice = event.target.closest("[data-action='choose-boss-reward']");
+  if (bossRewardChoice) { await chooseBossReward(bossRewardChoice.dataset.dropId, bossRewardChoice.dataset.rewardId); return; }
+  const bossVoucherApproval = event.target.closest("[data-action='approve-boss-voucher']");
+  if (bossVoucherApproval) { await approveBossVoucher(bossVoucherApproval.dataset.voucherId); return; }
   if (event.target.closest("[data-action='refresh-growth-blueprint']")) { await refreshGrowthBlueprint(true); return; }
   if (event.target.closest("[data-action='generate-family-brief']")) { await generateFamilyBrief(); return; }
   const familyBriefUpdate = event.target.closest("[data-action='update-family-brief']");
