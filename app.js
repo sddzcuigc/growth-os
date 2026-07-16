@@ -1657,15 +1657,20 @@ function toggleDone(taskId) {
     delete completions[todayKey()][taskId];
     trackEvent("quest_undone", { taskId });
   } else {
+    const completedQuest = questById(taskId) || aiQuestFromResult(getAiCoachResult());
     const reward = currentQuestReward(taskId);
-    const surprise = surpriseRewardRoll(`quest:${taskId}`);
+    const surprise = completedQuest?.micro ? { bonus: 0 } : surpriseRewardRoll(`quest:${taskId}`);
+    const gems = completedQuest?.micro ? (reward >= 4 ? 1 : 0) : rewardToGems(reward);
     completions[todayKey()][taskId] = {
       doneAt: Date.now(),
       reward,
-      gems: rewardToGems(reward) + surprise.bonus,
-      surpriseGems: surprise.bonus
+      gems: gems + surprise.bonus,
+      surpriseGems: surprise.bonus,
+      title: completedQuest?.title || "成长任务",
+      skill: completedQuest?.skill || "self-regulation",
+      category: completedQuest?.category || completedQuest?.type || "成长",
+      micro: Boolean(completedQuest?.micro)
     };
-    const completedQuest = questById(taskId) || aiQuestFromResult(getAiCoachResult());
     if (completedQuest) {
       rememberRecommendation(completedQuest, "completed");
       queueCloudSync({ kind: "completion", summary: `${child().name}完成了「${completedQuest.title}」，获得${reward}经验`, evidence: { taskId, skill: completedQuest.skill, reward } });
@@ -1673,10 +1678,12 @@ function toggleDone(taskId) {
     }
   }
   setCompletions(completions);
+  scheduleGrowthBlueprintRefresh();
   if (completions[todayKey()][taskId]) {
     const reward = Number(completions[todayKey()][taskId].reward || 0);
+    const gems = Number(completions[todayKey()][taskId].gems || 0);
     const surprise = Number(completions[todayKey()][taskId].surpriseGems || 0);
-    showToast(`任务完成 · +${reward}经验 +${rewardToGems(reward)}宝石${surprise ? ` · 惊喜宝箱+${surprise}` : ""}`);
+    showToast(`任务完成 · +${reward}经验${gems ? ` +${gems}宝石` : ""}${surprise ? ` · 惊喜宝箱+${surprise}` : ""}`);
   } else {
     showToast("已撤销完成，经验和宝石同步收回");
   }
@@ -2056,7 +2063,7 @@ function rewardLedger() {
     for (const [id, value] of Object.entries(day || {})) {
       const xp = Number(value?.reward) || rewards[id] || 0;
       ledger.xp += xp;
-      ledger.gems += Number(value?.gems) || rewardToGems(xp);
+      ledger.gems += value?.gems === 0 ? 0 : Number(value?.gems) || rewardToGems(xp);
       ledger.completed += 1;
     }
     return ledger;
@@ -2356,8 +2363,95 @@ function simpleHash(value) {
   return hash.toString(36);
 }
 
+const dailyTodoDefinitions = [
+  { id: "wake-self", category: "健康", title: "自己起床并拉开窗帘", minutes: 2, skill: "self-regulation", tier: "基础", reward: 3 },
+  { id: "wash-ready", category: "健康", title: "洗脸刷牙，检查是否干净", minutes: 5, skill: "wellbeing", tier: "基础", reward: 3 },
+  { id: "water-cup", category: "健康", title: "喝一杯水并把杯子归位", minutes: 2, skill: "wellbeing", tier: "基础", reward: 2 },
+  { id: "breakfast-body", category: "健康", title: "认真吃早餐，感受饱不饱", minutes: 10, skill: "wellbeing", tier: "基础", reward: 3 },
+  { id: "eyes-distance", category: "健康", title: "看远处放松眼睛", minutes: 3, skill: "wellbeing", tier: "成长", reward: 2 },
+  { id: "posture-reset", category: "健康", title: "靠墙站直并做5次慢呼吸", minutes: 3, skill: "wellbeing", tier: "成长", reward: 3 },
+  { id: "move-ten", category: "健康", title: "选择一种运动让身体发热", minutes: 10, skill: "wellbeing", tier: "成长", reward: 4 },
+  { id: "sleep-prepare", category: "健康", title: "睡前准备衣物并提前放下屏幕", minutes: 5, skill: "wellbeing", tier: "基础", reward: 4 },
+
+  { id: "free-read", category: "学习", title: "自由阅读喜欢的内容", minutes: 15, skill: "communication", tier: "基础", reward: 4 },
+  { id: "read-one-line", category: "学习", title: "说出今天读到最有意思的一点", minutes: 3, skill: "metacognition", tier: "成长", reward: 3 },
+  { id: "chinese-write", category: "学习", title: "认真写一小段中文", minutes: 10, skill: "communication", tier: "成长", reward: 4 },
+  { id: "english-write", category: "学习", title: "写一行清楚的英文", minutes: 8, skill: "communication", tier: "探索", reward: 3 },
+  { id: "math-life", category: "学习", title: "解决一道生活里的数学问题", minutes: 8, skill: "data-reasoning", tier: "成长", reward: 4 },
+  { id: "recall-one", category: "学习", title: "合上书回想一个知识点", minutes: 3, skill: "metacognition", tier: "成长", reward: 3 },
+  { id: "stuck-method", category: "学习", title: "遇到卡点时试一次跳过、求助或换方法", minutes: 5, skill: "metacognition", tier: "探索", reward: 4 },
+  { id: "school-check", category: "学习", title: "检查一项学校任务是否真正完成", minutes: 5, skill: "self-regulation", tier: "基础", reward: 3 },
+
+  { id: "bed-fold", category: "生活", title: "整理床铺和睡衣", minutes: 4, skill: "self-regulation", tier: "基础", reward: 3 },
+  { id: "desk-reset", category: "生活", title: "让书桌恢复可以使用的状态", minutes: 5, skill: "self-regulation", tier: "成长", reward: 3 },
+  { id: "bag-loop", category: "生活", title: "按明天安排整理书包并检查", minutes: 6, skill: "self-regulation", tier: "基础", reward: 4 },
+  { id: "clothes-home", category: "生活", title: "把干净衣物和脏衣分别归位", minutes: 4, skill: "self-regulation", tier: "成长", reward: 3 },
+  { id: "wash-small", category: "生活", title: "清洗或整理一件自己的小物品", minutes: 6, skill: "self-regulation", tier: "探索", reward: 3 },
+  { id: "food-help", category: "生活", title: "参与一次备餐、摆桌或清理", minutes: 8, skill: "ethics-collaboration", tier: "成长", reward: 4 },
+  { id: "weather-choice", category: "生活", title: "看天气自己选择合适衣物", minutes: 3, skill: "data-reasoning", tier: "探索", reward: 3 },
+
+  { id: "family-job", category: "责任", title: "完成今天负责的一项真实家务", minutes: 8, skill: "ethics-collaboration", tier: "基础", reward: 4 },
+  { id: "plant-care", category: "责任", title: "观察并照顾植物或家庭物品", minutes: 4, skill: "ethics-collaboration", tier: "成长", reward: 3 },
+  { id: "finish-check", category: "责任", title: "完成后自己检查并收尾", minutes: 3, skill: "self-regulation", tier: "基础", reward: 3 },
+  { id: "repair-one", category: "责任", title: "发现忘记或做错时主动补救一次", minutes: 5, skill: "self-regulation", tier: "探索", reward: 4 },
+  { id: "family-report", category: "责任", title: "向家人简短汇报我完成了什么", minutes: 2, skill: "communication", tier: "成长", reward: 3 },
+
+  { id: "feeling-name", category: "表达", title: "用一句话说清现在的感受和原因", minutes: 2, skill: "communication", tier: "成长", reward: 3 },
+  { id: "question-one", category: "表达", title: "提出一个我真正想知道的问题", minutes: 2, skill: "metacognition", tier: "探索", reward: 3 },
+  { id: "teach-minute", category: "表达", title: "用一分钟讲清今天学到的东西", minutes: 3, skill: "communication", tier: "成长", reward: 4 },
+  { id: "listen-back", category: "表达", title: "认真听家人说完并复述重点", minutes: 3, skill: "ethics-collaboration", tier: "探索", reward: 3 },
+
+  { id: "typing-file", category: "未来", title: "打一小段文字并用清楚文件名保存", minutes: 8, skill: "ai-literacy", tier: "成长", reward: 4 },
+  { id: "ai-first-think", category: "未来", title: "问AI前先写下自己的想法", minutes: 3, skill: "ai-literacy", tier: "基础", reward: 3 },
+  { id: "ai-check", category: "未来", title: "核对AI回答中的一个事实", minutes: 6, skill: "ai-literacy", tier: "探索", reward: 4 },
+  { id: "make-version", category: "未来", title: "给兴趣作品做一个最小版本", minutes: 10, skill: "creation", tier: "成长", reward: 5 },
+  { id: "journal-one", category: "未来", title: "在成长日记记下一句发现或灵感", minutes: 3, skill: "metacognition", tier: "成长", reward: 3 }
+];
+
+const dailyTodoVariants = {
+  "move-ten": ["练10分钟羽毛球基本动作", "快走和慢跑交替10分钟", "做一组平衡、跳跃和核心挑战", "去户外选一种球类活动"],
+  "free-read": ["自由阅读一段喜欢的故事", "自由阅读一本知识或地理读物", "读一段科幻、漫画或人物故事", "自己选择一本书安静阅读"],
+  "read-one-line": ["讲一个今天最精彩的片段", "说清一个人物想要什么", "画出今天读到的地点或关系", "说一个读完后还想问的问题"],
+  "math-life": ["估算一次家庭购物要花多少钱", "测量三件东西并比较长短", "记录今天三个时间并计算间隔", "比较两种路线哪一种更合适"],
+  "food-help": ["参与摆桌、收桌和归位", "洗净一种不需要刀具的食材", "帮忙清点今天做饭需要的材料", "饭后把自己使用的餐具收好"],
+  "family-job": ["完成一次扫地或擦桌任务", "整理一小篮衣物并分类", "检查家里一个公共区域并恢复整齐", "主动认领一项今天的家庭小职责"],
+  "feeling-name": ["说出今天最开心的一个瞬间", "说出现在的感受和一个原因", "说出一件让我有点为难的事情", "告诉家人今天希望怎样被帮助"],
+  "teach-minute": ["用一分钟讲清一个故事人物", "用一分钟解释一条游戏或运动规则", "用一分钟展示今天完成的成果", "用一分钟教家人一个新知识"],
+  "typing-file": ["打一段喜欢的书摘并保存", "打一份今天的物品清单并保存", "打一小段自己的故事并保存", "给一个作品建立文件夹和清楚文件名"],
+  "ai-check": ["用书或可靠网页核对AI的一句话", "找出AI回答里最需要证据的一点", "比较AI和自己原来的答案有什么不同", "让AI解释后用自己的话重新讲一次"],
+  "make-version": ["画出一个作品的第一张草图", "搭出一个作品的最小模型", "给故事或游戏设计一张角色卡", "做一页真实观察记录"],
+  "journal-one": ["记下一句今天的新发现", "记下一颗舍不得忘记的灵感", "记下一次卡住和使用的方法", "记下一件今天做得比以前好的事"]
+};
+
+function dailyTodoTitle(task, age) {
+  const variants = dailyTodoVariants[task.id];
+  let title = task.title;
+  if (variants?.length) {
+    const interest = String(getContextProfile()["current-interest"]?.value || "");
+    const seed = parseInt(simpleHash(`${todayKey()}-${state.childId}-${task.id}-${interest}`).slice(0, 5), 36);
+    title = variants[seed % variants.length];
+  }
+  return age <= 7 ? title.replace("一小段中文", "三个认真写好的字").replace("一行清楚的英文", "三个清楚的英文字母").replace("估算一次家庭购物要花多少钱", "数一数今天用到的物品") : title;
+}
+
+function dailyTodoCatalog() {
+  const age = Number.parseInt(child().shortAge, 10) || 8;
+  const priorities = new Set((state.growthBlueprint?.priorities || []).map((item) => item.skill));
+  return dailyTodoDefinitions.map((task) => ({
+    ...task,
+    id: `daily-${task.id}`,
+    micro: true,
+    type: task.category,
+    energy: task.minutes <= 5 ? "low" : "normal",
+    why: `练习${skillDisplayName(task.skill)}，留下今天的真实证据。`,
+    reflect: "这次是自己完成，还是需要了帮助？",
+    personalized: priorities.has(task.skill),
+    title: dailyTodoTitle(task, age)
+  }));
+}
+
 function questById(taskId) {
-  return child().quests.find((quest) => quest.id === taskId);
+  return child().quests.find((quest) => quest.id === taskId) || dailyTodoCatalog().find((quest) => quest.id === taskId);
 }
 
 function normalizeSkillId(value) {
@@ -2934,6 +3028,7 @@ function renderToday() {
   return `
     <section class="growth-loop-guide"><strong>今天的成长循环</strong><div><span class="done">认识我</span><i>→</i><span class="done">选方向</span><i>→</i><span class="active">做一步</span><i>→</i><span>留记录</span></div></section>
     ${renderDailyCompass()}
+    ${renderDailyTodoBook()}
     ${state.showPlanningDetails ? "" : `<section class="panel quick-capture-panel">${renderActionInbox()}</section>`}
     ${state.showPlanningDetails ? `${renderActionDesk()}${renderHabitRhythm()}<section class="panel planning-toggle"><button type="button" data-action="toggle-planning-details">收起全部清单</button></section>` : `<section class="panel planning-toggle"><div><button type="button" data-action="toggle-planning-details">管理全部行动与习惯</button>${state.dailyPlan ? "" : `<button type="button" data-action="toggle-quest-coach">${state.showQuestCoach ? "收起探索任务" : "探索一个新任务"}</button>`}</div><small>${rankedActions().length}个现在可做 · ${state.habits.filter((item) => item.dueToday && item.todayStatus === "pending").length}个今日习惯</small></section>`}
     ${!state.dailyPlan && state.showQuestCoach ? `
@@ -2998,6 +3093,25 @@ function renderToday() {
       </div>
     </section>
   `;
+}
+
+function renderDailyTodoBook() {
+  const tasks = dailyTodoCatalog();
+  const categories = ["健康", "学习", "生活", "责任", "表达", "未来"];
+  const done = tasks.filter((task) => isDone(task.id)).length;
+  const personalized = tasks.filter((task) => task.personalized && !isDone(task.id)).slice(0, 6);
+  return `<section class="panel daily-todo-book">
+    <div class="page-head"><div><h2 class="panel-title">${pixelIcon("skill-check", "")} 今日任务册</h2><small>覆盖身体、学习、生活与未来能力</small></div><span class="tag">${done}/${tasks.length}</span></div>
+    <div class="todo-book-progress"><span><i style="width:${Math.round(done / tasks.length * 100)}%"></i></span><strong>${done ? `今天已完成${done}项` : "从任意一项开始"}</strong></div>
+    ${personalized.length ? `<div class="todo-ai-focus"><small>AI根据当前成长蓝图标记</small><p>${[...new Set(personalized.map((task) => skillDisplayName(task.skill)))].join(" · ")}相关任务会显示星标</p></div>` : ""}
+    <div class="todo-tier-legend"><span>基础：每日生活底座</span><span>成长：建议练习</span><span>探索：有余力再做</span></div>
+    <div class="todo-category-list">${categories.map((category) => {
+      const categoryTasks = tasks.filter((task) => task.category === category);
+      const categoryDone = categoryTasks.filter((task) => isDone(task.id)).length;
+      return `<details open><summary><strong>${category}</strong><span>${categoryDone}/${categoryTasks.length}</span></summary><div>${categoryTasks.map((task) => `<article class="${isDone(task.id) ? "done" : ""} ${task.personalized ? "personalized" : ""}"><button type="button" data-action="toggle-task" data-task-id="${escapeHtml(task.id)}" aria-label="${isDone(task.id) ? "撤销" : "完成"}${escapeHtml(task.title)}"><i>${isDone(task.id) ? "✓" : ""}</i></button><div><strong>${task.personalized ? "★ " : ""}${escapeHtml(task.title)}</strong><small>${task.minutes}分钟 · ${escapeHtml(task.tier)} · ${escapeHtml(skillDisplayName(task.skill))}</small></div><em>+${task.reward}</em></article>`).join("")}</div></details>`;
+    }).join("")}</div>
+    <footer>任务册是选择空间，不要求全部完成。AI会根据完成、跳过和复盘继续调整。</footer>
+  </section>`;
 }
 
 function recommendReason(quest) {

@@ -2194,6 +2194,197 @@ button {
   line-height: 1.4;
 }
 
+.daily-todo-book {
+  border-color: #5d4421;
+  background: linear-gradient(180deg, #fff1c7, #efd39b);
+}
+
+.daily-todo-book .page-head small {
+  display: block;
+  margin-top: 2px;
+  color: #75592f;
+  font-size: 10px;
+}
+
+.todo-book-progress {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  margin: 9px 0;
+}
+
+.todo-book-progress > span {
+  height: 12px;
+  overflow: hidden;
+  border: 2px solid #5f431d;
+  background: #aa8b58;
+  box-shadow: inset 0 2px 0 rgba(0, 0, 0, .17);
+}
+
+.todo-book-progress i {
+  display: block;
+  height: 100%;
+  background: #43ad33;
+  box-shadow: inset 0 2px 0 #78dc53;
+}
+
+.todo-book-progress strong {
+  color: #4c3518;
+  font-size: 10px;
+}
+
+.todo-ai-focus {
+  padding: 7px 9px;
+  border: 1px solid #397335;
+  background: #d8edb1;
+}
+
+.todo-ai-focus small {
+  color: #2a642d;
+  font-weight: 800;
+}
+
+.todo-ai-focus p {
+  margin: 3px 0 0;
+  color: #4a3b1f;
+  font-size: 11px;
+}
+
+.todo-tier-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 8px 0;
+}
+
+.todo-tier-legend span {
+  padding: 3px 5px;
+  border: 1px solid #9b7842;
+  background: #f6e4b5;
+  color: #684d27;
+  font-size: 9px;
+}
+
+.todo-category-list {
+  display: grid;
+  gap: 7px;
+}
+
+.todo-category-list details {
+  border: 2px solid #80602f;
+  background: rgba(255, 250, 224, .72);
+}
+
+.todo-category-list summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 6px 9px;
+  cursor: pointer;
+  background: #dec187;
+  color: #493318;
+  list-style-position: inside;
+}
+
+.todo-category-list summary strong {
+  margin-right: auto;
+  margin-left: 4px;
+}
+
+.todo-category-list summary span {
+  min-width: 34px;
+  color: #28662b;
+  text-align: right;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.todo-category-list details > div {
+  display: grid;
+}
+
+.todo-category-list article {
+  display: grid;
+  grid-template-columns: 28px 1fr 28px;
+  align-items: center;
+  gap: 7px;
+  min-height: 46px;
+  padding: 5px 7px;
+  border-top: 1px solid rgba(111, 78, 36, .28);
+}
+
+.todo-category-list article.personalized {
+  background: rgba(172, 222, 100, .2);
+}
+
+.todo-category-list article.done {
+  background: rgba(71, 157, 52, .16);
+}
+
+.todo-category-list article > button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid #6d5128;
+  border-radius: 3px;
+  background: #fff7d6;
+}
+
+.todo-category-list article.done > button {
+  border-color: #23612b;
+  background: #58b83e;
+  color: white;
+}
+
+.todo-category-list article > button i {
+  font-style: normal;
+  font-weight: 900;
+}
+
+.todo-category-list article > div {
+  min-width: 0;
+}
+
+.todo-category-list article strong,
+.todo-category-list article small {
+  display: block;
+  letter-spacing: 0;
+}
+
+.todo-category-list article strong {
+  color: #3d2d18;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.todo-category-list article.done strong {
+  color: #487046;
+  text-decoration: line-through;
+}
+
+.todo-category-list article small {
+  margin-top: 2px;
+  color: #7a6039;
+  font-size: 9px;
+}
+
+.todo-category-list article > em {
+  color: #23702c;
+  text-align: right;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.daily-todo-book > footer {
+  margin-top: 8px;
+  color: #715631;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
 /* Live economy, safe footer layout, and settings surface. */
 .gem-button {
   width: 96px;

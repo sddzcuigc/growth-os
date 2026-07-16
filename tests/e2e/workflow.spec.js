@@ -60,6 +60,14 @@ test("new child follows one growth loop and uses real economy", async ({ page })
   });
   for (const tab of await page.locator(".tab").all()) await expect(tab).toBeEnabled();
   for (const label of ["今天", "灵感", "能力", "计划", "记录"]) await expect(page.locator(".tabbar")).toContainText(label);
+  await expect(page.getByText("今日任务册")).toBeVisible();
+  await expect(page.locator(".daily-todo-book article")).toHaveCount(37);
+  const firstMicroTask = page.locator(".daily-todo-book article").first();
+  await firstMicroTask.locator("button").click();
+  await expect(firstMicroTask).toHaveClass(/done/);
+  await firstMicroTask.locator("button").click();
+  await expect(firstMicroTask).not.toHaveClass(/done/);
+  await page.screenshot({ path: "qa/workflow-daily-todo-book.png" });
 
   await page.getByRole("button", { name: "打开宝石营地" }).click();
   await expect(page.getByText("宝石营地")).toBeVisible();

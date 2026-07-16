@@ -2775,13 +2775,15 @@ function blueprintEvidence(profileIdValue) {
   const snapshot = db.prepare("SELECT data_json FROM snapshots WHERE profile_id=?").get(profileIdValue);
   const data = snapshot ? JSON.parse(snapshot.data_json || "{}") : {};
   const portrait = data["onboarding-portrait"] || data.onboardingPortrait || null;
+  const completionDays = data.completions && typeof data.completions === "object" ? data.completions : {};
+  const dailyCompletions = Object.entries(completionDays).slice(-7).flatMap(([date, tasks]) => Object.entries(tasks || {}).map(([taskId, item]) => ({ taskId, date, title: String(item?.title || "").slice(0, 100), skill: normalizeSkillId(item?.skill || "self-regulation"), category: String(item?.category || "成长").slice(0, 30), micro: Boolean(item?.micro) }))).slice(-120);
   const journals = journalRows(profileIdValue).filter((item) => item.shareWithAi).slice(0, 8).map((item) => ({ id: item.id, content: item.content.slice(0, 500), tags: item.tags, at: item.createdAt }));
   const feedback = taskFeedbackRows(profileIdValue, 16);
   const artifacts = artifactRows(profileIdValue, 16).filter((item) => item.shareWithAi).map(({ id, title, skill, type, caption, createdAt }) => ({ id, title, skill, type, caption, createdAt }));
   const goals = goalRows(profileIdValue).filter((item) => item.status === "active").map(({ id, objective, why, skill, progress, evidenceCount }) => ({ id, objective, why, skill, progress, evidenceCount }));
   const actions = actionRows(profileIdValue).slice(0, 24).map(({ id, title, status, source, goalId, updatedAt }) => ({ id, title, status, source, goalId, updatedAt }));
   const hypotheses = hypothesisRows(profileIdValue).filter((item) => item.aiContext && item.status === "active").slice(0, 8).map(({ title, summary, confidence, evidenceCount, counterCount }) => ({ title, summary, confidence, evidenceCount, counterCount }));
-  return { portrait, journals, feedback, artifacts, goals, actions, hypotheses };
+  return { portrait, dailyCompletions, journals, feedback, artifacts, goals, actions, hypotheses };
 }
 
 function blueprintFingerprint(evidence) {
@@ -2791,6 +2793,7 @@ function blueprintFingerprint(evidence) {
 
 function skillEvidenceScore(skillId, evidence) {
   let score = 0;
+  score += evidence.dailyCompletions.filter((item) => item.skill === skillId).length * 0.45;
   for (const item of evidence.feedback) {
     if (item.skill !== skillId) continue;
     score += item.difficulty === "too_hard" || item.difficulty === "stuck" ? 4 : item.difficulty === "just_right" ? 2 : 1;
@@ -2820,7 +2823,7 @@ function fallbackGrowthBlueprint(profile, evidence) {
     const skill = futureSkillFramework[item.id];
     return { skill: item.id, name: skill.name, role: skill.role, confidence: Math.min(0.82, 0.38 + item.score * 0.035), reason: index === 0 ? "先稳住能支持所有学习的底座，再减少提醒和停摆。" : "用真实兴趣和作品训练面向未来的创造、判断与表达。", evidence: [evidence.goals.find((goal) => goal.skill === item.id)?.objective, evidence.feedback.find((entry) => entry.skill === item.id)?.taskTitle, evidence.artifacts.find((entry) => entry.skill === item.id)?.title].filter(Boolean).slice(0, 3), practices: skill.practices };
   });
-  return { version: 2, childSummary: `${profile.name}的蓝图会把已确认的自我描述放在最高优先级，并根据行动、日记、作品和反馈逐步修正。`, priorities, fourWeekPath: priorities.map((item) => ({ skill: item.skill, objective: `四周内用3次小练习和1个可见证据发展${item.name}`, keyResults: ["完成3次刚好难度的小练习", "留下1个作品或生活成果", "完成2次简短复盘"], firstExperiment: item.practices[0] })), nextQuestion: evidence.journals.length ? "最近哪一次你觉得自己真的比以前更会了？" : "你最希望先把哪件日常小事变得更容易？", adjustment: "新证据只改变可修正假设；孩子亲自更正的画像始终优先。", evidenceSummary: { journals: evidence.journals.length, feedback: evidence.feedback.length, artifacts: evidence.artifacts.length, goals: evidence.goals.length } };
+  return { version: 2, childSummary: `${profile.name}的蓝图会把已确认的自我描述放在最高优先级，并根据行动、日记、作品和反馈逐步修正。`, priorities, fourWeekPath: priorities.map((item) => ({ skill: item.skill, objective: `四周内用3次小练习和1个可见证据发展${item.name}`, keyResults: ["完成3次刚好难度的小练习", "留下1个作品或生活成果", "完成2次简短复盘"], firstExperiment: item.practices[0] })), nextQuestion: evidence.journals.length ? "最近哪一次你觉得自己真的比以前更会了？" : "你最希望先把哪件日常小事变得更容易？", adjustment: "新证据只改变可修正假设；孩子亲自更正的画像始终优先。", evidenceSummary: { dailyCompletions: evidence.dailyCompletions.length, journals: evidence.journals.length, feedback: evidence.feedback.length, artifacts: evidence.artifacts.length, goals: evidence.goals.length } };
 }
 
 async function generateGrowthBlueprint(profile, evidence) {
