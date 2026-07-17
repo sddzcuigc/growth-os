@@ -46,6 +46,8 @@ const serverSource = readFileSync("api/server.js", "utf8");
 const scienceSource = readFileSync("SCIENCE.md", "utf8");
 const htmlSource = readFileSync("index.html", "utf8");
 const appSourceText = readFileSync("app.js", "utf8");
+const bossDesignSource = readFileSync("成长OS_100Boss每日小Boss与每周Boss战_完整设计_V1.0.md", "utf8");
+const plannerSkillSource = readFileSync("app-skills/growth-planner/SKILL.md", "utf8");
 
 const failures = [];
 
@@ -122,12 +124,12 @@ if (!questHtml.includes("&lt;img src=x&gt;") || !questHtml.includes("&lt;script&
 }
 
 const recommendationHtml = context.renderRecommendations();
-for (const requiredText of ["不是普通清单", "当前最佳下一步", "候选信号"]) {
+for (const requiredText of ["记下一句值得记住的事", "不会自动变成任务", "我刚想到", "当前服务于"]) {
   if (!recommendationHtml.includes(requiredText)) failures.push(`recommendation page missing ${requiredText}`);
 }
 
 context.setGrowthPlan({ weeklyGoal: "完成一个科学小项目", focusSkill: "creation", constraints: "周三有课" });
-context.setScheduleItems([{ id: "test-schedule", title: "周三课程", start: "2026-07-15T19:00", energy: "low" }]);
+context.setScheduleItems([{ id: "test-schedule", title: "周三课程", start: new Date(Date.now() + 86400000).toISOString(), energy: "low" }]);
 context.setNewsContext([{ id: "test-news", title: "AI教育新工具", source: "测试来源", date: "2026-07-12" }]);
 const payload = context.buildCoachPayload();
 if (!payload.skillFramework || !payload.learningDesignRules?.length || !payload.evidenceSources) {
@@ -181,7 +183,7 @@ for (const term of ["CREATE TABLE IF NOT EXISTS idea_resurfacings", "/api/idea-r
   if (!serverSource.includes(term)) failures.push(`idea resurfacing backend missing ${term}`);
 }
 for (const term of ["CREATE TABLE IF NOT EXISTS growth_goals", "/api/goals/shape", "handleShapeGoal", "handleCreateGoal", "handleUpdateGoal", "handleDeleteGoal", "goalRows", "同时保留三个方向就够了", "goal_id AS goalId", "matchingGoalId", "goalTitle"]) if (!serverSource.includes(term)) failures.push(`growth goals server missing ${term}`);
-for (const term of ["我的成长方向", "生成SMART目标", "采用这个目标", "安排第一个行动", "shapeGrowthGoal", "confirmGrowthGoal", "startGoalExperiment", "growthDirections", "capture-goal-link", "daily-goal-link"]) if (!appSourceText.includes(term)) failures.push(`growth goals UI missing ${term}`);
+for (const term of ["当前成长主线", "生成SMART目标", "采用这个目标", "安排第一个行动", "shapeGrowthGoal", "confirmGrowthGoal", "startGoalExperiment", "currentJourney", "capture-goal-link", "daily-goal-link"]) if (!appSourceText.includes(term)) failures.push(`growth goals UI missing ${term}`);
 for (const term of ["CREATE TABLE IF NOT EXISTS self_coach_answers", "/api/self-coach/ask", "handleAskSelfCoach", "selfCoachEvidence", "rankSelfCoachEvidence", "entry.shareWithAi", "只能根据提供的evidence回答", "allowedRefs", "证据不足就明确说还不知道", "handleSelfCoachFeedback", "handleDeleteSelfCoach"]) if (!serverSource.includes(term)) failures.push(`self coach server missing ${term}`);
 for (const term of ["问问我的成长档案", "只根据我的证据回答", "askSelfCoach", "feedbackSelfCoach", "deleteSelfCoachAnswer", "查看${item.evidence.length}条来源", "这对我有帮助", "这不像我"]) if (!appSourceText.includes(term)) failures.push(`self coach UI missing ${term}`);
 for (const term of ["CREATE TABLE IF NOT EXISTS action_decisions", "not_before", "defer_count", "/negotiate", "/defer", "handleNegotiateAction", "handleDeferAction", "孩子有权延期、缩小或放下一件事", "也不是失败", "status = \"someday\"", "status = \"dropped\""]) if (!serverSource.includes(term)) failures.push(`action negotiation server missing ${term}`);
@@ -201,13 +203,13 @@ for (const term of ["2 * 1024 * 1024", "image/jpeg", "audio/mpeg", "x-content-ty
 }
 if (!serverSource.includes("if (shareWithAi) createArtifactMemory") || !serverSource.includes("retractArtifactMemory(row.profile_id, id)")) failures.push("artifact privacy does not control AI memory");
 if (!serverSource.includes("serverDateKey(new Date(item.createdAt)) >= weekStart") || serverSource.includes("item.createdAt.slice(0, 10) >= weekStart")) failures.push("weekly evidence uses UTC date slicing instead of local dates");
-for (const term of ["AI今日指挥台", "现在只做这一件", "daily-checkin", "start-daily-plan", "swap-daily-plan", "lighten-daily-plan", "renderDailyCompass", "generateDailyPlan", "loadDailyPlan", "管理全部行动与习惯", "探索一个新任务"]) {
+for (const term of ["今天只选一种节奏", "当前主线 · 现在先过这一关", "quick-daily-start", "start-daily-plan", "swap-daily-plan", "lighten-daily-plan", "renderDailyCompass", "generateDailyPlan", "loadDailyPlan"]) {
   if (!appSourceText.includes(term)) failures.push(`daily adaptive compass missing ${term}`);
 }
 for (const term of ["只能从候选中选择一个ref，不创造新任务", "sourceType: \"recharge\"", "daily_plan_swapped", "daily_plan_lightened", "excluded_json"]) {
   if (!serverSource.includes(term)) failures.push(`daily plan arbitration missing ${term}`);
 }
-for (const term of ["completingRecharge", "我恢复好了", "状态照顾好了，选下一步", "feedback: completingRecharge ? \"completed\" : \"accepted\""]) {
+for (const term of ["completingRecharge", "completingMission", "我恢复好了", "状态照顾好了，选下一步", "completingRecharge || completingMission ? \"completed\" : \"accepted\""]) {
   if (!appSourceText.includes(term)) failures.push(`recharge plan completion UI missing ${term}`);
 }
 for (const term of ["daily_plan_completed", "feedback === \"completed\" ? \"completed\""]) {
@@ -224,8 +226,22 @@ for (const term of ["/api/capture/parse", "handleParseCapture", "fallbackCapture
 for (const term of ["要做的事、突然的灵感、今天的感悟都可以", "灵感火花", "成长感悟", "放进灵感池", "capture-ai-context", "capture_confirmed"]) if (!appSourceText.includes(term)) failures.push(`unified capture UI missing ${term}`);
 for (const term of ["生成一个问题", "第2步", "在这里回答AI的问题", "写一句后可继续问", "保存回答", "if (state.journalMode !== \"self\") await requestJournalPrompt(false)"]) if (!appSourceText.includes(term)) failures.push(`guided journal flow missing ${term}`);
 for (const term of ["clearContextAnswer", "edit-context-answer", ">修改</button>"]) if (!appSourceText.includes(term)) failures.push(`editable context answers missing ${term}`);
-for (const term of ["onboardingQuestionIds", "renderProfileOnboarding", "finishProfileOnboarding", "AI先认识我", "按这个理解建立路线", "needsProfileOnboarding", "growth-loop-guide"]) if (!appSourceText.includes(term)) failures.push(`guided profile onboarding missing ${term}`);
-for (const term of [">今天</b>", ">灵感</b>", ">能力</b>", ">计划</b>", ">记录</b>"]) if (!htmlSource.includes(term)) failures.push(`workflow navigation missing ${term}`);
+for (const term of ["onboardingQuestionIds", "renderProfileOnboarding", "finishProfileOnboarding", "AI先认识我", "onboarding-goal-project", "用这个目标开始", "needsProfileOnboarding"]) if (!appSourceText.includes(term)) failures.push(`guided profile onboarding missing ${term}`);
+for (const term of ["isVagueGrowthGoal", "skillTreeGoalSuggestions", "choose-goal-suggestion", "技能树给出的具体目标建议", "这才是具体的SMART目标"]) if (!appSourceText.includes(term)) failures.push(`concrete goal choice flow missing ${term}`);
+for (const term of ["choose-daily-mission", "preferredRef", "选这项", "mission-picks"]) if (!appSourceText.includes(term)) failures.push(`daily mission choice flow missing ${term}`);
+for (const term of ["isVagueGoalText", "preferredRef"]) if (!serverSource.includes(term)) failures.push(`server goal or mission choice guard missing ${term}`);
+for (const term of ["mode必须为clarify", "goalClarifications", "目标设计需要连接GLM", "系统不会改用模板", "GLM没有满足该技能的安全约束", "GLM给出了不安全的水上练习选项", "家长只在岸上看"]) if (!serverSource.includes(term)) failures.push(`LLM-only goal clarification missing ${term}`);
+for (const term of ["goalQuestion", "goalClarifications", "answer-goal-clarification", "GLM生成的SMART目标", "不会套用通用模板"]) if (!appSourceText.includes(term)) failures.push(`LLM goal clarification UI missing ${term}`);
+if (appSourceText.includes("function onboardingGoalDraft()")) failures.push("onboarding still uses a local goal template");
+for (const term of ["ensureBuiltInDemoAccount", "builtin-admin@growth-os.local", 'loginName === "admin"', '"崔护"', '"9岁3个月"']) if (!serverSource.includes(term)) failures.push(`built-in demo account missing ${term}`);
+for (const term of ["内置测试：账号 admin", "邮箱或测试账号"]) if (!htmlSource.includes(term)) failures.push(`built-in demo login UI missing ${term}`);
+for (const term of [">今天</b>", ">世界</b>", ">蓝图</b>", ">Boss</b>", ">背包</b>"]) if (!htmlSource.includes(term)) failures.push(`workflow navigation missing ${term}`);
+for (const term of ["CREATE TABLE IF NOT EXISTS weekly_boss_runs", "CREATE TABLE IF NOT EXISTS daily_core_plans", "CREATE TABLE IF NOT EXISTS daily_mini_bosses", "CREATE TABLE IF NOT EXISTS growth_evidence", "CREATE TABLE IF NOT EXISTS reward_drops", "CREATE TABLE IF NOT EXISTS reward_vouchers", "/api/boss/catalog", "/api/boss/week", "/api/boss/daily/sync", "handleWeeklyBossFinal", "handleChooseBossReward", "handleApproveRewardVoucher"]) {
+  if (!serverSource.includes(term)) failures.push(`weekly Boss backend missing ${term}`);
+}
+for (const term of ["renderWeeklyBossSummary", "renderCoreMissionPanel", "renderMiniBossPanel", "renderBossWorlds", "renderRewardBackpack", "只看1到3项核心任务", "六枚证据符文", "合理调整后的项目任务也能解锁"]) {
+  if (!appSourceText.includes(term)) failures.push(`weekly Boss workflow missing ${term}`);
+}
 if (appSourceText.includes('<div class="action-quick-add"')) failures.push("legacy multi-field quick-add is still rendered");
 for (const term of ["/api/auth/recovery/rotate", "/api/auth/recovery/reset", "recoveryCode", "normalizeRecoveryCode", "dummyRecoveryHash", "consumeRecoveryAttempt", "DELETE FROM sessions WHERE user_id", "recovery_hash", "recovery_updated_at"]) {
   if (!serverSource.includes(term)) failures.push(`account recovery security missing ${term}`);
@@ -271,13 +287,13 @@ for (const term of ["[3, 7, 14, 30, 60, 100]", "kind='habit'", "habit_reopened"]
 for (const term of ["我的行动台", "create-action", "breakdown-action", "update-action", "rankedActions", "actionQueue", "loadActions"]) {
   if (!appSourceText.includes(term)) failures.push(`adaptive action desk missing ${term}`);
 }
-for (const term of ["灵感工坊", "capture-idea", "develop-idea", "set-idea-status", "journal-to-idea", "ideaPipeline", "loadIdeas", "本地测试管理员"]) {
+for (const term of ["主线信号站", "capture-idea", "develop-idea", "set-idea-status", "journal-to-idea", "ideaPipeline", "loadIdeas", "内置测试账号"]) {
   if (!appSourceText.includes(term)) failures.push(`idea incubation or dev admin UI missing ${term}`);
 }
 for (const term of ["唤醒一颗旧灵感", "decide-idea-resurfacing", "继续收藏", "过阵子再看", "放下它", "loadIdeaResurfacing"]) {
   if (!appSourceText.includes(term)) failures.push(`idea resurfacing UI missing ${term}`);
 }
-for (const term of ["推进一件事", "创造点东西", "保持小节奏", "先恢复能量", "daily-checkin-back", "state.dailyCheckin.intent"]) {
+for (const term of ["轻松开始", "正常推进", "认真挑战", "先休息一下", "quick-daily-start", "state.dailyCheckin.intent"]) {
   if (!appSourceText.includes(term)) failures.push(`daily intention UI missing ${term}`);
 }
 for (const term of ["checkin.intent === \"finish\"", "checkin.intent === \"create\"", "checkin.intent === \"reset\"", "checkin.intent === \"recharge\""]) {
@@ -302,7 +318,7 @@ for (const term of ["做下一版", "旧版本不会被覆盖", "startArtifactRe
   if (!appSourceText.includes(term)) failures.push(`artifact version UI missing ${term}`);
 }
 if (!serverSource.includes('process.env.NODE_ENV !== "production"') || !serverSource.includes("devAdminEnabled")) failures.push("dev admin is not production-gated");
-for (const term of ["我的成长日记", "requestJournalPrompt", "saveJournalEntry", "recentJournal", "activeHypotheses", "set-journal-mode", "delete-journal", "journal-ai-context", "shareWithAi", "hypothesis-feedback", "关于我的成长假设"]) {
+for (const term of ["主线成长日记", "requestJournalPrompt", "saveJournalEntry", "recentJournal", "activeHypotheses", "set-journal-mode", "delete-journal", "journal-ai-context", "shareWithAi", "hypothesis-feedback", "关于我的成长假设"]) {
   if (!appSourceText.includes(term)) failures.push(`journal experience missing ${term}`);
 }
 if (!serverSource.includes("if (shareWithAi) evolveHypotheses") || !appSourceText.includes("memory.evidence?.shareWithAi !== false")) {
@@ -336,6 +352,33 @@ for (const term of ["realProfile ? 1", "bonus-rewards", "renderGemStore", "buy-g
 for (const term of ["personal-friction", "/api/onboarding/question", "smart", "keyResults", "weeklyPlan", "SMART目标", "OKR", "keyResultTitle"]) if (!appSourceText.includes(term) && !serverSource.includes(term)) failures.push(`SMART/OKR workflow missing ${term}`);
 for (const term of ["/api/onboarding/portrait", "AI目前这样理解我", "confirmOnboardingPortrait", "saveOnboardingPortraitCorrection", "已用你的更正覆盖AI判断", "confirmedPortrait"]) if (!appSourceText.includes(term) && !serverSource.includes(term)) failures.push(`correctable AI portrait missing ${term}`);
 for (const term of ["surpriseRewardRoll", "surprise-rolls", "chance: 0.35", "dailyCap: 2", "不能反复重抽"]) if (!appSourceText.includes(term)) failures.push(`bounded surprise reward missing ${term}`);
+
+for (const term of ["is_primary", "activeGoalId", "promotePrimaryGoal", "daily_mission_books", "goal_id AS goalId", "artifacts.goal_id", "ensureColumn(\"task_feedback\", \"goal_id\"", "ensureColumn(\"journals\", \"goal_id\""]) {
+  if (!serverSource.includes(term)) failures.push(`unified journey data model missing ${term}`);
+}
+for (const term of ["renderCurrentJourneySpine", "当前主线路线台", "sourceType === \"mission\"", "current-mission", "generateDailyMissionBook"]) {
+  if (!appSourceText.includes(term) && !serverSource.includes(term)) failures.push(`unified journey workflow missing ${term}`);
+}
+for (const term of ["rebuildTodayFromGoal", "await generateDailyMissionBook(true, true, true)", "await generateDailyPlan({ quiet: true, throwOnError: true })", "await syncBossCorePlan(rebuiltTasks, true)", "目标已变成今天可以完成的任务"]) {
+  if (!appSourceText.includes(term)) failures.push(`goal-to-todo workflow missing ${term}`);
+}
+const todayRenderer = appSourceText.slice(appSourceText.indexOf("function renderToday()"), appSourceText.indexOf("function renderBossPage()"));
+if (todayRenderer.indexOf("renderCoreMissionPanel()") > todayRenderer.indexOf("renderWeeklyBossSummary(true)")) {
+  failures.push("today tasks must appear before the weekly boss summary");
+}
+for (const term of ["routineSchedule", "dailyRoutineTasks", "renderFoundationRoutinePanel", "每日成长底座", "主线项目", "renderTodayAgenda", "renderDailyTodoBook()", "weeklyProjectTask"]) {
+  if (!appSourceText.includes(term)) failures.push(`foundation/project todo workflow missing ${term}`);
+}
+for (const term of ["drivingQuestion", "weeklyProduct", "successCriteria", "dailyStages", "projectStage", "taskType: \"project\""]) {
+  if (!serverSource.includes(term)) failures.push(`project-based Boss contract missing ${term}`);
+}
+for (const term of ["唯一主规范", "固定成长底座", "周项目主线", "自选探索", "项目契约", "三轨任务系统", "weeklyProjectId", "RoutineTemplate", "固定底座未全部完成但项目主线完成，小Boss仍可解锁"]) {
+  if (!bossDesignSource.includes(term)) failures.push(`100 Boss master design missing ${term}`);
+}
+if (!serverSource.includes("目标必须先由AI完成澄清和SMART设计") || serverSource.includes("用10分钟做一个关于")) failures.push("goal creation can still fall back to the rejected universal template");
+for (const term of ["/api/planner/today", "/api/planner/parse", "/api/planner/recommend", "/api/planner/accept", "plannerDayMode", "plannerOccursOn", "plannerSkill", "recurrence_json", "my_day_date", "CREATE TABLE IF NOT EXISTS action_occurrences", "recurring_action_completed"]) if (!serverSource.includes(term)) failures.push(`planner backend missing ${term}`);
+for (const term of ["renderDayPlanner", "AI安排今天", "planner-natural-text", "acceptPlannerItems", "之前未完成", "暑假 · 工作日"]) if (!appSourceText.includes(term)) failures.push(`planner UI missing ${term}`);
+for (const term of ["Prefer carrying forward", "summer vacation", "weekends", "weekly_project", "Return JSON only"]) if (!plannerSkillSource.includes(term)) failures.push(`growth planner skill missing ${term}`);
 
 if (failures.length) {
   console.error(failures.map((failure) => `- ${failure}`).join("\n"));

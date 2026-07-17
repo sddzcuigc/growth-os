@@ -1,99 +1,69 @@
 import { test, expect } from "@playwright/test";
 
-const profile = {
-  id: "e2e-profile",
-  name: "流程测试",
-  age: "9岁",
-  avatar: "boy",
-  baseTemplate: "brother",
-  consentGranted: true,
-  consentVersion: "child-data-v1"
-};
+const baseUrl = "http://127.0.0.1:5173";
 
-test.use({ viewport: { width: 430, height: 932 }, deviceScaleFactor: 1 });
+test.use({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
 
-test("new child follows one growth loop and uses real economy", async ({ page }) => {
-  await page.route("**/api/account", (route) => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({ email: "workflow@test.local", profiles: [profile], recoveryConfigured: true })
-  }));
-  await page.route("**/api/progress?profileId=e2e-profile", (route) => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({ data: {}, memories: [] })
-  }));
-  await page.route("**/api/goals?profileId=e2e-profile", (route) => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({ goals: [{ id: 1, title: "我想做出自己的作品", objective: "把喜欢的搭建变成看得见的作品", why: "这是我真正愿意探索的方向", successSignal: "四周完成3次练习并展示1件作品", firstExperiment: "用10分钟搭出最小版本", skill: "creation", horizon: "one_month", status: "active", progress: 20, evidenceCount: 1, activeSteps: 1, smart: { specific: "完成一个搭建作品", measurable: "3次练习和1件成果", achievable: "每次10分钟", relevant: "来自我的搭建兴趣", timeBound: "四周" }, keyResults: [{ id: "kr1", title: "完成3次小练习", target: 3, unit: "次" }, { id: "kr2", title: "留下1件可展示成果", target: 1, unit: "件" }, { id: "kr3", title: "完成2次复盘", target: 2, unit: "次" }], weeklyPlan: ["最小版本", "改进", "解决卡点", "展示复盘"] }] })
-  }));
+test("five pages form one visible weekly growth workflow", async ({ page }) => {
+  const login = await page.request.post(`${baseUrl}/api/dev/login`);
+  expect(login.ok()).toBeTruthy();
+  const account = await login.json();
+  const profile = account.profiles.find((item) => item.name === "测试冒险家") || account.profiles[0];
+  expect(profile?.id).toBeTruthy();
 
-  await page.goto("http://127.0.0.1:5173/");
-  await expect(page.getByText("AI先认识我")).toBeVisible();
-  await expect(page.locator("#level-value")).toHaveText("Lv.1");
-  await expect(page.locator("#xp-number")).toHaveText("0/100");
-  await expect(page.locator(".gem-button span").nth(1)).toHaveText("0");
-  for (const tab of await page.locator(".tab").all()) await expect(tab).toBeDisabled();
-  await page.screenshot({ path: "qa/workflow-onboarding.png" });
+  await page.addInitScript(({ profileId }) => {
+    localStorage.setItem("talent-os-child", profileId);
+    localStorage.setItem(`talent-os-${profileId}-onboarding`, JSON.stringify({ started: true, complete: true }));
+    localStorage.setItem("talent-os-tutorial-complete", "1");
+  }, { profileId: profile.id });
 
-  for (let index = 0; index < 6; index += 1) {
-    await page.locator("[data-action='answer-onboarding']").first().click();
-  }
-  await expect(page.getByText("AI目前这样理解我")).toBeVisible();
-  await expect(page.getByRole("button", { name: "请先确认或修改画像" })).toBeDisabled();
-  await page.getByRole("button", { name: "有些不对，修改" }).click();
-  await page.locator("#onboarding-portrait-correction").fill("我喜欢搭建作品，但不是担心做不好；我只是需要先看到清楚的第一步。希望AI先让我自己试，再给提示。");
-  await page.getByRole("button", { name: "保存我的更正" }).click();
-  await expect(page.getByText("已由我确认")).toBeVisible();
-  await expect(page.getByText("我的更正 · 最高优先级")).toBeVisible();
-  await expect(page.getByText("仅供追溯，不再用于目标", { exact:false })).toBeVisible();
-  await expect(page.getByRole("button", { name: "按这个理解建立路线" })).toBeEnabled();
-  await expect(page.getByText("根据我确认的画像")).toBeVisible();
-  await page.waitForTimeout(1900);
-  await page.screenshot({ path: "qa/workflow-portrait-correction.png" });
+  await page.goto(`${baseUrl}/`);
+  await expect(page.locator(".tabbar")).toContainText("今天");
+  for (const label of ["世界", "蓝图", "Boss", "背包"]) await expect(page.locator(".tabbar")).toContainText(label);
 
-  await page.evaluate(() => {
-    localStorage.setItem("talent-os-e2e-profile-onboarding", JSON.stringify({ started: true, complete: true }));
-    window.render();
-  });
-  for (const tab of await page.locator(".tab").all()) await expect(tab).toBeEnabled();
-  for (const label of ["今天", "灵感", "能力", "计划", "记录"]) await expect(page.locator(".tabbar")).toContainText(label);
+  await page.locator(".tab[data-page='profile']").click();
+  await expect(page.getByText("完成核心任务，解锁每日小Boss", { exact: true })).toBeVisible();
+  await expect(page.locator(".weekly-boss-card .boss-portrait")).toBeVisible();
+  const coreCount = await page.locator(".core-task-list article").count();
+  expect(coreCount).toBeGreaterThanOrEqual(1);
+  expect(coreCount).toBeLessThanOrEqual(3);
+  await expect(page.locator(".boss-shields span")).toHaveCount(6);
 
-  await page.getByRole("button", { name: "打开宝石营地" }).click();
-  await expect(page.getByText("宝石营地")).toBeVisible();
-  await expect(page.getByRole("button", { name: "18宝石" })).toBeDisabled();
+  await page.locator(".tab[data-page='discover']").click();
+  await expect(page.getByText("10个能力世界，不是100项压力清单", { exact: true })).toBeVisible();
+  await expect(page.locator(".world-map article")).toHaveCount(10);
 
-  await page.evaluate(() => {
-    localStorage.setItem("talent-os-e2e-profile-bonus-rewards", JSON.stringify({
-      test: { xp: 110, gems: 36, label: "测试成长" }
-    }));
-    window.updateShell();
-    document.querySelector("#settings-content").innerHTML = window.renderSettingsPanel();
-  });
-  await expect(page.locator("#level-value")).toHaveText("Lv.2");
-  await expect(page.locator("#xp-number")).toHaveText("10/150");
-  await page.getByRole("button", { name: "18宝石" }).click();
-  await expect(page.locator(".screen")).toHaveAttribute("data-theme", "forest");
-  await expect(page.locator(".gem-button span").nth(1)).toHaveText("18");
-  await page.screenshot({ path: "qa/workflow-gem-store.png" });
+  await page.locator(".tab[data-page='skills']").click();
+  await expect(page.getByText("画像连接未来能力，再决定本周挑战", { exact: true })).toBeVisible();
+  await expect(page.getByText("AI成长蓝图", { exact: true })).toBeVisible();
 
+  await page.locator(".tab[data-page='plan']").click();
+  await expect(page.getByText("一周只挑战一种关键能力", { exact: true })).toBeVisible();
+  await expect(page.getByText("六枚证据符文", { exact: true })).toBeVisible();
+
+  await page.locator(".tab[data-page='execute']").click();
+  await expect(page.getByText("奖励来自真实里程碑", { exact: true })).toBeVisible();
+  await expect(page.getByText("我的奖励券", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "设置" }).click();
+  await expect(page.getByRole("button", { name: "重看新手引导" })).toBeVisible();
   await page.getByRole("button", { name: "关闭设置" }).click();
-  await page.getByRole("button", { name: "能力" }).click();
-  await expect(page.getByText("SMART · OKR · 创造项目")).toBeVisible();
-  await expect(page.getByText("KR1")).toBeVisible();
-  await page.waitForTimeout(1900);
-  await page.screenshot({ path: "qa/workflow-smart-okr.png" });
 
   const layout = await page.evaluate(() => {
     const screen = document.querySelector(".screen").getBoundingClientRect();
     const level = document.querySelector(".level-panel").getBoundingClientRect();
     const tabs = document.querySelector(".tabbar").getBoundingClientRect();
+    const brokenImages = [...document.images].filter((image) => image.complete && image.naturalWidth === 0).map((image) => image.src);
     return {
       screenWidth: screen.width,
       levelBottom: level.bottom,
       tabsTop: tabs.top,
-      overflowing: document.documentElement.scrollWidth > document.documentElement.clientWidth
+      documentOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      brokenImages
     };
   });
-  expect(layout.screenWidth).toBeLessThanOrEqual(430);
+  expect(layout.screenWidth).toBeLessThanOrEqual(390);
   expect(layout.levelBottom).toBeLessThanOrEqual(layout.tabsTop + 1);
-  expect(layout.overflowing).toBe(false);
+  expect(layout.documentOverflow).toBeFalsy();
+  expect(layout.brokenImages).toEqual([]);
 });
