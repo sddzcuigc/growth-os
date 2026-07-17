@@ -1,0 +1,136 @@
+diff -ruN '--exclude=node_modules' '--exclude=*.sqlite*' '--exclude=__MACOSX' '--exclude=design-qa' '--exclude=qa' '--exclude=promo' growthos_original/api/database.js growthos_work/api/database.js
+--- growthos_original/api/database.js	2026-07-17 01:25:40.000000000 +0000
++++ growthos_work/api/database.js	2026-07-17 16:11:49.770856494 +0000
+@@ -1,9 +1,11 @@
+-import Database from "libsql";
++import { createRequire } from "node:module";
++import { DatabaseSync } from "node:sqlite";
++
++const require = createRequire(import.meta.url);
+ 
+ function cleanRow(row) {
+-  if (!row || typeof row !== "object" || !("_metadata" in row)) return row;
+-  const { _metadata, ...clean } = row;
+-  return clean;
++  if (!row || typeof row !== "object") return row;
++  return Object.fromEntries(Object.entries(row).filter(([key]) => key !== "_metadata"));
+ }
+ 
+ function wrapStatement(statement) {
+@@ -27,13 +29,20 @@
+   });
+ }
+ 
++function openRemoteDatabase(url, authToken) {
++  // Load the native libSQL package only when a remote database is actually used.
++  // This keeps local development and CI portable across macOS/Linux/Windows.
++  const Database = require("libsql");
++  return new Database(url, { authToken });
++}
++
+ export function openGrowthDatabase({ localPath, remoteUrl = "", authToken = "", isVercel = false }) {
+   const normalizedUrl = String(remoteUrl || "").trim();
+   const remote = /^(?:libsql|https?|wss?):\/\//i.test(normalizedUrl);
+   if (normalizedUrl && !remote) throw new Error("TURSO_DATABASE_URL 必须使用 libsql、https、http、wss 或 ws 协议");
+   if (remote && /^libsql:\/\//i.test(normalizedUrl) && !authToken) throw new Error("远程 libSQL 数据库缺少 TURSO_AUTH_TOKEN");
+ 
+-  const raw = remote ? new Database(normalizedUrl, { authToken }) : new Database(localPath);
++  const raw = remote ? openRemoteDatabase(normalizedUrl, authToken) : new DatabaseSync(localPath);
+   return {
+     db: wrapDatabase(raw),
+     remote,
+diff -ruN '--exclude=node_modules' '--exclude=*.sqlite*' '--exclude=__MACOSX' '--exclude=design-qa' '--exclude=qa' '--exclude=promo' growthos_original/api/server.js growthos_work/api/server.js
+--- growthos_original/api/server.js	2026-07-17 03:23:33.000000000 +0000
++++ growthos_work/api/server.js	2026-07-17 16:13:03.068296705 +0000
+@@ -70,6 +70,7 @@
+   CREATE TABLE IF NOT EXISTS strategy_insights (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, insight_key TEXT NOT NULL, category TEXT NOT NULL, statement TEXT NOT NULL, when_to_use TEXT NOT NULL, question TEXT NOT NULL, evidence_json TEXT NOT NULL, confidence REAL NOT NULL, status TEXT NOT NULL, feedback TEXT NOT NULL, ai_context INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(profile_id,insight_key));
+   CREATE TABLE IF NOT EXISTS action_rescues (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, action_id INTEGER NOT NULL REFERENCES actions(id) ON DELETE CASCADE, reason TEXT NOT NULL, response_json TEXT NOT NULL, outcome TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS growth_goals (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, title TEXT NOT NULL, why_text TEXT NOT NULL, success_signal TEXT NOT NULL, first_experiment TEXT NOT NULL, skill TEXT NOT NULL, horizon TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
++  CREATE TABLE IF NOT EXISTS growth_journeys (id TEXT PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, title TEXT NOT NULL, status TEXT NOT NULL, goal_id INTEGER NOT NULL DEFAULT 0, project_id INTEGER NOT NULL DEFAULT 0, skill_ids_json TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS self_coach_answers (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, question TEXT NOT NULL, answer TEXT NOT NULL, confidence TEXT NOT NULL, evidence_json TEXT NOT NULL, next_question TEXT NOT NULL, provider TEXT NOT NULL, feedback TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS action_decisions (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, action_id INTEGER NOT NULL REFERENCES actions(id) ON DELETE CASCADE, reason TEXT NOT NULL, outcome TEXT NOT NULL, note TEXT NOT NULL, created_at TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS growth_blueprints (profile_id TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE, blueprint_json TEXT NOT NULL, evidence_fingerprint TEXT NOT NULL, provider TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+@@ -94,6 +95,8 @@
+   CREATE INDEX IF NOT EXISTS auth_attempts_updated_at ON auth_attempts(updated_at);
+   CREATE INDEX IF NOT EXISTS self_coach_profile_time ON self_coach_answers(profile_id,created_at);
+   CREATE INDEX IF NOT EXISTS goals_profile_status ON growth_goals(profile_id,status,updated_at);
++  CREATE INDEX IF NOT EXISTS journeys_profile_status ON growth_journeys(profile_id,status,updated_at);
++  CREATE INDEX IF NOT EXISTS journeys_goal_project ON growth_journeys(profile_id,goal_id,project_id);
+   CREATE INDEX IF NOT EXISTS rescues_action_time ON action_rescues(action_id,created_at);
+   CREATE INDEX IF NOT EXISTS strategy_profile_status ON strategy_insights(profile_id,status,confidence,updated_at);
+   CREATE INDEX IF NOT EXISTS daily_plans_profile_date ON daily_plans(profile_id,plan_date);
+@@ -144,6 +147,24 @@
+ ensureColumn("users", "recovery_updated_at", "TEXT NOT NULL DEFAULT ''");
+ ensureColumn("growth_goals", "plan_json", "TEXT NOT NULL DEFAULT '{}'");
+ ensureColumn("growth_goals", "is_primary", "INTEGER NOT NULL DEFAULT 0");
++ensureColumn("growth_goals", "journey_id", "TEXT NOT NULL DEFAULT ''");
++ensureColumn("growth_projects", "goal_id", "INTEGER NOT NULL DEFAULT 0");
++ensureColumn("growth_projects", "journey_id", "TEXT NOT NULL DEFAULT ''");
++ensureColumn("actions", "journey_id", "TEXT NOT NULL DEFAULT ''");
++ensureColumn("project_experience_cards", "journey_id", "TEXT NOT NULL DEFAULT ''");
++ensureColumn("weekly_boss_runs", "journey_id", "TEXT NOT NULL DEFAULT ''");
++ensureColumn("growth_evidence", "journey_id", "TEXT NOT NULL DEFAULT ''");
++ensureColumn("growth_evidence", "project_id", "INTEGER NOT NULL DEFAULT 0");
++ensureColumn("growth_evidence", "project_stage_id", "INTEGER NOT NULL DEFAULT 0");
++ensureColumn("growth_evidence", "weekly_boss_run_id", "INTEGER NOT NULL DEFAULT 0");
++db.exec(`
++  CREATE INDEX IF NOT EXISTS goals_journey ON growth_goals(profile_id,journey_id);
++  CREATE INDEX IF NOT EXISTS projects_journey ON growth_projects(profile_id,journey_id,status);
++  CREATE INDEX IF NOT EXISTS actions_journey ON actions(profile_id,journey_id,status);
++  CREATE INDEX IF NOT EXISTS boss_runs_journey ON weekly_boss_runs(profile_id,journey_id,week_start);
++  CREATE INDEX IF NOT EXISTS evidence_journey ON growth_evidence(profile_id,journey_id,created_at);
++  CREATE INDEX IF NOT EXISTS evidence_project_stage ON growth_evidence(profile_id,project_id,project_stage_id,created_at);
++`);
+ ensureColumn("journals", "goal_id", "INTEGER NOT NULL DEFAULT 0");
+ ensureColumn("task_feedback", "goal_id", "INTEGER NOT NULL DEFAULT 0");
+ ensureColumn("artifacts", "goal_id", "INTEGER NOT NULL DEFAULT 0");
+@@ -231,6 +252,7 @@
+     if (request.method === "POST" && /^\/api\/profile\/questions\/\d+\/answer$/.test(url.pathname)) return await handleAnswerProfileQuestion(request, response, url);
+     if (request.method === "GET" && url.pathname === "/api/profile/context-archive") return await handleGetProfileContextArchive(request, response, url);
+     if (request.method === "GET" && url.pathname === "/api/goals") return await handleListGoals(request, response, url);
++    if (request.method === "GET" && url.pathname === "/api/journey") return await handleGetJourney(request, response, url);
+     if (request.method === "POST" && url.pathname === "/api/onboarding/question") return await handleOnboardingQuestion(request, response);
+     if (request.method === "POST" && url.pathname === "/api/onboarding/portrait") return await handleOnboardingPortrait(request, response);
+     if (request.method === "GET" && url.pathname === "/api/growth-blueprint") return await handleGetGrowthBlueprint(request, response, url);
+@@ -802,11 +824,12 @@
+   const blueprintRow = db.prepare("SELECT blueprint_json AS blueprint,evidence_fingerprint AS evidenceFingerprint,provider,created_at AS createdAt,updated_at AS updatedAt FROM growth_blueprints WHERE profile_id=?").get(id);
+   const growthBlueprint = blueprintRow ? { ...blueprintRow, blueprint: parseStoredJson(blueprintRow.blueprint, {}) } : null;
+   const dailyMissionBooks = db.prepare("SELECT mission_date AS missionDate,book_json AS book,context_fingerprint AS contextFingerprint,provider,created_at AS createdAt,updated_at AS updatedAt FROM daily_mission_books WHERE profile_id=? ORDER BY mission_date").all(id).map((item) => ({ ...item, book: parseStoredJson(item.book, {}) }));
+-  const weeklyBossRuns = db.prepare("SELECT id,boss_id AS bossId,difficulty,week_start AS weekStart,source_blueprint_id AS sourceBlueprintId,source_project_id AS sourceProjectId,shield_total AS shieldTotal,shield_broken AS shieldBroken,hp_total AS hpTotal,hp_remaining AS hpRemaining,status,selection_json AS selection,created_at AS createdAt,updated_at AS updatedAt FROM weekly_boss_runs WHERE profile_id=? ORDER BY week_start,id").all(id).map((item) => ({ ...item, selection: parseStoredJson(item.selection, {}) }));
++  const journeys = db.prepare("SELECT id,title,status,goal_id AS goalId,project_id AS projectId,skill_ids_json AS skillIds,created_at AS createdAt,updated_at AS updatedAt FROM growth_journeys WHERE profile_id=? ORDER BY created_at,id").all(id).map((item) => ({ ...item, goalId: Number(item.goalId || 0), projectId: Number(item.projectId || 0), skillIds: parseStoredJson(item.skillIds, []) }));
++  const weeklyBossRuns = db.prepare("SELECT id,boss_id AS bossId,difficulty,week_start AS weekStart,source_blueprint_id AS sourceBlueprintId,source_project_id AS sourceProjectId,journey_id AS journeyId,shield_total AS shieldTotal,shield_broken AS shieldBroken,hp_total AS hpTotal,hp_remaining AS hpRemaining,status,selection_json AS selection,created_at AS createdAt,updated_at AS updatedAt FROM weekly_boss_runs WHERE profile_id=? ORDER BY week_start,id").all(id).map((item) => ({ ...item, sourceProjectId: Number(item.sourceProjectId || 0), selection: parseStoredJson(item.selection, {}) }));
+   const dailyCorePlans = db.prepare("SELECT id,plan_date AS planDate,weekly_boss_run_id AS weeklyBossRunId,tasks_json AS tasks,status,created_at AS createdAt,updated_at AS updatedAt FROM daily_core_plans WHERE profile_id=? ORDER BY plan_date,id").all(id).map((item) => ({ ...item, tasks: parseStoredJson(item.tasks, []) }));
+   const dailyMiniBosses = db.prepare("SELECT id,weekly_boss_run_id AS weeklyBossRunId,boss_date AS bossDate,template_type AS templateType,unlock_status AS unlockStatus,challenge_json AS challenge,evidence_id AS evidenceId,xp,gems,rune_type AS runeType,created_at AS createdAt,updated_at AS updatedAt FROM daily_mini_bosses WHERE profile_id=? ORDER BY boss_date,id").all(id).map((item) => ({ ...item, challenge: parseStoredJson(item.challenge, {}) }));
+   const profileQuestions = db.prepare("SELECT id,question_date AS questionDate,domain,question,why,options_json AS options,status,answer,source,created_at AS createdAt,answered_at AS answeredAt FROM profile_questions WHERE profile_id=? ORDER BY id").all(id).map((item) => ({ ...item, options: parseStoredJson(item.options, []) }));
+-  const growthEvidence = db.prepare("SELECT id,skill_id AS skillId,source_type AS sourceType,source_id AS sourceId,evidence_level AS evidenceLevel,summary,observable_json AS observable,child_confirmed AS childConfirmed,guardian_confirmed AS guardianConfirmed,ai_context AS aiContext,created_at AS createdAt FROM growth_evidence WHERE profile_id=? ORDER BY id").all(id).map((item) => ({ ...item, observable: parseStoredJson(item.observable, {}), childConfirmed: Boolean(item.childConfirmed), guardianConfirmed: item.guardianConfirmed === null ? null : Boolean(item.guardianConfirmed), aiContext: Boolean(item.aiContext) }));
++  const growthEvidence = db.prepare("SELECT id,skill_id AS skillId,source_type AS sourceType,source_id AS sourceId,evidence_level AS evidenceLevel,summary,observable_json AS observable,journey_id AS journeyId,project_id AS projectId,project_stage_id AS projectStageId,weekly_boss_run_id AS weeklyBossRunId,child_confirmed AS childConfirmed,guardian_confirmed AS guardianConfirmed,ai_context AS aiContext,created_at AS createdAt FROM growth_evidence WHERE profile_id=? ORDER BY id").all(id).map((item) => ({ ...item, projectId: Number(item.projectId || 0), projectStageId: Number(item.projectStageId || 0), weeklyBossRunId: Number(item.weeklyBossRunId || 0), observable: parseStoredJson(item.observable, []), childConfirmed: Boolean(item.childConfirmed), guardianConfirmed: item.guardianConfirmed === null ? null : Boolean(item.guardianConfirmed), aiContext: Boolean(item.aiContext) }));
+   const contextArchives = db.prepare("SELECT archive_key AS archiveKey,version,source_label AS sourceLabel,context_json AS context,ai_context AS aiContext,created_at AS createdAt,updated_at AS updatedAt FROM profile_context_archives WHERE profile_id=? ORDER BY id").all(id).map((item) => ({ ...item, context: parseStoredJson(item.context, {}), aiContext: Boolean(item.aiContext) }));
+   const rewardDrops = db.prepare("SELECT id,weekly_boss_run_id AS weeklyBossRunId,candidates_json AS candidates,chosen_reward_id AS chosenRewardId,status,created_at AS createdAt,updated_at AS updatedAt FROM reward_drops WHERE profile_id=? ORDER BY id").all(id).map((item) => ({ ...item, candidates: parseStoredJson(item.candidates, []) }));
+   const rewardVouchers = db.prepare("SELECT id,reward_catalog_id AS rewardCatalogId,acquired_at AS acquiredAt,expires_at AS expiresAt,status,updated_at AS updatedAt FROM reward_vouchers WHERE profile_id=? ORDER BY id").all(id);
+@@ -820,13 +843,13 @@
+   };
+   const consent = db.prepare("SELECT consent_version AS consentVersion,guardian_confirmed AS guardianConfirmed,granted_at AS grantedAt FROM consents WHERE profile_id=?").get(id);
+   sendJson(response, 200, {
+-    schemaVersion: 12,
++    schemaVersion: 13,
+     exportedAt: nowIso(),
+     account: user.email,
+     profile: { id, name: profile.name, age: profile.age, avatar: profile.avatar, baseTemplate: profile.base_template, createdAt: profile.created_at },
+     consent: consent ? { ...consent, guardianConfirmed: Boolean(consent.guardianConfirmed) } : null,
+     progress: snapshot ? JSON.parse(snapshot.data_json) : {},
+-    growthGoals, growthBlueprint, dailyMissionBooks, weeklyBossRuns, dailyCorePlans, dailyMiniBosses,
++    growthGoals, journeys, growthBlueprint, dailyMissionBooks, weeklyBossRuns, dailyCorePlans, dailyMiniBosses,
+     profileQuestions, growthEvidence, contextArchives, selfCoachAnswers, hypotheses, memories, journals,
+     ideas, ideaResurfacings, actions, actionOccurrences, actionDecisions, actionRescues, habits, habitLogs,
+     focusSessions, dailyPlans, dailyPlanFeedback, weeklyReviews, familyBriefs, taskFeedback, artifacts,
+@@ -1092,6 +1115,103 @@
+   }
+ }
+ 
++
++function makeJourneyId(profileIdValue, goalId = 0, projectIdValue = 0) {
++  const anchor = projectIdValue ? `project:${projectIdValue}` : goalId ? `goal:${goalId}` : "profile";
++  return `journey_${createHash("sha256").update(`${profileIdValue}:${anchor}`).digest("hex").slice(0, 20)}`;
++}
++function publicJourney(row) {
++  if (!row) return null;
