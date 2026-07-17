@@ -7,11 +7,16 @@
     "start": "node api/server.js",
     "build:boss-catalog": "node scripts/build-boss-catalog.mjs",
     "import:boss-assets": "node scripts/import-boss-assets.mjs",
-    "check": "node --check app.js && node --check api/server.js && node scripts/build-boss-catalog.mjs && node scripts/validate-product-logic.mjs",
+    "migrate:turso": "node scripts/migrate-sqlite-to-libsql.mjs",
+    "check": "node --check app.js && node --check api/server.js && node --check api/database.js && node --check api/migrate-database.js && node --check scripts/migrate-sqlite-to-libsql.mjs && node scripts/build-boss-catalog.mjs && node scripts/validate-ai-modules.mjs && node scripts/validate-product-logic.mjs",
     "test:boss-api": "node --test tests/api/boss-system.test.mjs",
+    "test:api": "node --test tests/api/*.test.mjs",
     "test:e2e": "playwright test tests/e2e --reporter=line"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1"
+  },
+  "dependencies": {
+    "libsql": "^0.5.29"
   }
 }
