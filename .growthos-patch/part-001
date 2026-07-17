@@ -1,0 +1,124 @@
++  return { id: row.id, profileId: row.profile_id, title: row.title, status: row.status, goalId: Number(row.goal_id || 0), projectId: Number(row.project_id || 0), skillIds: parseStoredJson(row.skill_ids_json, []), createdAt: row.created_at, updatedAt: row.updated_at };
++}
++function journeyRow(profileIdValue, journeyId) {
++  return journeyId ? db.prepare("SELECT * FROM growth_journeys WHERE id=? AND profile_id=?").get(journeyId, profileIdValue) : null;
++}
++function ensureJourney(profileIdValue, { goalId = 0, projectId = 0, title = "", skillIds = [], activate = false, adoptGoalJourney = true } = {}) {
++  goalId = Number(goalId || 0);
++  projectId = Number(projectId || 0);
++  let row = projectId ? db.prepare("SELECT * FROM growth_journeys WHERE profile_id=? AND project_id=? ORDER BY updated_at DESC LIMIT 1").get(profileIdValue, projectId) : null;
++  if (!row && goalId && adoptGoalJourney) {
++    const candidate = db.prepare("SELECT * FROM growth_journeys WHERE profile_id=? AND goal_id=? ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,updated_at DESC LIMIT 1").get(profileIdValue, goalId);
++    if (candidate && (!projectId || !Number(candidate.project_id || 0) || Number(candidate.project_id) === projectId)) row = candidate;
++  }
++  const now = nowIso();
++  if (!row) {
++    const id = makeJourneyId(profileIdValue, goalId, projectId);
++    if (activate) db.prepare("UPDATE growth_journeys SET status='paused',updated_at=? WHERE profile_id=? AND status='active' AND id!=?").run(now, profileIdValue, id);
++    db.prepare("INSERT OR IGNORE INTO growth_journeys(id,profile_id,title,status,goal_id,project_id,skill_ids_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)")
++      .run(id, profileIdValue, String(title || "成长主线").slice(0, 120), activate ? "active" : "paused", goalId, projectId, JSON.stringify([...new Set(skillIds.map(String).filter(Boolean))].slice(0, 8)), now, now);
++    row = journeyRow(profileIdValue, id);
++  }
++  const nextGoalId = goalId || Number(row.goal_id || 0);
++  const nextProjectId = projectId || Number(row.project_id || 0);
++  const nextTitle = String(title || row.title || "成长主线").slice(0, 120);
++  const nextSkills = [...new Set([...(parseStoredJson(row.skill_ids_json, [])), ...skillIds.map(String)].filter(Boolean))].slice(0, 8);
++  if (activate) db.prepare("UPDATE growth_journeys SET status='paused',updated_at=? WHERE profile_id=? AND status='active' AND id!=?").run(now, profileIdValue, row.id);
++  db.prepare("UPDATE growth_journeys SET title=?,status=?,goal_id=?,project_id=?,skill_ids_json=?,updated_at=? WHERE id=?")
++    .run(nextTitle, activate ? "active" : row.status, nextGoalId, nextProjectId, JSON.stringify(nextSkills), now, row.id);
++  if (goalId && (activate || !String(db.prepare("SELECT journey_id FROM growth_goals WHERE id=? AND profile_id=?").get(goalId, profileIdValue)?.journey_id || ""))) db.prepare("UPDATE growth_goals SET journey_id=?,updated_at=? WHERE id=? AND profile_id=?").run(row.id, now, goalId, profileIdValue);
++  if (projectId) db.prepare("UPDATE growth_projects SET journey_id=?,goal_id=CASE WHEN goal_id=0 THEN ? ELSE goal_id END,updated_at=? WHERE id=? AND profile_id=?").run(row.id, goalId, now, projectId, profileIdValue);
++  return db.prepare("SELECT * FROM growth_journeys WHERE id=?").get(row.id);
++}
++function activateJourneyForProject(profileIdValue, projectRow) {
++  const goalId = Number(projectRow.goal_id || activeGoalId(profileIdValue));
++  const stageSkills = db.prepare("SELECT skill_ids_json FROM project_stages WHERE project_id=? ORDER BY stage_order").all(projectRow.id).flatMap((item) => parseStoredJson(item.skill_ids_json, []));
++  const journey = ensureJourney(profileIdValue, { goalId, projectId: Number(projectRow.id), title: projectRow.title, skillIds: stageSkills, activate: true, adoptGoalJourney: true });
++  db.prepare("UPDATE growth_projects SET journey_id=?,goal_id=?,updated_at=? WHERE id=?").run(journey.id, goalId, nowIso(), projectRow.id);
++  if (goalId) db.prepare("UPDATE growth_goals SET journey_id=?,is_primary=1,updated_at=? WHERE id=? AND profile_id=?").run(journey.id, nowIso(), goalId, profileIdValue);
++  db.prepare("UPDATE actions SET journey_id=?,goal_id=CASE WHEN goal_id=0 THEN ? ELSE goal_id END WHERE profile_id=? AND project_id=?").run(journey.id, goalId, profileIdValue, projectRow.id);
++  return journey;
++}
++function upsertGrowthEvidence({ profileId, skillId, sourceType, sourceId, level = 2, summary, observableFacts = [], childConfirmed = true, guardianConfirmed = null, shareWithAi = true, journeyId = "", projectId = 0, projectStageId = 0, weeklyBossRunId = 0 }) {
++  const now = nowIso();
++  db.prepare("INSERT INTO growth_evidence(profile_id,skill_id,source_type,source_id,evidence_level,summary,observable_json,child_confirmed,guardian_confirmed,ai_context,created_at,journey_id,project_id,project_stage_id,weekly_boss_run_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(profile_id,source_type,source_id) DO UPDATE SET skill_id=excluded.skill_id,evidence_level=MAX(growth_evidence.evidence_level,excluded.evidence_level),summary=excluded.summary,observable_json=excluded.observable_json,child_confirmed=excluded.child_confirmed,guardian_confirmed=COALESCE(excluded.guardian_confirmed,growth_evidence.guardian_confirmed),ai_context=excluded.ai_context,journey_id=CASE WHEN excluded.journey_id!='' THEN excluded.journey_id ELSE growth_evidence.journey_id END,project_id=CASE WHEN excluded.project_id!=0 THEN excluded.project_id ELSE growth_evidence.project_id END,project_stage_id=CASE WHEN excluded.project_stage_id!=0 THEN excluded.project_stage_id ELSE growth_evidence.project_stage_id END,weekly_boss_run_id=CASE WHEN excluded.weekly_boss_run_id!=0 THEN excluded.weekly_boss_run_id ELSE growth_evidence.weekly_boss_run_id END")
++    .run(profileId, normalizeSkillId(skillId), String(sourceType), String(sourceId), Math.max(1, Math.min(5, Number(level || 1))), String(summary || "完成了一次真实成长行动").slice(0, 260), JSON.stringify((Array.isArray(observableFacts) ? observableFacts : [observableFacts]).map(String).filter(Boolean).slice(0, 8)), childConfirmed ? 1 : 0, guardianConfirmed == null ? null : guardianConfirmed ? 1 : 0, shareWithAi ? 1 : 0, now, String(journeyId || ""), Number(projectId || 0), Number(projectStageId || 0), Number(weeklyBossRunId || 0));
++  return db.prepare("SELECT * FROM growth_evidence WHERE profile_id=? AND source_type=? AND source_id=?").get(profileId, String(sourceType), String(sourceId));
++}
++function recordProjectStageEvidence(profileIdValue, projectRow, stageRow) {
++  const journeyId = String(projectRow.journey_id || "");
++  const skills = parseStoredJson(stageRow.skill_ids_json, ["creation"]);
++  return upsertGrowthEvidence({ profileId: profileIdValue, skillId: skills[0] || "creation", sourceType: "project_stage", sourceId: String(stageRow.id), level: 2, summary: `完成项目“${projectRow.title}”的阶段“${stageRow.title}”`, observableFacts: [stageRow.done_definition, stageRow.deliverable], journeyId, projectId: Number(projectRow.id), projectStageId: Number(stageRow.id) });
++}
++function backfillJourneyLinks() {
++  const profiles = db.prepare("SELECT id FROM profiles").all();
++  for (const profile of profiles) {
++    const activeGoal = db.prepare("SELECT * FROM growth_goals WHERE profile_id=? AND status='active' ORDER BY is_primary DESC,updated_at DESC,id DESC LIMIT 1").get(profile.id);
++    if (activeGoal && !activeGoal.journey_id) ensureJourney(profile.id, { goalId: Number(activeGoal.id), title: activeGoal.title, skillIds: [activeGoal.skill], activate: true });
++    const projects = db.prepare("SELECT * FROM growth_projects WHERE profile_id=? ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,updated_at DESC").all(profile.id);
++    for (const project of projects) {
++      const goalId = Number(project.goal_id || activeGoal?.id || 0);
++      const journey = ensureJourney(profile.id, { goalId, projectId: Number(project.id), title: project.title, activate: project.status === "active", adoptGoalJourney: true });
++      db.prepare("UPDATE actions SET journey_id=?,goal_id=CASE WHEN goal_id=0 THEN ? ELSE goal_id END WHERE profile_id=? AND project_id=?").run(journey.id, goalId, profile.id, project.id);
++    }
++    const activeProject = projects.find((item) => item.status === "active");
++    if (activeProject) {
++      const journeyId = db.prepare("SELECT journey_id FROM growth_projects WHERE id=?").get(activeProject.id)?.journey_id || "";
++      db.prepare("UPDATE weekly_boss_runs SET source_project_id=?,journey_id=? WHERE profile_id=? AND status IN ('active','final_ready')").run(String(activeProject.id), journeyId, profile.id);
++    }
++  }
++  for (const evidence of db.prepare("SELECT growth_evidence.id,daily_mini_bosses.weekly_boss_run_id,weekly_boss_runs.journey_id,CAST(weekly_boss_runs.source_project_id AS INTEGER) AS project_id FROM growth_evidence JOIN daily_mini_bosses ON growth_evidence.source_type='mini_boss' AND CAST(growth_evidence.source_id AS INTEGER)=daily_mini_bosses.id JOIN weekly_boss_runs ON weekly_boss_runs.id=daily_mini_bosses.weekly_boss_run_id WHERE growth_evidence.journey_id='' OR growth_evidence.weekly_boss_run_id=0").all()) {
++    db.prepare("UPDATE growth_evidence SET journey_id=?,project_id=?,weekly_boss_run_id=? WHERE id=?").run(evidence.journey_id || "", Number(evidence.project_id || 0), Number(evidence.weekly_boss_run_id || 0), evidence.id);
++  }
++}
++function journeyState(profileIdValue) {
++  const row = db.prepare("SELECT * FROM growth_journeys WHERE profile_id=? ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,updated_at DESC LIMIT 1").get(profileIdValue);
++  if (!row) return { journey: null, goal: null, project: null, weeklyBoss: null, evidence: { total: 0, byType: [], stages: 0 } };
++  const goal = row.goal_id ? goalRows(profileIdValue).find((item) => item.id === Number(row.goal_id)) || null : null;
++  const projectRow = row.project_id ? db.prepare("SELECT * FROM growth_projects WHERE id=? AND profile_id=?").get(row.project_id, profileIdValue) : null;
++  const weeklyRow = db.prepare("SELECT * FROM weekly_boss_runs WHERE profile_id=? AND journey_id=? ORDER BY week_start DESC LIMIT 1").get(profileIdValue, row.id);
++  const evidenceRows = db.prepare("SELECT source_type,COUNT(*) AS count FROM growth_evidence WHERE profile_id=? AND journey_id=? GROUP BY source_type ORDER BY source_type").all(profileIdValue, row.id);
++  return { journey: publicJourney(row), goal, project: projectRow ? publicProject(projectRow) : null, weeklyBoss: weeklyRow ? publicWeeklyBoss(weeklyRow) : null, evidence: { total: evidenceRows.reduce((sum, item) => sum + Number(item.count), 0), byType: evidenceRows.map((item) => ({ type: item.source_type, count: Number(item.count) })), stages: Number(db.prepare("SELECT COUNT(*) AS count FROM growth_evidence WHERE profile_id=? AND journey_id=? AND source_type='project_stage'").get(profileIdValue, row.id)?.count || 0) } };
++}
++function handleGetJourney(request, response, url) {
++  const user = requireUser(request, response); if (!user) return;
++  const profileIdValue = String(url.searchParams.get("profileId") || "");
++  if (!ownedProfile(user.id, profileIdValue)) return sendJson(response, 404, { error: "角色不存在" });
++  sendJson(response, 200, journeyState(profileIdValue));
++}
++backfillJourneyLinks();
++
+ function goalRows(profileIdValue) {
+   return db.prepare("SELECT * FROM growth_goals WHERE profile_id=? ORDER BY CASE WHEN status='active' AND is_primary=1 THEN 0 WHEN status='active' THEN 1 WHEN status='paused' THEN 2 ELSE 3 END,updated_at DESC,id DESC").all(profileIdValue).map((row) => {
+     const actionStats = db.prepare("SELECT SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) AS done,SUM(CASE WHEN status!='done' THEN 1 ELSE 0 END) AS active FROM actions WHERE profile_id=? AND goal_id=?").get(profileIdValue, row.id);
+@@ -1102,7 +1222,7 @@
+     const evidenceCount = Number(actionStats?.done || 0) + Number(ideaStats?.done || 0) + artifactCount;
+     const activeSteps = Number(actionStats?.active || 0) + Number(ideaStats?.active || 0);
+     const plan = parseStoredJson(row.plan_json, {});
+-    return { id: Number(row.id), title: row.title, why: row.why_text, successSignal: row.success_signal, firstExperiment: row.first_experiment, skill: row.skill, horizon: row.horizon, status: row.status, isPrimary: Boolean(row.is_primary), smart: plan.smart || {}, objective: plan.objective || row.title, keyResults: Array.isArray(plan.keyResults) ? plan.keyResults : [], weeklyPlan: Array.isArray(plan.weeklyPlan) ? plan.weeklyPlan : [], evidenceCount, reflectionCount, journalCount, activeSteps, progress: row.status === "done" ? 100 : Math.min(90, evidenceCount * 20 + activeSteps * 5), createdAt: row.created_at, updatedAt: row.updated_at };
++    return { id: Number(row.id), journeyId: row.journey_id || "", title: row.title, why: row.why_text, successSignal: row.success_signal, firstExperiment: row.first_experiment, skill: row.skill, horizon: row.horizon, status: row.status, isPrimary: Boolean(row.is_primary), smart: plan.smart || {}, objective: plan.objective || row.title, keyResults: Array.isArray(plan.keyResults) ? plan.keyResults : [], weeklyPlan: Array.isArray(plan.weeklyPlan) ? plan.weeklyPlan : [], evidenceCount, reflectionCount, journalCount, activeSteps, progress: row.status === "done" ? 100 : Math.min(90, evidenceCount * 20 + activeSteps * 5), createdAt: row.created_at, updatedAt: row.updated_at };
+   });
+ }
+ function activeGoalId(profileIdValue, requestedId = 0) {
+@@ -1317,10 +1437,18 @@
+   const now = nowIso();
+   const fallback = fallbackGoalDraft(title);
+   const plan = normalizeGoalPlan(body, fallback);
+-  db.prepare("UPDATE growth_goals SET is_primary=0 WHERE profile_id=?").run(profileIdValue);
+-  const result = db.prepare("INSERT INTO growth_goals(profile_id,title,why_text,success_signal,first_experiment,skill,horizon,status,created_at,updated_at,plan_json,is_primary) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)").run(profileIdValue, title, String(body.why || "").slice(0, 220), String(body.successSignal || "").slice(0, 240), String(body.firstExperiment || "").slice(0, 220), normalizeSkillId(body.skill || "creation"), ["one_month", "three_months"].includes(body.horizon) ? body.horizon : "one_month", "active", now, now, JSON.stringify(plan));
+-  recordEvent(user.id, profileIdValue, "goal_created", { skill: normalizeSkillId(body.skill || "creation"), horizon: body.horizon || "one_month" });
+-  sendJson(response, 201, goalRows(profileIdValue).find((goal) => goal.id === Number(result.lastInsertRowid)));
++  let goalId = 0;
++  let journey;
++  db.exec("BEGIN");
++  try {
++    db.prepare("UPDATE growth_goals SET is_primary=0 WHERE profile_id=?").run(profileIdValue);
++    const result = db.prepare("INSERT INTO growth_goals(profile_id,title,why_text,success_signal,first_experiment,skill,horizon,status,created_at,updated_at,plan_json,is_primary,journey_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,1,'')").run(profileIdValue, title, String(body.why || "").slice(0, 220), String(body.successSignal || "").slice(0, 240), String(body.firstExperiment || "").slice(0, 220), normalizeSkillId(body.skill || "creation"), ["one_month", "three_months"].includes(body.horizon) ? body.horizon : "one_month", "active", now, now, JSON.stringify(plan));
++    goalId = Number(result.lastInsertRowid);
++    journey = ensureJourney(profileIdValue, { goalId, title, skillIds: [normalizeSkillId(body.skill || "creation")], activate: true });
++    db.exec("COMMIT");
++  } catch (error) { db.exec("ROLLBACK"); throw error; }
++  recordEvent(user.id, profileIdValue, "goal_created", { skill: normalizeSkillId(body.skill || "creation"), horizon: body.horizon || "one_month", journeyId: journey.id });
++  sendJson(response, 201, goalRows(profileIdValue).find((goal) => goal.id === goalId));
+ }
+ async function handleUpdateGoal(request, response, url) {
