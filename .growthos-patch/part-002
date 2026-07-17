@@ -1,0 +1,116 @@
+   const user = requireUser(request, response); if (!user) return;
+@@ -1330,9 +1458,23 @@
+   const body = await readBodyJson(request);
+   const status = ["active", "paused", "done"].includes(body.status) ? body.status : goal.status;
+   if (status === "active" && goal.status !== "active" && goalRows(goal.profile_id).filter((item) => item.status === "active").length >= 3) return sendJson(response, 409, { error: "同时保留三个方向就够了" });
+-  if (status === "active") db.prepare("UPDATE growth_goals SET is_primary=0 WHERE profile_id=?").run(goal.profile_id);
+-  db.prepare("UPDATE growth_goals SET status=?,is_primary=?,updated_at=? WHERE id=?").run(status, status === "active" ? 1 : 0, nowIso(), id);
+-  if (status !== "active" && goal.is_primary) promotePrimaryGoal(goal.profile_id);
++  db.exec("BEGIN");
++  try {
++    if (status === "active") db.prepare("UPDATE growth_goals SET is_primary=0 WHERE profile_id=?").run(goal.profile_id);
++    db.prepare("UPDATE growth_goals SET status=?,is_primary=?,updated_at=? WHERE id=?").run(status, status === "active" ? 1 : 0, nowIso(), id);
++    if (status === "active") {
++      const linkedProject = db.prepare("SELECT * FROM growth_projects WHERE profile_id=? AND goal_id=? ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,updated_at DESC LIMIT 1").get(goal.profile_id, id);
++      ensureJourney(goal.profile_id, { goalId: id, projectId: Number(linkedProject?.id || 0), title: linkedProject?.title || goal.title, skillIds: [goal.skill], activate: true, adoptGoalJourney: true });
++    } else {
++      if (goal.journey_id) db.prepare("UPDATE growth_journeys SET status=?,updated_at=? WHERE id=? AND profile_id=?").run(status === "done" ? "completed" : "paused", nowIso(), goal.journey_id, goal.profile_id);
++      if (goal.is_primary) {
++        promotePrimaryGoal(goal.profile_id);
++        const next = db.prepare("SELECT * FROM growth_goals WHERE profile_id=? AND status='active' AND is_primary=1 LIMIT 1").get(goal.profile_id);
++        if (next) ensureJourney(goal.profile_id, { goalId: Number(next.id), title: next.title, skillIds: [next.skill], activate: true });
++      }
++    }
++    db.exec("COMMIT");
++  } catch (error) { db.exec("ROLLBACK"); throw error; }
+   recordEvent(user.id, goal.profile_id, "goal_status_changed", { status });
+   sendJson(response, 200, goalRows(goal.profile_id).find((item) => item.id === id));
+ }
+@@ -1348,6 +1490,7 @@
+     db.prepare("UPDATE journals SET goal_id=0 WHERE profile_id=? AND goal_id=?").run(goal.profile_id, id);
+     db.prepare("UPDATE task_feedback SET goal_id=0 WHERE profile_id=? AND goal_id=?").run(goal.profile_id, id);
+     db.prepare("UPDATE artifacts SET goal_id=0 WHERE profile_id=? AND goal_id=?").run(goal.profile_id, id);
++    db.prepare("UPDATE growth_journeys SET goal_id=0,status=CASE WHEN project_id=0 THEN 'archived' ELSE status END,updated_at=? WHERE profile_id=? AND goal_id=?").run(nowIso(), goal.profile_id, id);
+     db.prepare("DELETE FROM growth_goals WHERE id=?").run(id);
+     if (goal.is_primary) promotePrimaryGoal(goal.profile_id);
+     recordEvent(user.id, goal.profile_id, "goal_deleted", {});
+@@ -1808,7 +1951,7 @@
+   return parseJsonContent((await apiResponse.json()).choices?.[0]?.message?.content || "{}");
+ }
+ function actionRows(profileIdValue) {
+-  return db.prepare("SELECT id,title,detail,status,estimate_minutes AS estimateMinutes,energy,importance,due_at AS dueAt,source,source_ref AS sourceRef,goal_id AS goalId,project_id AS projectId,project_stage_id AS projectStageId,not_before AS notBefore,defer_count AS deferCount,last_defer_reason AS lastDeferReason,steps_json AS steps,success,item_kind AS itemKind,start_at AS startAt,end_at AS endAt,reminder_at AS reminderAt,recurrence_json AS recurrence,my_day_date AS myDayDate,skill_id AS skillId,planner_reason AS plannerReason,generated,created_at AS createdAt,updated_at AS updatedAt FROM actions WHERE profile_id=? ORDER BY CASE status WHEN 'doing' THEN 1 WHEN 'open' THEN 2 WHEN 'someday' THEN 3 WHEN 'dropped' THEN 4 ELSE 5 END,start_at='',start_at,due_at='',due_at,importance DESC,updated_at DESC LIMIT 200").all(profileIdValue)
++  return db.prepare("SELECT id,title,detail,status,estimate_minutes AS estimateMinutes,energy,importance,due_at AS dueAt,source,source_ref AS sourceRef,goal_id AS goalId,journey_id AS journeyId,project_id AS projectId,project_stage_id AS projectStageId,not_before AS notBefore,defer_count AS deferCount,last_defer_reason AS lastDeferReason,steps_json AS steps,success,item_kind AS itemKind,start_at AS startAt,end_at AS endAt,reminder_at AS reminderAt,recurrence_json AS recurrence,my_day_date AS myDayDate,skill_id AS skillId,planner_reason AS plannerReason,generated,created_at AS createdAt,updated_at AS updatedAt FROM actions WHERE profile_id=? ORDER BY CASE status WHEN 'doing' THEN 1 WHEN 'open' THEN 2 WHEN 'someday' THEN 3 WHEN 'dropped' THEN 4 ELSE 5 END,start_at='',start_at,due_at='',due_at,importance DESC,updated_at DESC LIMIT 200").all(profileIdValue)
+     .map((item) => ({ ...item, steps: parseStoredJson(item.steps, []), recurrence: parseStoredJson(item.recurrence, { mode: "none" }), generated: Boolean(item.generated) }));
+ }
+ function actionDecisionCalibration(profileIdValue) {
+@@ -3077,14 +3220,14 @@
+ }
+ function publicProjectExperience(row) {
+   if (!row) return null;
+-  return { id: Number(row.id), projectId: Number(row.project_id), title: row.title, summary: row.summary, artifactIds: parseStoredJson(row.artifact_ids_json, []), learned: parseStoredJson(row.learned_json, []), practiced: parseStoredJson(row.practiced_json, []), methods: parseStoredJson(row.methods_json, []), transferIdeas: parseStoredJson(row.transfer_ideas_json, []), childReflection: row.child_reflection, visibility: row.visibility, guardianApproved: Boolean(row.guardian_approved), createdAt: row.created_at, updatedAt: row.updated_at };
++  return { id: Number(row.id), projectId: Number(row.project_id), journeyId: row.journey_id || "", title: row.title, summary: row.summary, artifactIds: parseStoredJson(row.artifact_ids_json, []), learned: parseStoredJson(row.learned_json, []), practiced: parseStoredJson(row.practiced_json, []), methods: parseStoredJson(row.methods_json, []), transferIdeas: parseStoredJson(row.transfer_ideas_json, []), childReflection: row.child_reflection, visibility: row.visibility, guardianApproved: Boolean(row.guardian_approved), createdAt: row.created_at, updatedAt: row.updated_at };
+ }
+ function publicProject(row) {
+   const gaps = db.prepare("SELECT * FROM project_gaps WHERE project_id=? ORDER BY gap_order,id").all(row.id).map((gap) => ({ id: Number(gap.id), kind: gap.kind, title: gap.title, reason: gap.reason, status: gap.status, childConfirmed: Boolean(gap.child_confirmed) }));
+   const stages = db.prepare("SELECT * FROM project_stages WHERE project_id=? ORDER BY stage_order,id").all(row.id).map((stage) => ({ id: Number(stage.id), order: Number(stage.stage_order), phase: stage.phase, title: stage.title, doneDefinition: stage.done_definition, deliverable: stage.deliverable, dependencyIds: parseStoredJson(stage.dependency_ids_json, []), skillIds: parseStoredJson(stage.skill_ids_json, []), evidenceType: stage.evidence_type, estimateMinutes: Number(stage.estimate_minutes), status: stage.status }));
+   const experience = publicProjectExperience(db.prepare("SELECT * FROM project_experience_cards WHERE project_id=?").get(row.id));
+   const actionIds = db.prepare("SELECT id FROM actions WHERE project_id=? ORDER BY id").all(row.id).map((item) => Number(item.id));
+-  return { id: Number(row.id), profileId: row.profile_id, title: row.title, drivingQuestion: row.driving_question, finalProduct: row.final_product, audience: row.audience, status: row.status, smartGoal: row.smart_goal, keyResults: parseStoredJson(row.key_results_json, []), constraints: parseStoredJson(row.constraints_json, []), safetyRules: parseStoredJson(row.safety_rules_json, []), clarification: parseStoredJson(row.clarification_json, {}), source: row.source, gaps, stages, experience, actionIds, progress: stages.length ? Math.round(stages.filter((stage) => stage.status === "done").length / stages.length * 100) : 0, createdAt: row.created_at, updatedAt: row.updated_at };
++  return { id: Number(row.id), profileId: row.profile_id, goalId: Number(row.goal_id || 0), journeyId: row.journey_id || "", title: row.title, drivingQuestion: row.driving_question, finalProduct: row.final_product, audience: row.audience, status: row.status, smartGoal: row.smart_goal, keyResults: parseStoredJson(row.key_results_json, []), constraints: parseStoredJson(row.constraints_json, []), safetyRules: parseStoredJson(row.safety_rules_json, []), clarification: parseStoredJson(row.clarification_json, {}), source: row.source, gaps, stages, experience, actionIds, progress: stages.length ? Math.round(stages.filter((stage) => stage.status === "done").length / stages.length * 100) : 0, createdAt: row.created_at, updatedAt: row.updated_at };
+ }
+ function projectRows(profileIdValue) {
+   return db.prepare("SELECT * FROM growth_projects WHERE profile_id=? ORDER BY CASE status WHEN 'active' THEN 1 WHEN 'draft' THEN 2 WHEN 'paused' THEN 3 ELSE 4 END,updated_at DESC,id DESC").all(profileIdValue).map(publicProject);
+@@ -3150,11 +3293,13 @@
+   if (!body.draft || !Array.isArray(body.draft.stages) || body.draft.stages.length !== 4) return sendJson(response, 422, { error: "请先让AI完成项目澄清与拆解" });
+   const draft = normalizeProjectDraft(body.draft, projectRecipe(body.draft.title || "新的创造项目", body.answers || {}));
+   const now = nowIso();
++  const goalId = activeGoalId(profileIdValue, body.goalId);
+   let projectIdValue;
++  let journey;
+   db.exec("BEGIN");
+   try {
+-    const result = db.prepare("INSERT INTO growth_projects(profile_id,title,driving_question,final_product,audience,status,smart_goal,key_results_json,constraints_json,safety_rules_json,clarification_json,source,created_at,updated_at) VALUES(?,?,?,?,?,'draft',?,?,?,?,?,?,?,?)")
+-      .run(profileIdValue, draft.title, draft.drivingQuestion, draft.finalProduct, draft.audience, draft.smartGoal, JSON.stringify(draft.keyResults), JSON.stringify(draft.constraints), JSON.stringify(draft.safetyRules), JSON.stringify(body.answers || {}), String(body.provider || "ai").slice(0, 60), now, now);
++    const result = db.prepare("INSERT INTO growth_projects(profile_id,title,driving_question,final_product,audience,status,smart_goal,key_results_json,constraints_json,safety_rules_json,clarification_json,source,created_at,updated_at,goal_id,journey_id) VALUES(?,?,?,?,?,'draft',?,?,?,?,?,?,?,?,?,'')")
++      .run(profileIdValue, draft.title, draft.drivingQuestion, draft.finalProduct, draft.audience, draft.smartGoal, JSON.stringify(draft.keyResults), JSON.stringify(draft.constraints), JSON.stringify(draft.safetyRules), JSON.stringify(body.answers || {}), String(body.provider || "ai").slice(0, 60), now, now, goalId);
+     projectIdValue = Number(result.lastInsertRowid);
+     draft.gaps.forEach((gap, index) => db.prepare("INSERT INTO project_gaps(project_id,gap_order,kind,title,reason,status,child_confirmed,created_at,updated_at) VALUES(?,?,?,?,?,'open',0,?,?)").run(projectIdValue, index + 1, gap.kind, gap.title, gap.reason, now, now));
+     const stageIds = [];
+@@ -3165,19 +3310,21 @@
+       stageIds.push(Number(stageResult.lastInsertRowid));
+     });
+     db.prepare("UPDATE project_stages SET status='ready' WHERE id=?").run(stageIds[0]);
++    journey = ensureJourney(profileIdValue, { goalId, projectId: projectIdValue, title: draft.title, skillIds: draft.stages.flatMap((stage) => stage.skillIds), activate: false, adoptGoalJourney: true });
+     db.exec("COMMIT");
+   } catch (error) { db.exec("ROLLBACK"); throw error; }
+-  recordEvent(user.id, profileIdValue, "project_created", { projectId: projectIdValue, stages: 4 });
++  recordEvent(user.id, profileIdValue, "project_created", { projectId: projectIdValue, stages: 4, goalId, journeyId: journey.id });
+   sendJson(response, 201, { project: projectRows(profileIdValue).find((item) => item.id === projectIdValue) });
+ }
+ function createProjectStageAction(profileIdValue, project, stage, dateKey = serverDateKey()) {
+   const existing = db.prepare("SELECT id FROM actions WHERE profile_id=? AND project_id=? AND project_stage_id=? AND status NOT IN ('done','dropped') LIMIT 1").get(profileIdValue, project.id, stage.id);
+   if (existing) return Number(existing.id);
++  const projectRow = db.prepare("SELECT goal_id,journey_id FROM growth_projects WHERE id=? AND profile_id=?").get(project.id, profileIdValue) || {};
+   const startHours = ["10:30", "14:30", "15:30", "19:00"];
+   const time = startHours[Math.max(0, Math.min(3, stage.order - 1))];
+   const now = nowIso();
+-  const result = db.prepare("INSERT INTO actions(profile_id,title,detail,status,estimate_minutes,energy,importance,due_at,source,source_ref,goal_id,project_id,project_stage_id,steps_json,success,item_kind,start_at,end_at,reminder_at,recurrence_json,my_day_date,skill_id,planner_reason,generated,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+-    .run(profileIdValue, stage.title, `项目：${project.title}\n要交付：${stage.deliverable}`, "open", stage.estimateMinutes, stage.estimateMinutes > 35 ? "high" : "normal", 3, `${dateKey}T${time}`, "project", `project:${project.id}:stage:${stage.id}`, 0, project.id, stage.id, JSON.stringify([`先确认：${stage.doneDefinition}`, `留下证据：${stage.deliverable}`]), stage.doneDefinition, "todo", `${dateKey}T${time}`, "", "", JSON.stringify({ mode: "none" }), dateKey, stage.skillIds[0] || "creation", `推进项目“${project.title}”的${stage.order}/4阶段`, 1, now, now);
++  const result = db.prepare("INSERT INTO actions(profile_id,title,detail,status,estimate_minutes,energy,importance,due_at,source,source_ref,goal_id,journey_id,project_id,project_stage_id,steps_json,success,item_kind,start_at,end_at,reminder_at,recurrence_json,my_day_date,skill_id,planner_reason,generated,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
++    .run(profileIdValue, stage.title, `项目：${project.title}\n要交付：${stage.deliverable}`, "open", stage.estimateMinutes, stage.estimateMinutes > 35 ? "high" : "normal", 3, `${dateKey}T${time}`, "project", `project:${project.id}:stage:${stage.id}`, Number(projectRow.goal_id || project.goalId || 0), String(projectRow.journey_id || project.journeyId || ""), project.id, stage.id, JSON.stringify([`先确认：${stage.doneDefinition}`, `留下证据：${stage.deliverable}`]), stage.doneDefinition, "todo", `${dateKey}T${time}`, "", "", JSON.stringify({ mode: "none" }), dateKey, stage.skillIds[0] || "creation", `推进项目“${project.title}”的${stage.order}/4阶段`, 1, now, now);
+   return Number(result.lastInsertRowid);
+ }
+ function advanceProjectFromCompletedAction(profileIdValue, projectIdValue, stageId) {
+@@ -3185,13 +3332,15 @@
+   const stage = row && db.prepare("SELECT * FROM project_stages WHERE id=? AND project_id=?").get(stageId, projectIdValue);
+   if (!row || !stage) return;
+   db.prepare("UPDATE project_stages SET status='done',updated_at=? WHERE id=?").run(nowIso(), stageId);
++  recordProjectStageEvidence(profileIdValue, row, stage);
+   const next = db.prepare("SELECT * FROM project_stages WHERE project_id=? AND stage_order>? ORDER BY stage_order LIMIT 1").get(projectIdValue, stage.stage_order);
+   if (!next) {
+     db.prepare("UPDATE growth_projects SET status='completed',updated_at=? WHERE id=?").run(nowIso(), projectIdValue);
++    db.prepare("UPDATE growth_journeys SET status='completed',updated_at=? WHERE id=? AND profile_id=?").run(nowIso(), row.journey_id || "", profileIdValue);
+     return;
+   }
+   db.prepare("UPDATE project_stages SET status='ready',updated_at=? WHERE id=? AND status='locked'").run(nowIso(), next.id);
+-  const project = publicProject(row);

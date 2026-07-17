@@ -1,0 +1,83 @@
+name: Apply GrowthOS journey patch
+
+on:
+  push:
+    branches:
+      - fix/evidence-loop-journey-kernel
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: fix/evidence-loop-journey-kernel
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Apply readable patch
+        id: patch
+        shell: bash
+        run: |
+          set +e
+          if [ ! -d .growthos-patch ]; then
+            echo "Journey patch is already applied" | tee /tmp/growthos-patch.log
+            echo "status=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cat .growthos-patch/part-* > /tmp/growthos.patch
+          patch -p1 --forward --batch --verbose < /tmp/growthos.patch > /tmp/growthos-patch.log 2>&1
+          status=$?
+          cat /tmp/growthos-patch.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [ "$status" -eq 0 ]; then
+            rm -rf .growthos-patch .growthos-critical .growthos-sync
+          fi
+          exit 0
+
+      - name: Upload patch diagnostics
+        if: steps.patch.outputs.status != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: growthos-patch-diagnostics
+          path: /tmp/growthos-patch.log
+          retention-days: 1
+
+      - name: Stop on patch mismatch
+        if: steps.patch.outputs.status != '0'
+        run: exit 1
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Validate product
+        run: npm run check
+
+      - name: Run API regression
+        run: npm run test:api
+
+      - name: Commit verified source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/apply-growthos-journey-patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "fix: unify GrowthOS evidence journey [journey-patch]"
+          git push origin HEAD:fix/evidence-loop-journey-kernel

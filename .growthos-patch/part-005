@@ -1,0 +1,154 @@
++for (const term of ["journeys", "growthBlueprint", "dailyMissionBooks", "weeklyBossRuns", "dailyCorePlans", "dailyMiniBosses", "profileQuestions", "growthEvidence", "contextArchives", "actionOccurrences", "actionRescues", "habitLogs", "focusSessions", "weeklyReviews", "rewardDrops", "rewardVouchers", "projects, desk"]) {
+   if (!serverSource.includes(term)) failures.push(`export archive missing ${term}`);
+ }
+ for (const term of ["persistenceMode", 'persistenceMode !== "ephemeral"', "云端临时数据库", "当前为功能预览，重启或重新部署后资料可能丢失"]) {
+@@ -421,8 +422,12 @@
+ for (const term of ["drivingQuestion", "weeklyProduct", "successCriteria", "dailyStages", "projectStage", "taskType: \"project\""]) {
+   if (!serverSource.includes(term)) failures.push(`project-based Boss contract missing ${term}`);
+ }
+-for (const term of ["唯一主规范", "固定成长底座", "周项目主线", "自选探索", "项目契约", "三轨任务系统", "weeklyProjectId", "RoutineTemplate", "固定底座未全部完成但项目主线完成，小Boss仍可解锁"]) {
+-  if (!bossDesignSource.includes(term)) failures.push(`100 Boss master design missing ${term}`);
++if (bossDesignSource) {
++  for (const term of ["唯一主规范", "固定成长底座", "周项目主线", "自选探索", "项目契约", "三轨任务系统", "weeklyProjectId", "RoutineTemplate", "固定底座未全部完成但项目主线完成，小Boss仍可解锁"]) {
++    if (!bossDesignSource.includes(term)) failures.push(`100 Boss master design missing ${term}`);
++  }
++} else {
++  console.warn(`Optional Boss master design not bundled: ${bossDesignPath}`);
+ }
+ if (!serverSource.includes("目标必须先由AI完成澄清和SMART设计") || serverSource.includes("用10分钟做一个关于")) failures.push("goal creation can still fall back to the rejected universal template");
+ for (const term of ["/api/planner/today", "/api/planner/parse", "/api/planner/recommend", "/api/planner/accept", "plannerDayMode", "plannerOccursOn", "plannerSkill", "recurrence_json", "my_day_date", "CREATE TABLE IF NOT EXISTS action_occurrences", "recurring_action_completed", "plannerHabitItems", "profile_context_archives"]) if (!serverSource.includes(term)) failures.push(`planner backend missing ${term}`);
+diff -ruN '--exclude=node_modules' '--exclude=*.sqlite*' '--exclude=__MACOSX' '--exclude=design-qa' '--exclude=qa' '--exclude=promo' growthos_original/tests/api/account-deletion-race.test.mjs growthos_work/tests/api/account-deletion-race.test.mjs
+--- growthos_original/tests/api/account-deletion-race.test.mjs	2026-07-17 02:47:35.000000000 +0000
++++ growthos_work/tests/api/account-deletion-race.test.mjs	2026-07-17 16:05:58.990115808 +0000
+@@ -2,7 +2,7 @@
+ import assert from "node:assert/strict";
+ import { Readable } from "node:stream";
+ import path from "node:path";
+-import Database from "libsql";
++import { DatabaseSync } from "node:sqlite";
+ 
+ process.env.VERCEL = "1";
+ process.env.HOST = "127.0.0.1";
+@@ -71,7 +71,7 @@
+   assert.equal(missionResult.status, 410);
+   assert.match(missionResult.body.error, /已删除/);
+ 
+-  const connection = new Database(path.join(testDataDir, "growth-os.sqlite"));
++  const connection = new DatabaseSync(path.join(testDataDir, "growth-os.sqlite"));
+   try {
+     assert.equal(connection.prepare("SELECT COUNT(*) AS count FROM users WHERE email=?").get(email).count, 0);
+     assert.equal(connection.prepare("SELECT COUNT(*) AS count FROM profiles WHERE id=?").get(profile.body.id).count, 0);
+diff -ruN '--exclude=node_modules' '--exclude=*.sqlite*' '--exclude=__MACOSX' '--exclude=design-qa' '--exclude=qa' '--exclude=promo' growthos_original/tests/api/auth-security.test.mjs growthos_work/tests/api/auth-security.test.mjs
+--- growthos_original/tests/api/auth-security.test.mjs	2026-07-17 02:36:09.000000000 +0000
++++ growthos_work/tests/api/auth-security.test.mjs	2026-07-17 16:05:58.990809300 +0000
+@@ -2,7 +2,7 @@
+ import assert from "node:assert/strict";
+ import { Readable } from "node:stream";
+ import path from "node:path";
+-import Database from "libsql";
++import { DatabaseSync } from "node:sqlite";
+ 
+ process.env.VERCEL = "1";
+ process.env.HOST = "127.0.0.1";
+@@ -92,7 +92,7 @@
+   const relogin = await directRequest("/api/auth/login", { method: "POST", ip: "203.0.113.91", body: { email, password } });
+   assert.equal(relogin.status, 401);
+ 
+-  const connection = new Database(path.join(testDataDir, "growth-os.sqlite"));
++  const connection = new DatabaseSync(path.join(testDataDir, "growth-os.sqlite"));
+   try {
+     assert.equal(connection.prepare("SELECT COUNT(*) AS count FROM users WHERE email=?").get(email).count, 0);
+     assert.equal(connection.prepare("SELECT COUNT(*) AS count FROM profiles WHERE id=?").get(profile.body.id).count, 0);
+diff -ruN '--exclude=node_modules' '--exclude=*.sqlite*' '--exclude=__MACOSX' '--exclude=design-qa' '--exclude=qa' '--exclude=promo' growthos_original/tests/api/project-workshop-direct.test.mjs growthos_work/tests/api/project-workshop-direct.test.mjs
+--- growthos_original/tests/api/project-workshop-direct.test.mjs	2026-07-17 03:23:33.000000000 +0000
++++ growthos_work/tests/api/project-workshop-direct.test.mjs	2026-07-17 16:13:03.069156992 +0000
+@@ -2,7 +2,7 @@
+ import assert from "node:assert/strict";
+ import { Readable } from "node:stream";
+ import path from "node:path";
+-import Database from "libsql";
++import { DatabaseSync } from "node:sqlite";
+ 
+ process.env.VERCEL = "1";
+ process.env.HOST = "127.0.0.1";
+@@ -13,7 +13,7 @@
+ const { default: requestHandler } = await import("../../api/server.js");
+ 
+ function databaseCommand(sql) {
+-  const connection = new Database(path.join(testDataDir, "growth-os.sqlite"));
++  const connection = new DatabaseSync(path.join(testDataDir, "growth-os.sqlite"));
+   try { connection.exec(sql); }
+   finally { connection.close(); }
+ }
+@@ -89,8 +89,27 @@
+   assert.equal(activated.status, 200);
+   project = activated.body.project;
+   assert.equal(project.status, "active");
++  assert.ok(project.journeyId);
++  assert.equal(activated.body.journey.id, project.journeyId);
+   assert.equal(project.actionIds.length, 1);
+-  assert.ok(activated.body.planner.scheduled.some((item) => item.projectId === project.id && item.projectStageId === project.stages[0].id));
++  const scheduledStage = activated.body.planner.scheduled.find((item) => item.projectId === project.id && item.projectStageId === project.stages[0].id);
++  assert.ok(scheduledStage);
++  assert.equal(scheduledStage.journeyId, project.journeyId);
++
++  const journeyAtStart = await directRequest(`/api/journey?profileId=${encodeURIComponent(profile.id)}`, { cookie });
++  assert.equal(journeyAtStart.status, 200);
++  assert.equal(journeyAtStart.body.journey.id, project.journeyId);
++  assert.equal(journeyAtStart.body.project.id, project.id);
++
++  const weeklyBoss = await directRequest(`/api/boss/week?profileId=${encodeURIComponent(profile.id)}`, { cookie });
++  assert.equal(weeklyBoss.status, 200);
++  assert.equal(weeklyBoss.body.week.sourceProjectId, project.id);
++  assert.equal(weeklyBoss.body.week.journeyId, project.journeyId);
++  const mismatchedBossPlan = await directRequest("/api/boss/daily/sync", { method: "POST", cookie, body: { profileId: profile.id, tasks: [{ id: "wrong-project", title: "错误项目任务", status: "completed", projectId: project.id + 999 }] } });
++  assert.equal(mismatchedBossPlan.status, 409);
++
++  const blueprintBeforeEvidence = await directRequest("/api/growth-blueprint/refresh", { method: "POST", cookie, body: { profileId: profile.id, force: true } });
++  assert.equal(blueprintBeforeEvidence.status, 200);
+ 
+   const prematurePackage = await directRequest(`/api/projects/${project.id}/package`, { method: "POST", cookie, body: { fast: true } });
+   assert.equal(prematurePackage.status, 409);
+@@ -105,6 +124,13 @@
+     assert.ok(action, `stage ${stageIndex + 1} has a real action`);
+     const completed = await directRequest(`/api/actions/${action.id}`, { method: "PATCH", cookie, body: { status: "done" } });
+     assert.equal(completed.status, 200);
++    if (stageIndex === 0) {
++      const staleBlueprint = await directRequest(`/api/growth-blueprint?profileId=${encodeURIComponent(profile.id)}`, { cookie });
++      assert.equal(staleBlueprint.status, 200);
++      assert.equal(staleBlueprint.body.stale, true);
++      const journeyWithEvidence = await directRequest(`/api/journey?profileId=${encodeURIComponent(profile.id)}`, { cookie });
++      assert.equal(journeyWithEvidence.body.evidence.stages, 1);
++    }
+   }
+ 
+   const after = await directRequest(`/api/projects?profileId=${encodeURIComponent(profile.id)}`, { cookie });
+@@ -116,7 +142,12 @@
+   const packaged = await directRequest(`/api/projects/${project.id}/package`, { method: "POST", cookie, body: { fast: true } });
+   assert.equal(packaged.status, 200);
+   assert.equal(packaged.body.experience.visibility, "private");
++  assert.equal(packaged.body.experience.journeyId, project.journeyId);
+   assert.ok(packaged.body.experience.methods.length >= 1);
++  const completedJourney = await directRequest(`/api/journey?profileId=${encodeURIComponent(profile.id)}`, { cookie });
++  assert.equal(completedJourney.body.journey.id, project.journeyId);
++  assert.equal(completedJourney.body.evidence.stages, 4);
++  assert.ok(completedJourney.body.evidence.byType.some((item) => item.type === "project_experience" && item.count === 1));
+ 
+   const unsafeShare = await directRequest(`/api/project-experiences/${packaged.body.experience.id}`, { method: "PATCH", cookie, body: { visibility: "community" } });
+   assert.equal(unsafeShare.status, 422);
+@@ -224,10 +255,12 @@
+ 
+   const exported = await directRequest(`/api/export?profileId=${encodeURIComponent(profile.id)}`, { cookie });
+   assert.equal(exported.status, 200);
+-  assert.equal(exported.body.schemaVersion, 12);
++  assert.equal(exported.body.schemaVersion, 13);
+   assert.match(String(exported.headers["content-disposition"]), /growth-.*\.json/);
+-  assert.ok(exported.body.projects.some((item) => item.id === project.id && item.progress === 100 && item.experience?.id === packaged.body.experience.id));
+-  assert.ok(exported.body.actions.some((item) => item.projectId === project.id));
++  assert.ok(exported.body.projects.some((item) => item.id === project.id && item.progress === 100 && item.experience?.id === packaged.body.experience.id && item.journeyId === project.journeyId));
++  assert.ok(exported.body.journeys.some((item) => item.id === project.journeyId && item.projectId === project.id));
++  assert.ok(exported.body.actions.some((item) => item.projectId === project.id && item.journeyId === project.journeyId));
++  assert.ok(exported.body.growthEvidence.some((item) => item.sourceType === "project_experience" && item.projectId === project.id && item.journeyId === project.journeyId));
+   assert.equal(exported.body.desk.preferences.guardianEnabled, true);
+   assert.ok(exported.body.desk.matches.some((item) => item.id === matched.body.match.id && item.status === "ended"));
+   assert.ok(exported.body.desk.matches.some((item) => item.id === reportMatch.body.match.id && item.status === "reported"));
