@@ -1,0 +1,74 @@
+name: Sync verified GrowthOS final target
+
+on:
+  push:
+    branches:
+      - fix/evidence-loop-final
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: "github.event_name == 'pull_request' || !contains(github.event.head_commit.message, '[verified-final]')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out clean current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Download exact readable source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 --retry-all-errors \
+            https://filebin.net/growthos-final-20260717-journey-v2/growthos-current-main-to-target-portable.patch \
+            -o /tmp/growthos-current-main-to-target-portable.patch
+          curl -fsSL --retry 5 --retry-all-errors \
+            https://filebin.net/growthos-final-20260717-journey-v2/growthos-current-main-to-target-portable.sha256 \
+            -o /tmp/growthos-current-main-to-target-portable.sha256
+          cd /tmp
+          sha256sum -c growthos-current-main-to-target-portable.sha256
+
+      - name: Apply exact source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch -p1 --forward --batch < /tmp/growthos-current-main-to-target-portable.patch
+          test ! -n "$(find . -name '*.rej' -print -quit)"
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Validate product structure
+        run: npm run check
+
+      - name: Run complete API regression suite
+        run: npm run test:api
+
+      - name: Commit verified final source
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .growthos-critical .growthos-patch .growthos-sync
+          rm -f .github/workflows/apply-growthos-journey-patch.yml
+          rm -f .github/workflows/apply-growthos-final.yml
+          rm -f .github/workflows/sync-growthos-final-target.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: unify GrowthOS evidence journey [verified-final]"
+          git push --force origin HEAD:fix/evidence-loop-final
