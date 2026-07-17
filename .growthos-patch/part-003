@@ -1,0 +1,133 @@
++  const project = publicProject(db.prepare("SELECT * FROM growth_projects WHERE id=?").get(projectIdValue));
+   const nextStage = project.stages.find((item) => item.id === Number(next.id));
+   if (nextStage) createProjectStageAction(profileIdValue, project, nextStage);
+ }
+@@ -3202,15 +3351,17 @@
+   if (!row) return sendJson(response, 404, { error: "项目不存在" });
+   const project = publicProject(row);
+   const stage = project.stages.find((item) => item.status === "ready") || project.stages.find((item) => item.status !== "done");
++  let journey;
+   db.exec("BEGIN");
+   try {
+     db.prepare("UPDATE growth_projects SET status='paused',updated_at=? WHERE profile_id=? AND status='active' AND id!=?").run(nowIso(), row.profile_id, id);
+     db.prepare("UPDATE growth_projects SET status='active',updated_at=? WHERE id=?").run(nowIso(), id);
+-    if (stage) createProjectStageAction(row.profile_id, { ...project, status: "active" }, stage);
++    journey = activateJourneyForProject(row.profile_id, db.prepare("SELECT * FROM growth_projects WHERE id=?").get(id));
++    if (stage) createProjectStageAction(row.profile_id, { ...project, status: "active", journeyId: journey.id, goalId: journey.goal_id }, stage);
+     db.exec("COMMIT");
+   } catch (error) { db.exec("ROLLBACK"); throw error; }
+-  recordEvent(user.id, row.profile_id, "project_activated", { projectId: id, stageId: stage?.id || 0 });
+-  sendJson(response, 200, { project: publicProject(db.prepare("SELECT * FROM growth_projects WHERE id=?").get(id)), planner: plannerTodayState(row.profile_id, serverDateKey()) });
++  recordEvent(user.id, row.profile_id, "project_activated", { projectId: id, stageId: stage?.id || 0, journeyId: journey.id });
++  sendJson(response, 200, { project: publicProject(db.prepare("SELECT * FROM growth_projects WHERE id=?").get(id)), journey: publicJourney(journey), planner: plannerTodayState(row.profile_id, serverDateKey()) });
+ }
+ async function handleUpdateProject(request, response, url) {
+   const user = requireUser(request, response); if (!user) return;
+@@ -3221,6 +3372,8 @@
+   const status = ["draft", "active", "paused", "completed", "archived"].includes(body.status) ? body.status : row.status;
+   if (status === "active") db.prepare("UPDATE growth_projects SET status='paused',updated_at=? WHERE profile_id=? AND status='active' AND id!=?").run(nowIso(), row.profile_id, id);
+   db.prepare("UPDATE growth_projects SET status=?,title=?,audience=?,updated_at=? WHERE id=?").run(status, String(body.title || row.title).trim().slice(0, 100), String(body.audience || row.audience).trim().slice(0, 80), nowIso(), id);
++  if (status === "active") activateJourneyForProject(row.profile_id, db.prepare("SELECT * FROM growth_projects WHERE id=?").get(id));
++  if (["paused", "archived"].includes(status) && row.journey_id) db.prepare("UPDATE growth_journeys SET status=?,updated_at=? WHERE id=?").run(status, nowIso(), row.journey_id);
+   sendJson(response, 200, { project: publicProject(db.prepare("SELECT * FROM growth_projects WHERE id=?").get(id)) });
+ }
+ async function handleUpdateProjectStage(request, response, url) {
+@@ -3238,13 +3391,17 @@
+     db.prepare("UPDATE project_stages SET status=?,updated_at=? WHERE id=?").run(status, nowIso(), stageId);
+     if (status === "done") {
+       db.prepare("UPDATE actions SET status='done',updated_at=? WHERE project_stage_id=? AND profile_id=? AND status NOT IN ('done','dropped')").run(nowIso(), stageId, row.profile_id);
++      recordProjectStageEvidence(row.profile_id, row, stage);
+       const next = db.prepare("SELECT * FROM project_stages WHERE project_id=? AND stage_order>? ORDER BY stage_order LIMIT 1").get(projectIdValue, stage.stage_order);
+       if (next) {
+         db.prepare("UPDATE project_stages SET status='ready',updated_at=? WHERE id=? AND status='locked'").run(nowIso(), next.id);
+         const project = publicProject(row);
+         const nextPublic = project.stages.find((item) => item.id === Number(next.id)) || { ...next, id: Number(next.id), order: Number(next.stage_order), estimateMinutes: Number(next.estimate_minutes), skillIds: parseStoredJson(next.skill_ids_json, []) };
+         createProjectStageAction(row.profile_id, project, { ...nextPublic, status: "ready" });
+-      } else db.prepare("UPDATE growth_projects SET status='completed',updated_at=? WHERE id=?").run(nowIso(), projectIdValue);
++      } else {
++        db.prepare("UPDATE growth_projects SET status='completed',updated_at=? WHERE id=?").run(nowIso(), projectIdValue);
++        if (row.journey_id) db.prepare("UPDATE growth_journeys SET status='completed',updated_at=? WHERE id=?").run(nowIso(), row.journey_id);
++      }
+     }
+     db.exec("COMMIT");
+   } catch (error) { db.exec("ROLLBACK"); throw error; }
+@@ -3284,8 +3441,9 @@
+   } catch (error) { console.warn("Project packaging used local fallback:", error.message); }
+   if (!revalidateProfileAfterAsync(user.id, row.profile_id, response)) return;
+   const now = nowIso();
+-  db.prepare("INSERT INTO project_experience_cards(project_id,profile_id,title,summary,artifact_ids_json,learned_json,practiced_json,methods_json,transfer_ideas_json,child_reflection,visibility,guardian_approved,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,'private',0,?,?) ON CONFLICT(project_id) DO UPDATE SET title=excluded.title,summary=excluded.summary,artifact_ids_json=excluded.artifact_ids_json,learned_json=excluded.learned_json,practiced_json=excluded.practiced_json,methods_json=excluded.methods_json,transfer_ideas_json=excluded.transfer_ideas_json,child_reflection=excluded.child_reflection,updated_at=excluded.updated_at")
+-    .run(id, row.profile_id, card.title, card.summary, JSON.stringify(card.artifactIds), JSON.stringify(card.learned), JSON.stringify(card.practiced), JSON.stringify(card.methods), JSON.stringify(card.transferIdeas), card.childReflection, now, now);
++  db.prepare("INSERT INTO project_experience_cards(project_id,profile_id,title,summary,artifact_ids_json,learned_json,practiced_json,methods_json,transfer_ideas_json,child_reflection,visibility,guardian_approved,created_at,updated_at,journey_id) VALUES(?,?,?,?,?,?,?,?,?,?,'private',0,?,?,?) ON CONFLICT(project_id) DO UPDATE SET title=excluded.title,summary=excluded.summary,artifact_ids_json=excluded.artifact_ids_json,learned_json=excluded.learned_json,practiced_json=excluded.practiced_json,methods_json=excluded.methods_json,transfer_ideas_json=excluded.transfer_ideas_json,child_reflection=excluded.child_reflection,journey_id=excluded.journey_id,updated_at=excluded.updated_at")
++    .run(id, row.profile_id, card.title, card.summary, JSON.stringify(card.artifactIds), JSON.stringify(card.learned), JSON.stringify(card.practiced), JSON.stringify(card.methods), JSON.stringify(card.transferIdeas), card.childReflection, now, now, row.journey_id || "");
++  upsertGrowthEvidence({ profileId: row.profile_id, skillId: project.stages.flatMap((stage) => stage.skillIds)[0] || "creation", sourceType: "project_experience", sourceId: String(id), level: 4, summary: card.summary, observableFacts: [project.finalProduct, ...card.methods.slice(0, 3), ...card.transferIdeas.slice(0, 2)], journeyId: row.journey_id || "", projectId: id });
+   recordEvent(user.id, row.profile_id, "project_experience_packaged", { projectId: id, provider, artifactCount: card.artifactIds.length });
+   sendJson(response, 200, { experience: publicProjectExperience(db.prepare("SELECT * FROM project_experience_cards WHERE project_id=?").get(id)), provider });
+ }
+@@ -4240,8 +4398,9 @@
+   const goals = goalRows(profileIdValue).filter((item) => item.status === "active").map(({ id, objective, why, skill, progress, evidenceCount }) => ({ id, objective, why, skill, progress, evidenceCount }));
+   const actions = actionRows(profileIdValue).slice(0, 24).map(({ id, title, status, source, goalId, updatedAt }) => ({ id, title, status, source, goalId, updatedAt }));
+   const hypotheses = hypothesisRows(profileIdValue).filter((item) => item.aiContext && item.status === "active").slice(0, 8).map(({ title, summary, confidence, evidenceCount, counterCount }) => ({ title, summary, confidence, evidenceCount, counterCount }));
++  const growthEvidence = db.prepare("SELECT id,skill_id AS skillId,source_type AS sourceType,source_id AS sourceId,evidence_level AS level,summary,observable_json AS observableFacts,journey_id AS journeyId,project_id AS projectId,project_stage_id AS projectStageId,weekly_boss_run_id AS weeklyBossRunId,created_at AS createdAt FROM growth_evidence WHERE profile_id=? AND ai_context=1 ORDER BY created_at DESC,id DESC LIMIT 120").all(profileIdValue).map((item) => ({ ...item, level: Number(item.level), projectId: Number(item.projectId || 0), projectStageId: Number(item.projectStageId || 0), weeklyBossRunId: Number(item.weeklyBossRunId || 0), observableFacts: parseStoredJson(item.observableFacts, []) }));
+   const guardianContext = profileGuardianContext(profileIdValue);
+-  return { portrait, guardianContext: guardianContext ? { source: guardianContext.source, known: guardianContext.aiContextSummary, seededPortrait: guardianContext.knownProfile?.portrait || null } : null, dailyCompletions, journals, feedback, artifacts, goals, actions, hypotheses };
++  return { portrait, guardianContext: guardianContext ? { source: guardianContext.source, known: guardianContext.aiContextSummary, seededPortrait: guardianContext.knownProfile?.portrait || null } : null, dailyCompletions, journals, feedback, artifacts, goals, actions, hypotheses, growthEvidence };
+ }
+ 
+ function blueprintFingerprint(evidence) {
+@@ -4258,6 +4417,7 @@
+   }
+   score += evidence.artifacts.filter((item) => item.skill === skillId).length * 2;
+   score += evidence.goals.filter((item) => item.skill === skillId).length * 3;
++  score += (evidence.growthEvidence || []).filter((item) => item.skillId === skillId).reduce((sum, item) => sum + Math.max(1, Number(item.level || 1)) * 1.5, 0);
+   const text = JSON.stringify({ portrait: evidence.portrait, guardianContext: evidence.guardianContext, journals: evidence.journals, hypotheses: evidence.hypotheses });
+   const terms = {
+     "self-regulation": /开始|整理|忘|检查|收尾|完成|执行|步骤/g,
+@@ -4388,16 +4548,19 @@
+   if (!row) return null;
+   const boss = bossById(row.boss_id);
+   const world = worldById(boss?.worldId);
+-  return { id: Number(row.id), profileId: row.profile_id, weekStart: row.week_start, boss, world: world ? { id: world.id, index: world.index, name: world.name, domain: world.domain, assetPath: world.assetPath } : null, difficulty: row.difficulty, sourceBlueprintId: row.source_blueprint_id, sourceProjectId: row.source_project_id, shieldTotal: Number(row.shield_total), shieldBroken: Number(row.shield_broken), hpTotal: Number(row.hp_total), hpRemaining: Number(row.hp_remaining), status: row.status, selection: JSON.parse(row.selection_json) };
++  return { id: Number(row.id), profileId: row.profile_id, journeyId: row.journey_id || "", weekStart: row.week_start, boss, world: world ? { id: world.id, index: world.index, name: world.name, domain: world.domain, assetPath: world.assetPath } : null, difficulty: row.difficulty, sourceBlueprintId: row.source_blueprint_id, sourceProjectId: Number(row.source_project_id || 0), shieldTotal: Number(row.shield_total), shieldBroken: Number(row.shield_broken), hpTotal: Number(row.hp_total), hpRemaining: Number(row.hp_remaining), status: row.status, selection: JSON.parse(row.selection_json) };
+ }
+ function hasRejectedGoalTemplate(value) {
+   return /用?\s*10\s*分钟|最小版本|做一个关于|第[一二三四1234]周[：:]\s*(做最小|重复一次|解决一个卡点|展示成果)/.test(String(value || ""));
+ }
+ function selectWeeklyBoss(profileIdValue, weekStart) {
+-  const goal = goalRows(profileIdValue).find((item) => item.status === "active" && item.isPrimary) || goalRows(profileIdValue).find((item) => item.status === "active");
+-  const blueprintRow = db.prepare("SELECT blueprint_json,updated_at FROM growth_blueprints WHERE profile_id=?").get(profileIdValue);
++  const activeProject = projectRows(profileIdValue).find((item) => item.status === "active") || null;
++  const goals = goalRows(profileIdValue);
++  const goal = (activeProject?.goalId ? goals.find((item) => item.id === activeProject.goalId) : null) || goals.find((item) => item.status === "active" && item.isPrimary) || goals.find((item) => item.status === "active");
++  const blueprintRow = db.prepare("SELECT blueprint_json,evidence_fingerprint,updated_at FROM growth_blueprints WHERE profile_id=?").get(profileIdValue);
+   const blueprint = blueprintRow ? JSON.parse(blueprintRow.blueprint_json) : null;
+-  const skill = normalizeSkillId(goal?.skill || blueprint?.priorities?.[0]?.skill || "self-regulation");
++  const activeStage = activeProject?.stages?.find((item) => item.status !== "done") || activeProject?.stages?.at(-1);
++  const skill = normalizeSkillId(activeStage?.skillIds?.[0] || goal?.skill || blueprint?.priorities?.[0]?.skill || "self-regulation");
+   const worldId = coarseSkillWorld[skill] || "W08";
+   const world = worldById(worldId);
+   const history = db.prepare("SELECT boss_id FROM weekly_boss_runs WHERE profile_id=? ORDER BY week_start DESC LIMIT 6").all(profileIdValue).map((item) => item.boss_id);
+@@ -4431,23 +4594,38 @@
+     { name: "复盘迁移", task: `总结这周怎样使用了${boss.skillName}，下次还能用在哪里` }
+   ];
+   const project = {
+-    title: `${boss.skillName}周项目`,
+-    drivingQuestion: goal ? `这一周，我怎样用一个真实成果推进“${goal.objective || goal.title}”？` : `这一周，我怎样做出一个能证明${boss.skillName}进步的小成果？`,
++    title: activeProject?.title || `${boss.skillName}周项目`,
++    drivingQuestion: activeProject?.drivingQuestion || (goal ? `这一周，我怎样用一个真实成果推进“${goal.objective || goal.title}”？` : `这一周，我怎样做出一个能证明${boss.skillName}进步的小成果？`),
+     weeklyProduct: weeklyTarget,
+     audience: "自己与一位可信任的家人",
+     successCriteria: ["有一个能看见或讲清的成果", `至少使用一次${boss.skillName}方法`, "根据反馈改进一次"],
+     dailyStages
+   };
+-  return { boss, goal, blueprintRow, selection: { algorithm: "blueprint30+friction20+interest15+evidence15+project10+age5+resources5", score: candidates[0].score, reasons: [goal ? `当前SMART目标：${goal.objective || goal.title}` : "当前需要建立行动底座", blueprint?.priorities?.[0]?.reason || "来自当前成长蓝图", `匹配${world.domain}`].filter(Boolean), candidateIds: candidates.slice(0, 3).map((item) => item.boss.id), project } };
++  if (activeProject?.stages?.length) {
++    const actualStages = activeProject.stages;
++    project.weeklyProduct = activeProject.finalProduct;
++    project.audience = activeProject.audience;
++    project.successCriteria = [activeProject.smartGoal, "至少完成一个项目阶段并留下证据", "根据反馈或复盘形成下一步"].map((item) => String(item).slice(0, 180));
++    project.dailyStages = Array.from({ length: 7 }, (_, index) => {
++      const stage = actualStages[Math.min(index, actualStages.length - 1)];
++      const suffix = index >= actualStages.length ? index === 6 ? "复盘迁移" : "测试改进" : stage.phase;
++      return { name: index >= actualStages.length ? suffix : stage.title, task: index >= actualStages.length ? `${stage.doneDefinition}；检查已有成果，补充一次测试、反馈或迁移说明` : stage.doneDefinition, projectId: activeProject.id, projectStageId: stage.id, journeyId: activeProject.journeyId, skillIds: stage.skillIds };
++    });
++  }
