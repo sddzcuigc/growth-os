@@ -4,13 +4,16 @@ on:
   push:
     branches:
       - fix/evidence-loop-final
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
   apply:
-    if: "!contains(github.event.head_commit.message, '[verified-journey]')"
+    if: "github.event_name == 'pull_request' || !contains(github.event.head_commit.message, '[verified-journey]')"
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -70,6 +73,7 @@ jobs:
         run: npm run test:api
 
       - name: Commit verified source to final branch
+        if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
