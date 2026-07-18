@@ -1,30 +1,36 @@
-import Database from "libsql";
+import { createRequire } from "node:module";
+import { DatabaseSync } from "node:sqlite";
+
+const require = createRequire(import.meta.url);
+let RemoteDatabase = null;
 
 function cleanRow(row) {
-  if (!row || typeof row !== "object" || !("_metadata" in row)) return row;
+  if (!row || typeof row !== "object") return row;
   const { _metadata, ...clean } = row;
-  return clean;
+  return { ...clean };
 }
 
 function wrapStatement(statement) {
-  return new Proxy(statement, {
-    get(target, property) {
-      if (property === "get") return (...args) => cleanRow(target.get(...args));
-      if (property === "all") return (...args) => target.all(...args).map(cleanRow);
-      const value = target[property];
-      return typeof value === "function" ? value.bind(target) : value;
-    }
-  });
+  return {
+    run: (...args) => statement.run(...args),
+    get: (...args) => cleanRow(statement.get(...args)),
+    all: (...args) => statement.all(...args).map(cleanRow)
+  };
 }
 
-function wrapDatabase(database) {
-  return new Proxy(database, {
-    get(target, property) {
-      if (property === "prepare") return (sql) => wrapStatement(target.prepare(sql));
-      const value = target[property];
-      return typeof value === "function" ? value.bind(target) : value;
-    }
-  });
+function wrapDatabase(raw) {
+  return {
+    exec: (sql) => raw.exec(sql),
+    prepare: (sql) => wrapStatement(raw.prepare(sql)),
+    close: () => raw.close?.()
+  };
+}
+
+function remoteConstructor() {
+  if (RemoteDatabase) return RemoteDatabase;
+  const loaded = require("libsql");
+  RemoteDatabase = loaded?.default || loaded;
+  return RemoteDatabase;
 }
 
 export function openGrowthDatabase({ localPath, remoteUrl = "", authToken = "", isVercel = false }) {
@@ -32,12 +38,7 @@ export function openGrowthDatabase({ localPath, remoteUrl = "", authToken = "", 
   const remote = /^(?:libsql|https?|wss?):\/\//i.test(normalizedUrl);
   if (normalizedUrl && !remote) throw new Error("TURSO_DATABASE_URL 必须使用 libsql、https、http、wss 或 ws 协议");
   if (remote && /^libsql:\/\//i.test(normalizedUrl) && !authToken) throw new Error("远程 libSQL 数据库缺少 TURSO_AUTH_TOKEN");
-
-  const raw = remote ? new Database(normalizedUrl, { authToken }) : new Database(localPath);
-  return {
-    db: wrapDatabase(raw),
-    remote,
-    mode: remote ? "remote-libsql" : isVercel ? "ephemeral" : "local",
-    label: remote ? "云端持久数据库" : isVercel ? "云端临时数据库" : "本机持久数据库"
-  };
+  const RawDatabase = remote ? remoteConstructor() : DatabaseSync;
+  const raw = remote ? new RawDatabase(normalizedUrl, { authToken }) : new RawDatabase(localPath);
+  return { db: wrapDatabase(raw), remote, mode: remote ? "remote-libsql" : isVercel ? "ephemeral" : "local-sqlite", label: remote ? normalizedUrl.replace(/:\/\/.*@/, "://***@") : localPath };
 }

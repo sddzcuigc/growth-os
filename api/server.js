@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import { mkdirSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
+import { openGrowthDatabase } from "./database.js";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
 loadEnvFile(".runtime.env");
@@ -16,18 +16,23 @@ const plannerSkill = readFileSync(join(root, "app-skills", "growth-planner", "SK
 const plannerOutputSchema = JSON.parse(readFileSync(join(root, "app-skills", "growth-planner", "output.schema.json"), "utf8"));
 const port = Number(process.env.PORT || 5173);
 const host = process.env.HOST || "127.0.0.1";
-const baseUrl = process.env.SILICONFLOW_BASE_URL || "https://api.siliconflow.cn/v1";
-const model = process.env.SILICONFLOW_MODEL || "zai-org/GLM-5.2";
-const apiKey = process.env.SILICONFLOW_API_KEY;
+const baseUrl = process.env.AI_BASE_URL || process.env.SILICONFLOW_BASE_URL || "https://api.siliconflow.cn/v1";
+const model = process.env.AI_MODEL || process.env.SILICONFLOW_MODEL || "zai-org/GLM-5.2";
+const apiKey = process.env.AI_API_KEY || process.env.SILICONFLOW_API_KEY;
 const devAdminEnabled = process.env.NODE_ENV !== "production" && ["127.0.0.1", "localhost"].includes(host) && process.env.ENABLE_TEST_ADMIN !== "false";
-const dataDir = process.env.VERCEL ? "/tmp/growth-os" : join(root, "data");
-mkdirSync(dataDir, { recursive: true });
-const db = new DatabaseSync(join(dataDir, "growth-os.sqlite"));
+const dataDir = process.env.GROWTH_OS_DATA_DIR || (process.env.VERCEL ? "/tmp/growth-os" : join(root, "data"));
+const remoteDatabaseUrl = process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || "";
+const remoteDatabaseToken = process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN || "";
+if (!remoteDatabaseUrl) mkdirSync(dataDir, { recursive: true });
+const database = openGrowthDatabase({ localPath: join(dataDir, "growth-os.sqlite"), remoteUrl: remoteDatabaseUrl, authToken: remoteDatabaseToken, isVercel: Boolean(process.env.VERCEL) });
+const db = database.db;
+const persistenceMode = database.mode;
+if (!database.remote) db.exec("PRAGMA journal_mode=WAL;");
 db.exec(`
-  PRAGMA journal_mode=WAL;
   PRAGMA foreign_keys=ON;
   CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, created_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS auth_attempts (attempt_key TEXT PRIMARY KEY, attempt_count INTEGER NOT NULL, window_started_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL, age TEXT NOT NULL, avatar TEXT NOT NULL, base_template TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(user_id, name));
   CREATE TABLE IF NOT EXISTS snapshots (profile_id TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE, data_json TEXT NOT NULL, updated_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS memories (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, kind TEXT NOT NULL, summary TEXT NOT NULL, evidence_json TEXT NOT NULL, created_at TEXT NOT NULL);
@@ -46,6 +51,8 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS family_briefs (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, week_start TEXT NOT NULL, report_json TEXT NOT NULL, status TEXT NOT NULL, provider TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(profile_id,week_start));
   CREATE TABLE IF NOT EXISTS task_feedback (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, task_key TEXT NOT NULL, task_title TEXT NOT NULL, skill TEXT NOT NULL, mode TEXT NOT NULL, difficulty TEXT NOT NULL, enjoyment TEXT NOT NULL, support TEXT NOT NULL, note TEXT NOT NULL, feedback_date TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(profile_id,task_key,feedback_date));
   CREATE TABLE IF NOT EXISTS artifacts (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, task_key TEXT NOT NULL, title TEXT NOT NULL, skill TEXT NOT NULL, artifact_type TEXT NOT NULL, caption TEXT NOT NULL, content_text TEXT NOT NULL, link_url TEXT NOT NULL, media_mime TEXT NOT NULL, media_data TEXT NOT NULL, ai_context INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS growth_journeys (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, title TEXT NOT NULL, status TEXT NOT NULL, active_goal_id INTEGER NOT NULL DEFAULT 0, active_project_id INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS growth_projects (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, journey_id INTEGER NOT NULL DEFAULT 0, goal_id INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, final_product TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS daily_plans (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, plan_date TEXT NOT NULL, checkin_json TEXT NOT NULL, plan_json TEXT NOT NULL, excluded_json TEXT NOT NULL, status TEXT NOT NULL, feedback TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(profile_id,plan_date));
   CREATE TABLE IF NOT EXISTS daily_plan_feedback (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, daily_plan_id INTEGER REFERENCES daily_plans(id) ON DELETE SET NULL, source_ref TEXT NOT NULL, source_type TEXT NOT NULL, reason TEXT NOT NULL, created_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS strategy_insights (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, insight_key TEXT NOT NULL, category TEXT NOT NULL, statement TEXT NOT NULL, when_to_use TEXT NOT NULL, question TEXT NOT NULL, evidence_json TEXT NOT NULL, confidence REAL NOT NULL, status TEXT NOT NULL, feedback TEXT NOT NULL, ai_context INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(profile_id,insight_key));
@@ -75,6 +82,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS daily_plans_profile_date ON daily_plans(profile_id,plan_date);
   CREATE INDEX IF NOT EXISTS daily_feedback_profile_time ON daily_plan_feedback(profile_id,created_at);
   CREATE INDEX IF NOT EXISTS artifacts_profile_time ON artifacts(profile_id,created_at);
+  CREATE INDEX IF NOT EXISTS growth_journeys_profile_status ON growth_journeys(profile_id,status,updated_at);
+  CREATE INDEX IF NOT EXISTS growth_projects_profile_status ON growth_projects(profile_id,status,updated_at);
   CREATE INDEX IF NOT EXISTS feedback_profile_time ON task_feedback(profile_id,feedback_date,updated_at);
   CREATE INDEX IF NOT EXISTS reviews_profile_week ON weekly_reviews(profile_id,week_start);
   CREATE INDEX IF NOT EXISTS family_briefs_profile_week ON family_briefs(profile_id,week_start,status);
@@ -113,6 +122,13 @@ ensureColumn("growth_goals", "is_primary", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("journals", "goal_id", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("task_feedback", "goal_id", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("artifacts", "goal_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("growth_goals", "journey_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("actions", "journey_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("actions", "project_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("weekly_boss_runs", "journey_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("growth_evidence", "journey_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("growth_evidence", "project_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("growth_evidence", "weekly_boss_run_id", "INTEGER NOT NULL DEFAULT 0");
 for (const profile of db.prepare("SELECT DISTINCT profile_id FROM growth_goals WHERE status='active'").all()) {
   const primary = db.prepare("SELECT id FROM growth_goals WHERE profile_id=? AND status='active' AND is_primary=1 LIMIT 1").get(profile.profile_id);
   if (!primary) {
@@ -120,6 +136,7 @@ for (const profile of db.prepare("SELECT DISTINCT profile_id FROM growth_goals W
     if (latest) db.prepare("UPDATE growth_goals SET is_primary=1 WHERE id=?").run(latest.id);
   }
 }
+backfillGrowthJourneys();
 const skillNameToId = {
   自我调节: "self-regulation",
   会学会想: "metacognition",
@@ -159,6 +176,8 @@ async function requestHandler(request, response) {
     if (request.method === "POST" && url.pathname === "/api/auth/recovery/reset") return handleRecoveryReset(request, response);
     if (request.method === "POST" && url.pathname === "/api/dev/login") return handleDevLogin(request, response);
     if (request.method === "GET" && url.pathname === "/api/account") return handleAccount(request, response);
+    if (request.method === "GET" && url.pathname === "/api/auth/me") return handleAccount(request, response);
+    if (request.method === "DELETE" && url.pathname === "/api/account") return handleDeleteAccount(request, response);
     if (request.method === "POST" && url.pathname === "/api/profiles") return handleCreateProfile(request, response);
     if (request.method === "GET" && url.pathname === "/api/progress") return handleGetProgress(request, response, url);
     if (request.method === "PUT" && url.pathname === "/api/progress") return handleSaveProgress(request, response);
@@ -192,6 +211,7 @@ async function requestHandler(request, response) {
     if (request.method === "POST" && url.pathname === "/api/planner/recommend") return handlePlannerRecommend(request, response);
     if (request.method === "POST" && url.pathname === "/api/planner/accept") return handlePlannerAccept(request, response);
     if (request.method === "GET" && url.pathname === "/api/goals") return handleListGoals(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/journey") return handleGetJourney(request, response, url);
     if (request.method === "POST" && url.pathname === "/api/onboarding/question") return handleOnboardingQuestion(request, response);
     if (request.method === "POST" && url.pathname === "/api/onboarding/portrait") return handleOnboardingPortrait(request, response);
     if (request.method === "GET" && url.pathname === "/api/growth-blueprint") return handleGetGrowthBlueprint(request, response, url);
@@ -253,7 +273,8 @@ async function requestHandler(request, response) {
         connected: Boolean(apiKey),
         provider: "SiliconFlow",
         model,
-        newsAvailable: true
+        newsAvailable: true,
+        storage: { mode: persistenceMode, durable: persistenceMode !== "ephemeral", label: database.label }
       });
       return;
     }
@@ -426,18 +447,48 @@ async function handleRegister(request, response) {
     sendJson(response, 409, { error: "这个邮箱已注册" });
   }
 }
+function requestIp(request) {
+  const forwarded = String(request.headers["x-vercel-forwarded-for"] || request.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwarded || request.socket?.remoteAddress || "local";
+}
+function loginAttemptKey(request, email) { return `${requestIp(request)}:${String(email || "").toLowerCase()}`; }
+function loginAttemptConfig() {
+  return { limit: Math.max(1, Number(process.env.AUTH_FAILURE_LIMIT || 10)), windowMs: Math.max(1, Number(process.env.AUTH_LOCK_MINUTES || 15)) * 60000 };
+}
+function isLoginLocked(request, email) {
+  const key = loginAttemptKey(request, email);
+  const row = db.prepare("SELECT attempt_count,window_started_at FROM auth_attempts WHERE attempt_key=?").get(key);
+  if (!row) return false;
+  const { limit, windowMs } = loginAttemptConfig();
+  if (Date.now() - Number(row.window_started_at) > windowMs) { db.prepare("DELETE FROM auth_attempts WHERE attempt_key=?").run(key); return false; }
+  return Number(row.attempt_count) >= limit;
+}
+function recordLoginFailure(request, email) {
+  const key = loginAttemptKey(request, email);
+  const now = Date.now();
+  const { windowMs } = loginAttemptConfig();
+  const row = db.prepare("SELECT attempt_count,window_started_at FROM auth_attempts WHERE attempt_key=?").get(key);
+  if (!row || now - Number(row.window_started_at) > windowMs) {
+    db.prepare("INSERT INTO auth_attempts(attempt_key,attempt_count,window_started_at,updated_at) VALUES(?,?,?,?) ON CONFLICT(attempt_key) DO UPDATE SET attempt_count=excluded.attempt_count,window_started_at=excluded.window_started_at,updated_at=excluded.updated_at").run(key, 1, now, now);
+  } else {
+    db.prepare("UPDATE auth_attempts SET attempt_count=attempt_count+1,updated_at=? WHERE attempt_key=?").run(now, key);
+  }
+}
+function clearLoginFailures(request, email) { db.prepare("DELETE FROM auth_attempts WHERE attempt_key=?").run(loginAttemptKey(request, email)); }
 async function handleLogin(request, response) {
   const body = await readBodyJson(request);
   const loginName = String(body.email || "").trim().toLowerCase();
-  if (loginName === "admin") {
+  if (devAdminEnabled && loginName === "admin") {
     if (String(body.password || "") !== "admin") return sendJson(response, 401, { error: "账号或密码不正确" });
     const demo = ensureBuiltInDemoAccount();
     createSession(response, demo.id);
     return sendJson(response, 200, { email: "admin", isTestAdmin: true, profiles: publicProfiles(demo.id), recoveryConfigured: false, recoveryUpdatedAt: "" });
   }
   const email = loginName;
+  if (isLoginLocked(request, email)) return sendJson(response, 429, { error: "登录失败次数过多，请稍后再试" });
   const row = db.prepare("SELECT id,email,password_hash,recovery_hash,recovery_updated_at FROM users WHERE email=?").get(email);
-  if (!row || !verifyPassword(String(body.password || ""), row.password_hash)) return sendJson(response, 401, { error: "邮箱或密码不正确" });
+  if (!row || !verifyPassword(String(body.password || ""), row.password_hash)) { recordLoginFailure(request, email); return sendJson(response, 401, { error: "邮箱或密码不正确" }); }
+  clearLoginFailures(request, email);
   createSession(response, row.id);
   sendJson(response, 200, { email: row.email, profiles: publicProfiles(row.id), recoveryConfigured: Boolean(row.recovery_hash), recoveryUpdatedAt: row.recovery_updated_at || "" });
 }
@@ -460,18 +511,18 @@ function ensureBuiltInDemoAccount() {
     const result = db.prepare("INSERT INTO users(email,password_hash,created_at) VALUES(?,?,?)").run(email, hashPassword(randomBytes(24).toString("hex")), nowIso());
     user = { id: Number(result.lastInsertRowid), email };
   }
-  let profile = db.prepare("SELECT id FROM profiles WHERE user_id=? AND name=?").get(user.id, "崔护");
+  let profile = db.prepare("SELECT id FROM profiles WHERE user_id=? AND name=?").get(user.id, "测试冒险家");
   if (!profile) {
     const id = profileId();
     db.exec("BEGIN");
     try {
-      db.prepare("INSERT INTO profiles(id,user_id,name,age,avatar,base_template,created_at) VALUES(?,?,?,?,?,?,?)").run(id, user.id, "崔护", "9岁3个月", "boy", "brother", nowIso());
+      db.prepare("INSERT INTO profiles(id,user_id,name,age,avatar,base_template,created_at) VALUES(?,?,?,?,?,?,?)").run(id, user.id, "测试冒险家", "9岁", "boy", "brother", nowIso());
       db.prepare("INSERT INTO consents(profile_id,user_id,consent_version,guardian_confirmed,granted_at) VALUES(?,?,?,?,?)").run(id, user.id, "built-in-demo-v1", 1, nowIso());
       db.exec("COMMIT");
       profile = { id };
     } catch (error) { db.exec("ROLLBACK"); throw error; }
   } else {
-    db.prepare("UPDATE profiles SET age=?,avatar=?,base_template=? WHERE id=?").run("9岁3个月", "boy", "brother", profile.id);
+    db.prepare("UPDATE profiles SET age=?,avatar=?,base_template=? WHERE id=?").run("9岁", "boy", "brother", profile.id);
   }
   return user;
 }
@@ -499,6 +550,21 @@ function handleDevLogin(request, response) {
   const recovery = db.prepare("SELECT recovery_hash,recovery_updated_at FROM users WHERE id=?").get(user.id);
   sendJson(response, 200, { email: user.email, isTestAdmin: true, recoveryConfigured: Boolean(recovery?.recovery_hash), recoveryUpdatedAt: recovery?.recovery_updated_at || "", profiles: publicProfiles(user.id) });
 }
+async function handleDeleteAccount(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  const body = await readBodyJson(request);
+  if (String(body.confirmation || "").trim() !== "删除我的账号") return sendJson(response, 400, { error: "请输入“删除我的账号”确认永久删除" });
+  const row = db.prepare("SELECT email,password_hash FROM users WHERE id=?").get(user.id);
+  if (!row || !verifyPassword(String(body.password || ""), row.password_hash)) return sendJson(response, 401, { error: "当前密码不正确" });
+  db.exec("BEGIN");
+  try {
+    db.prepare("DELETE FROM auth_attempts WHERE attempt_key LIKE ?").run(`%:${row.email}`);
+    db.prepare("DELETE FROM users WHERE id=?").run(user.id);
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  response.setHeader("set-cookie", "growth_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
+  sendJson(response, 200, { ok: true, deletedAt: nowIso() });
+}
 async function handleCreateProfile(request, response) {
   const user = requireUser(request, response); if (!user) return;
   const body = await readBodyJson(request);
@@ -521,6 +587,11 @@ async function handleCreateProfile(request, response) {
   } catch { try { db.exec("ROLLBACK"); } catch {} sendJson(response, 409, { error: "角色名已存在" }); }
 }
 function ownedProfile(userId, id) { return db.prepare("SELECT * FROM profiles WHERE id=? AND user_id=?").get(id, userId); }
+function revalidateProfileAfterAsync(userId, id, response) {
+  if (ownedProfile(userId, id)) return true;
+  sendJson(response, 410, { error: "账号或角色已删除，本次生成未保存" });
+  return false;
+}
 function handleGetProgress(request, response, url) {
   const user = requireUser(request, response); if (!user) return;
   const id = String(url.searchParams.get("profileId") || "");
@@ -561,7 +632,10 @@ function handleExport(request, response, url) {
   const ideaResurfacings = db.prepare("SELECT idea_id AS ideaId,prompt_json AS prompt,outcome,created_at AS createdAt,updated_at AS updatedAt FROM idea_resurfacings WHERE profile_id=? ORDER BY id").all(id).map((item) => ({ ...item, prompt: JSON.parse(item.prompt) }));
   const dailyPlanFeedback = db.prepare("SELECT source_ref AS sourceRef,source_type AS sourceType,reason,created_at AS createdAt FROM daily_plan_feedback WHERE profile_id=? ORDER BY id").all(id);
   const familyBriefs = db.prepare("SELECT week_start AS weekStart,report_json AS report,status,provider,created_at AS createdAt,updated_at AS updatedAt FROM family_briefs WHERE profile_id=? ORDER BY week_start").all(id).map((item) => ({ ...item, report: JSON.parse(item.report) }));
-  sendJson(response, 200, { schemaVersion: 11, exportedAt: nowIso(), account: user.email, profile: { id, name: profile.name, age: profile.age, avatar: profile.avatar }, progress: snapshot ? JSON.parse(snapshot.data_json) : {}, growthGoals, selfCoachAnswers, actionDecisions, dailyPlanFeedback, familyBriefs, ideas, ideaResurfacings, memories, taskFeedback, artifacts, strategyInsights });
+  const growthJourneys = db.prepare("SELECT id,title,status,active_goal_id AS activeGoalId,active_project_id AS activeProjectId,created_at AS createdAt,updated_at AS updatedAt FROM growth_journeys WHERE profile_id=? ORDER BY id").all(id);
+  const growthProjects = db.prepare("SELECT id,journey_id AS journeyId,goal_id AS goalId,title,final_product AS finalProduct,status,created_at AS createdAt,updated_at AS updatedAt FROM growth_projects WHERE profile_id=? ORDER BY id").all(id);
+  const growthEvidence = db.prepare("SELECT * FROM growth_evidence WHERE profile_id=? ORDER BY id").all(id).map(publicJourneyEvidence);
+  sendJson(response, 200, { schemaVersion: 13, exportedAt: nowIso(), account: user.email, profile: { id, name: profile.name, age: profile.age, avatar: profile.avatar }, progress: snapshot ? JSON.parse(snapshot.data_json) : {}, growthJourneys, growthProjects, growthEvidence, growthGoals, selfCoachAnswers, actionDecisions, dailyPlanFeedback, familyBriefs, ideas, ideaResurfacings, memories, taskFeedback, artifacts, strategyInsights });
 }
 function handleDeleteMemory(request, response, url) {
   const user = requireUser(request, response); if (!user) return;
@@ -831,7 +905,7 @@ function goalRows(profileIdValue) {
     const evidenceCount = Number(actionStats?.done || 0) + Number(ideaStats?.done || 0) + artifactCount;
     const activeSteps = Number(actionStats?.active || 0) + Number(ideaStats?.active || 0);
     const plan = parseStoredJson(row.plan_json, {});
-    return { id: Number(row.id), title: row.title, why: row.why_text, successSignal: row.success_signal, firstExperiment: row.first_experiment, skill: row.skill, horizon: row.horizon, status: row.status, isPrimary: Boolean(row.is_primary), smart: plan.smart || {}, objective: plan.objective || row.title, keyResults: Array.isArray(plan.keyResults) ? plan.keyResults : [], weeklyPlan: Array.isArray(plan.weeklyPlan) ? plan.weeklyPlan : [], evidenceCount, reflectionCount, journalCount, activeSteps, progress: row.status === "done" ? 100 : Math.min(90, evidenceCount * 20 + activeSteps * 5), createdAt: row.created_at, updatedAt: row.updated_at };
+    return { id: Number(row.id), journeyId: Number(row.journey_id || 0), title: row.title, why: row.why_text, successSignal: row.success_signal, firstExperiment: row.first_experiment, skill: row.skill, horizon: row.horizon, status: row.status, isPrimary: Boolean(row.is_primary), smart: plan.smart || {}, objective: plan.objective || row.title, keyResults: Array.isArray(plan.keyResults) ? plan.keyResults : [], weeklyPlan: Array.isArray(plan.weeklyPlan) ? plan.weeklyPlan : [], evidenceCount, reflectionCount, journalCount, activeSteps, progress: row.status === "done" ? 100 : Math.min(90, evidenceCount * 20 + activeSteps * 5), createdAt: row.created_at, updatedAt: row.updated_at };
   });
 }
 function activeGoalId(profileIdValue, requestedId = 0) {
@@ -847,6 +921,70 @@ function promotePrimaryGoal(profileIdValue) {
 function ownedGoal(userId, id) {
   return db.prepare("SELECT growth_goals.* FROM growth_goals JOIN profiles ON profiles.id=growth_goals.profile_id WHERE growth_goals.id=? AND profiles.user_id=?").get(id, userId);
 }
+
+// GROWTHOS_JOURNEY_KERNEL_V2
+function ensureJourneyForGoal(profileIdValue, goalId, activate = true) {
+  const goal = db.prepare("SELECT * FROM growth_goals WHERE id=? AND profile_id=?").get(Number(goalId || 0), profileIdValue);
+  if (!goal) return null;
+  const now = nowIso();
+  let journey = goal.journey_id ? db.prepare("SELECT * FROM growth_journeys WHERE id=? AND profile_id=?").get(goal.journey_id, profileIdValue) : null;
+  if (!journey) {
+    const result = db.prepare("INSERT INTO growth_journeys(profile_id,title,status,active_goal_id,active_project_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?)")
+      .run(profileIdValue, goal.title, activate ? "active" : "paused", goal.id, 0, now, now);
+    journey = db.prepare("SELECT * FROM growth_journeys WHERE id=?").get(Number(result.lastInsertRowid));
+    db.prepare("UPDATE growth_goals SET journey_id=? WHERE id=?").run(journey.id, goal.id);
+  }
+  let project = db.prepare("SELECT * FROM growth_projects WHERE profile_id=? AND journey_id=? ORDER BY id DESC LIMIT 1").get(profileIdValue, journey.id);
+  if (!project) {
+    const plan = parseStoredJson(goal.plan_json, {});
+    const finalProduct = String(goal.success_signal || plan.objective || goal.title).slice(0, 220);
+    const result = db.prepare("INSERT INTO growth_projects(profile_id,journey_id,goal_id,title,final_product,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)")
+      .run(profileIdValue, journey.id, goal.id, `${goal.title} · 四周项目`.slice(0, 120), finalProduct, activate ? "active" : "paused", now, now);
+    project = db.prepare("SELECT * FROM growth_projects WHERE id=?").get(Number(result.lastInsertRowid));
+  }
+  if (activate) {
+    db.prepare("UPDATE growth_journeys SET status='paused',updated_at=? WHERE profile_id=? AND id!=?").run(now, profileIdValue, journey.id);
+    db.prepare("UPDATE growth_projects SET status='paused',updated_at=? WHERE profile_id=? AND id!=?").run(now, profileIdValue, project.id);
+    db.prepare("UPDATE growth_journeys SET title=?,status='active',active_goal_id=?,active_project_id=?,updated_at=? WHERE id=?")
+      .run(goal.title, goal.id, project.id, now, journey.id);
+    db.prepare("UPDATE growth_projects SET status='active',updated_at=? WHERE id=?").run(now, project.id);
+  }
+  return { journey: db.prepare("SELECT * FROM growth_journeys WHERE id=?").get(journey.id), project: db.prepare("SELECT * FROM growth_projects WHERE id=?").get(project.id) };
+}
+function activeJourneyRow(profileIdValue) {
+  let journey = db.prepare("SELECT * FROM growth_journeys WHERE profile_id=? AND status='active' ORDER BY updated_at DESC,id DESC LIMIT 1").get(profileIdValue);
+  if (journey) return journey;
+  const goal = db.prepare("SELECT id FROM growth_goals WHERE profile_id=? AND status='active' ORDER BY is_primary DESC,updated_at DESC,id DESC LIMIT 1").get(profileIdValue);
+  return goal ? ensureJourneyForGoal(profileIdValue, goal.id, true)?.journey || null : null;
+}
+function backfillGrowthJourneys() {
+  for (const goal of db.prepare("SELECT * FROM growth_goals ORDER BY profile_id,is_primary,id").all()) ensureJourneyForGoal(goal.profile_id, goal.id, Boolean(goal.status === 'active' && goal.is_primary));
+  db.prepare("UPDATE actions SET journey_id=COALESCE((SELECT journey_id FROM growth_goals WHERE growth_goals.id=actions.goal_id),0) WHERE journey_id=0 AND goal_id>0").run();
+  db.prepare("UPDATE actions SET project_id=COALESCE((SELECT active_project_id FROM growth_journeys WHERE growth_journeys.id=actions.journey_id),0) WHERE project_id=0 AND journey_id>0").run();
+}
+function upsertJourneyEvidence({ profileId, journeyId = 0, projectId = 0, weeklyBossRunId = 0, skillId = 'creation', sourceType, sourceId, level = 1, summary, observable = {} }) {
+  const now = nowIso();
+  db.prepare("INSERT INTO growth_evidence(profile_id,skill_id,source_type,source_id,evidence_level,summary,observable_json,child_confirmed,guardian_confirmed,ai_context,created_at,journey_id,project_id,weekly_boss_run_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(profile_id,source_type,source_id) DO UPDATE SET skill_id=excluded.skill_id,evidence_level=excluded.evidence_level,summary=excluded.summary,observable_json=excluded.observable_json,ai_context=excluded.ai_context,journey_id=excluded.journey_id,project_id=excluded.project_id,weekly_boss_run_id=excluded.weekly_boss_run_id")
+    .run(profileId, normalizeSkillId(skillId), sourceType, String(sourceId), level, String(summary || '').slice(0, 240), JSON.stringify(observable), 1, null, 1, now, Number(journeyId || 0), Number(projectId || 0), Number(weeklyBossRunId || 0));
+}
+function publicJourneyEvidence(row) {
+  return { id: Number(row.id), journeyId: Number(row.journey_id || 0), projectId: Number(row.project_id || 0), weeklyBossRunId: Number(row.weekly_boss_run_id || 0), skillId: row.skill_id, sourceType: row.source_type, sourceId: row.source_id, evidenceLevel: Number(row.evidence_level), summary: row.summary, observable: parseStoredJson(row.observable_json, {}), createdAt: row.created_at };
+}
+function handleGetJourney(request, response, url) {
+  const user = requireUser(request, response); if (!user) return;
+  const profileIdValue = String(url.searchParams.get("profileId") || "");
+  if (!ownedProfile(user.id, profileIdValue)) return sendJson(response, 404, { error: "角色不存在" });
+  const row = activeJourneyRow(profileIdValue);
+  if (!row) return sendJson(response, 200, { journey: null });
+  const goal = goalRows(profileIdValue).find((item) => item.id === Number(row.active_goal_id)) || null;
+  const projectRow = db.prepare("SELECT * FROM growth_projects WHERE id=? AND profile_id=?").get(row.active_project_id, profileIdValue);
+  const project = projectRow ? { id: Number(projectRow.id), journeyId: Number(projectRow.journey_id), goalId: Number(projectRow.goal_id), title: projectRow.title, finalProduct: projectRow.final_product, status: projectRow.status, updatedAt: projectRow.updated_at } : null;
+  const actions = actionRows(profileIdValue).filter((item) => Number(item.journeyId || 0) === Number(row.id));
+  const bossRow = db.prepare("SELECT * FROM weekly_boss_runs WHERE profile_id=? AND journey_id=? ORDER BY week_start DESC,id DESC LIMIT 1").get(profileIdValue, row.id);
+  const evidence = db.prepare("SELECT * FROM growth_evidence WHERE profile_id=? AND journey_id=? ORDER BY created_at DESC,id DESC LIMIT 80").all(profileIdValue, row.id).map(publicJourneyEvidence);
+  sendJson(response, 200, { journey: { id: Number(row.id), title: row.title, status: row.status, goal, project, actions, boss: publicWeeklyBoss(bossRow), evidence, counts: { actions: actions.length, completedActions: actions.filter((item) => item.status === 'done').length, evidence: evidence.length }, updatedAt: row.updated_at } });
+}
+
 function handleListGoals(request, response, url) {
   const user = requireUser(request, response); if (!user) return;
   const profileIdValue = String(url.searchParams.get("profileId") || "");
@@ -1044,8 +1182,10 @@ async function handleCreateGoal(request, response) {
   const plan = normalizeGoalPlan(body, fallback);
   db.prepare("UPDATE growth_goals SET is_primary=0 WHERE profile_id=?").run(profileIdValue);
   const result = db.prepare("INSERT INTO growth_goals(profile_id,title,why_text,success_signal,first_experiment,skill,horizon,status,created_at,updated_at,plan_json,is_primary) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)").run(profileIdValue, title, String(body.why || "").slice(0, 220), String(body.successSignal || "").slice(0, 240), String(body.firstExperiment || "").slice(0, 220), normalizeSkillId(body.skill || "creation"), ["one_month", "three_months"].includes(body.horizon) ? body.horizon : "one_month", "active", now, now, JSON.stringify(plan));
-  recordEvent(user.id, profileIdValue, "goal_created", { skill: normalizeSkillId(body.skill || "creation"), horizon: body.horizon || "one_month" });
-  sendJson(response, 201, goalRows(profileIdValue).find((goal) => goal.id === Number(result.lastInsertRowid)));
+  const createdGoalId = Number(result.lastInsertRowid);
+  ensureJourneyForGoal(profileIdValue, createdGoalId, true);
+  recordEvent(user.id, profileIdValue, "goal_created", { skill: normalizeSkillId(body.skill || "creation"), horizon: body.horizon || "one_month", journeyId: Number(activeJourneyRow(profileIdValue)?.id || 0) });
+  sendJson(response, 201, goalRows(profileIdValue).find((goal) => goal.id === createdGoalId));
 }
 async function handleUpdateGoal(request, response, url) {
   const user = requireUser(request, response); if (!user) return;
@@ -1057,6 +1197,7 @@ async function handleUpdateGoal(request, response, url) {
   if (status === "active" && goal.status !== "active" && goalRows(goal.profile_id).filter((item) => item.status === "active").length >= 3) return sendJson(response, 409, { error: "同时保留三个方向就够了" });
   if (status === "active") db.prepare("UPDATE growth_goals SET is_primary=0 WHERE profile_id=?").run(goal.profile_id);
   db.prepare("UPDATE growth_goals SET status=?,is_primary=?,updated_at=? WHERE id=?").run(status, status === "active" ? 1 : 0, nowIso(), id);
+  if (status === "active") ensureJourneyForGoal(goal.profile_id, id, true);
   if (status !== "active" && goal.is_primary) promotePrimaryGoal(goal.profile_id);
   recordEvent(user.id, goal.profile_id, "goal_status_changed", { status });
   sendJson(response, 200, goalRows(goal.profile_id).find((item) => item.id === id));
@@ -1476,7 +1617,7 @@ async function callPlannerSkill(mode, context, input = {}) {
   return parseJsonContent((await apiResponse.json()).choices?.[0]?.message?.content || "{}");
 }
 function actionRows(profileIdValue) {
-  return db.prepare("SELECT id,title,detail,status,estimate_minutes AS estimateMinutes,energy,importance,due_at AS dueAt,source,source_ref AS sourceRef,goal_id AS goalId,not_before AS notBefore,defer_count AS deferCount,last_defer_reason AS lastDeferReason,steps_json AS steps,success,item_kind AS itemKind,start_at AS startAt,end_at AS endAt,reminder_at AS reminderAt,recurrence_json AS recurrence,my_day_date AS myDayDate,skill_id AS skillId,planner_reason AS plannerReason,generated,created_at AS createdAt,updated_at AS updatedAt FROM actions WHERE profile_id=? ORDER BY CASE status WHEN 'doing' THEN 1 WHEN 'open' THEN 2 WHEN 'someday' THEN 3 WHEN 'dropped' THEN 4 ELSE 5 END,start_at='',start_at,due_at='',due_at,importance DESC,updated_at DESC LIMIT 200").all(profileIdValue)
+  return db.prepare("SELECT id,journey_id AS journeyId,project_id AS projectId,title,detail,status,estimate_minutes AS estimateMinutes,energy,importance,due_at AS dueAt,source,source_ref AS sourceRef,goal_id AS goalId,not_before AS notBefore,defer_count AS deferCount,last_defer_reason AS lastDeferReason,steps_json AS steps,success,item_kind AS itemKind,start_at AS startAt,end_at AS endAt,reminder_at AS reminderAt,recurrence_json AS recurrence,my_day_date AS myDayDate,skill_id AS skillId,planner_reason AS plannerReason,generated,created_at AS createdAt,updated_at AS updatedAt FROM actions WHERE profile_id=? ORDER BY CASE status WHEN 'doing' THEN 1 WHEN 'open' THEN 2 WHEN 'someday' THEN 3 WHEN 'dropped' THEN 4 ELSE 5 END,start_at='',start_at,due_at='',due_at,importance DESC,updated_at DESC LIMIT 200").all(profileIdValue)
     .map((item) => ({ ...item, steps: parseStoredJson(item.steps, []), recurrence: parseStoredJson(item.recurrence, { mode: "none" }), generated: Boolean(item.generated) }));
 }
 function actionDecisionCalibration(profileIdValue) {
@@ -1742,6 +1883,10 @@ async function handleCreateAction(request, response) {
   const importance = Math.max(1, Math.min(3, Number(body.importance || 2)));
   const requestedGoalId = Number(body.goalId || 0);
   const goalId = requestedGoalId && db.prepare("SELECT id FROM growth_goals WHERE id=? AND profile_id=? AND status='active'").get(requestedGoalId, profileIdValue) ? requestedGoalId : 0;
+  const journeyLink = goalId ? ensureJourneyForGoal(profileIdValue, goalId, false) : null;
+  const activeJourney = journeyLink?.journey || activeJourneyRow(profileIdValue);
+  const journeyId = Number(body.journeyId || activeJourney?.id || 0);
+  const projectId = Number(body.projectId || journeyLink?.project?.id || activeJourney?.active_project_id || 0);
   const dueAt = String(body.dueAt || "").slice(0, 30);
   const itemKind = body.itemKind === "event" ? "event" : "todo";
   const startAt = String(body.startAt || "").slice(0, 30);
@@ -1752,8 +1897,8 @@ async function handleCreateAction(request, response) {
   const skillId = body.skillId ? normalizeSkillId(body.skillId) : "";
   const steps = Array.isArray(body.steps) ? body.steps.map(String).map((step) => step.slice(0, 160)).filter(Boolean).slice(0, 8) : [];
   const now = nowIso();
-  const result = db.prepare("INSERT INTO actions(profile_id,title,detail,status,estimate_minutes,energy,importance,due_at,source,source_ref,goal_id,steps_json,success,item_kind,start_at,end_at,reminder_at,recurrence_json,my_day_date,skill_id,planner_reason,generated,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-    .run(profileIdValue, title, String(body.detail || "").slice(0, 1000), "open", estimate, energy, importance, dueAt, String(body.source || "self").slice(0, 30), String(body.sourceRef || "").slice(0, 120), goalId, JSON.stringify(steps), String(body.success || "").slice(0, 200), itemKind, startAt, endAt, reminderAt, JSON.stringify(recurrence), myDayDate, skillId, String(body.plannerReason || "").slice(0, 200), body.generated ? 1 : 0, now, now);
+  const result = db.prepare("INSERT INTO actions(profile_id,title,detail,status,estimate_minutes,energy,importance,due_at,source,source_ref,goal_id,steps_json,success,item_kind,start_at,end_at,reminder_at,recurrence_json,my_day_date,skill_id,planner_reason,generated,created_at,updated_at,journey_id,project_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+    .run(profileIdValue, title, String(body.detail || "").slice(0, 1000), "open", estimate, energy, importance, dueAt, String(body.source || "self").slice(0, 30), String(body.sourceRef || "").slice(0, 120), goalId, JSON.stringify(steps), String(body.success || "").slice(0, 200), itemKind, startAt, endAt, reminderAt, JSON.stringify(recurrence), myDayDate, skillId, String(body.plannerReason || "").slice(0, 200), body.generated ? 1 : 0, now, now, journeyId, projectId);
   recordEvent(user.id, profileIdValue, "action_created", { estimate, energy, importance, hasDue: Boolean(dueAt), goalId, itemKind, recurring: recurrence.mode !== "none" });
   sendJson(response, 201, actionRows(profileIdValue).find((item) => item.id === Number(result.lastInsertRowid)));
 }
@@ -1787,11 +1932,13 @@ async function handleUpdateAction(request, response, url) {
       const evidence = { actionId: id, skill: "self-regulation", estimateMinutes: action.estimate_minutes, source: action.source, shareWithAi: true };
       const memoryResult = db.prepare("INSERT INTO memories(profile_id,kind,summary,evidence_json,created_at) VALUES(?,?,?,?,?)").run(action.profile_id, "action", `自主行动完成：${title || action.title}`, JSON.stringify(evidence), nowIso());
       evolveHypotheses(action.profile_id, { id: Number(memoryResult.lastInsertRowid), kind: "action", summary: `自主行动完成：${title || action.title}`, evidence, shareWithAi: true });
+      upsertJourneyEvidence({ profileId: action.profile_id, journeyId: Number(action.journey_id || 0), projectId: Number(action.project_id || 0), skillId: action.skill_id || "self-regulation", sourceType: "action", sourceId: String(id), level: 2, summary: `完成行动：${title || action.title}`, observable: { actionId: id, estimateMinutes: Number(action.estimate_minutes), source: action.source } });
     } else if (action.status === "done") {
       const memoryIds = db.prepare("SELECT id FROM memories WHERE profile_id=? AND kind='action' AND json_extract(evidence_json,'$.actionId')=?").all(action.profile_id, id).map((item) => Number(item.id));
       db.prepare("DELETE FROM memories WHERE profile_id=? AND kind='action' AND json_extract(evidence_json,'$.actionId')=?").run(action.profile_id, id);
       removeHypothesisEvidence(action.profile_id, memoryIds);
       retractStrategyEvidence(action.profile_id, memoryIds.map((memoryId) => `memory:${memoryId}`));
+      db.prepare("DELETE FROM growth_evidence WHERE profile_id=? AND source_type='action' AND source_id=?").run(action.profile_id, String(id));
     }
     recordEvent(user.id, action.profile_id, status === "done" ? "action_completed" : restore ? "action_restored" : "action_reopened", { source: action.source, estimate: action.estimate_minutes, from: action.status, to: status });
   }
@@ -3173,7 +3320,10 @@ function blueprintEvidence(profileIdValue) {
   const goals = goalRows(profileIdValue).filter((item) => item.status === "active").map(({ id, objective, why, skill, progress, evidenceCount }) => ({ id, objective, why, skill, progress, evidenceCount }));
   const actions = actionRows(profileIdValue).slice(0, 24).map(({ id, title, status, source, goalId, updatedAt }) => ({ id, title, status, source, goalId, updatedAt }));
   const hypotheses = hypothesisRows(profileIdValue).filter((item) => item.aiContext && item.status === "active").slice(0, 8).map(({ title, summary, confidence, evidenceCount, counterCount }) => ({ title, summary, confidence, evidenceCount, counterCount }));
-  return { portrait, dailyCompletions, journals, feedback, artifacts, goals, actions, hypotheses };
+  const structuredEvidence = db.prepare("SELECT * FROM growth_evidence WHERE profile_id=? AND ai_context=1 ORDER BY created_at DESC,id DESC LIMIT 120").all(profileIdValue).map(publicJourneyEvidence);
+  const journeys = db.prepare("SELECT id,title,status,active_goal_id AS activeGoalId,active_project_id AS activeProjectId,updated_at AS updatedAt FROM growth_journeys WHERE profile_id=? ORDER BY updated_at DESC,id DESC LIMIT 12").all(profileIdValue);
+  const projects = db.prepare("SELECT id,journey_id AS journeyId,goal_id AS goalId,title,final_product AS finalProduct,status,updated_at AS updatedAt FROM growth_projects WHERE profile_id=? ORDER BY updated_at DESC,id DESC LIMIT 12").all(profileIdValue);
+  return { portrait, dailyCompletions, journals, feedback, artifacts, goals, actions, hypotheses, structuredEvidence, journeys, projects };
 }
 
 function blueprintFingerprint(evidence) {
@@ -3190,6 +3340,7 @@ function skillEvidenceScore(skillId, evidence) {
   }
   score += evidence.artifacts.filter((item) => item.skill === skillId).length * 2;
   score += evidence.goals.filter((item) => item.skill === skillId).length * 3;
+  score += (evidence.structuredEvidence || []).filter((item) => item.skillId === skillId).reduce((sum, item) => sum + Math.max(1, Number(item.evidenceLevel || 1)) * 1.5, 0);
   const text = JSON.stringify({ portrait: evidence.portrait, journals: evidence.journals, hypotheses: evidence.hypotheses });
   const terms = {
     "self-regulation": /开始|整理|忘|检查|收尾|完成|执行|步骤/g,
@@ -3307,7 +3458,7 @@ function publicWeeklyBoss(row) {
   if (!row) return null;
   const boss = bossById(row.boss_id);
   const world = worldById(boss?.worldId);
-  return { id: Number(row.id), profileId: row.profile_id, weekStart: row.week_start, boss, world: world ? { id: world.id, index: world.index, name: world.name, domain: world.domain, assetPath: world.assetPath } : null, difficulty: row.difficulty, sourceBlueprintId: row.source_blueprint_id, sourceProjectId: row.source_project_id, shieldTotal: Number(row.shield_total), shieldBroken: Number(row.shield_broken), hpTotal: Number(row.hp_total), hpRemaining: Number(row.hp_remaining), status: row.status, selection: JSON.parse(row.selection_json) };
+  return { id: Number(row.id), journeyId: Number(row.journey_id || 0), profileId: row.profile_id, weekStart: row.week_start, boss, world: world ? { id: world.id, index: world.index, name: world.name, domain: world.domain, assetPath: world.assetPath } : null, difficulty: row.difficulty, sourceBlueprintId: row.source_blueprint_id, sourceProjectId: row.source_project_id, shieldTotal: Number(row.shield_total), shieldBroken: Number(row.shield_broken), hpTotal: Number(row.hp_total), hpRemaining: Number(row.hp_remaining), status: row.status, selection: JSON.parse(row.selection_json) };
 }
 function hasRejectedGoalTemplate(value) {
   return /用?\s*10\s*分钟|最小版本|做一个关于|第[一二三四1234]周[：:]\s*(做最小|重复一次|解决一个卡点|展示成果)/.test(String(value || ""));
@@ -3375,7 +3526,9 @@ function ensureWeeklyBoss(profileIdValue, dateKey = serverDateKey()) {
   const previousWins = Number(db.prepare("SELECT COUNT(*) AS count FROM weekly_boss_runs WHERE profile_id=? AND boss_id=? AND status='defeated'").get(profileIdValue, picked.boss.id)?.count || 0);
   const difficulty = ["bronze", "silver", "gold", "diamond", "legend"][Math.min(4, previousWins)];
   const now = nowIso();
-  const result = db.prepare("INSERT INTO weekly_boss_runs(profile_id,boss_id,difficulty,week_start,source_blueprint_id,source_project_id,shield_total,shield_broken,hp_total,hp_remaining,status,selection_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(profileIdValue, picked.boss.id, difficulty, weekStart, picked.blueprintRow?.updated_at || "unversioned", String(picked.goal?.id || ""), 6, 0, 40, 40, "active", JSON.stringify(picked.selection), now, now);
+  const journey = activeJourneyRow(profileIdValue);
+  const projectId = Number(journey?.active_project_id || 0);
+  const result = db.prepare("INSERT INTO weekly_boss_runs(profile_id,boss_id,difficulty,week_start,source_blueprint_id,source_project_id,shield_total,shield_broken,hp_total,hp_remaining,status,selection_json,created_at,updated_at,journey_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(profileIdValue, picked.boss.id, difficulty, weekStart, picked.blueprintRow?.updated_at || "unversioned", String(projectId || ""), 6, 0, 40, 40, "active", JSON.stringify(picked.selection), now, now, Number(journey?.id || 0));
   return db.prepare("SELECT * FROM weekly_boss_runs WHERE id=?").get(Number(result.lastInsertRowid));
 }
 function miniBossChallenge(weeklyRow, dateKey) {
@@ -3415,6 +3568,8 @@ async function handleSyncDailyBoss(request, response) {
   const allowed = new Set(["pending", "completed", "adjusted_completed", "withdrawn", "recovery_completed"]);
   const tasks = (Array.isArray(body.tasks) ? body.tasks : []).slice(0, 3).map((task, index) => ({ id: String(task.id || `core-${index + 1}`).slice(0, 100), title: String(task.title || "今日核心任务").slice(0, 160), status: allowed.has(task.status) ? task.status : "pending", sourceRef: String(task.sourceRef || "").slice(0, 120), adjustment: String(task.adjustment || "").slice(0, 120), taskType: "project" }));
   if (!tasks.length) return sendJson(response, 400, { error: "每天需要1到3项合理核心任务" });
+  const expectedProjectId = Number(weekly.source_project_id || 0);
+  if (expectedProjectId && tasks.some((task) => /^project:(\d+):/.test(task.sourceRef) && Number(task.sourceRef.match(/^project:(\d+):/)[1]) !== expectedProjectId)) return sendJson(response, 409, { error: "今日任务不属于本周主线项目，请重新同步当前项目" });
   const complete = tasks.every((task) => ["completed", "adjusted_completed", "withdrawn", "recovery_completed"].includes(task.status));
   const now = nowIso();
   db.prepare("INSERT INTO daily_core_plans(profile_id,plan_date,weekly_boss_run_id,tasks_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(profile_id,plan_date) DO UPDATE SET tasks_json=excluded.tasks_json,status=excluded.status,updated_at=excluded.updated_at").run(profileIdValue, dateKey, weekly.id, JSON.stringify(tasks), complete ? "completed" : "confirmed", now, now);
@@ -3441,7 +3596,8 @@ async function handleCompleteMiniBoss(request, response, url) {
   const now = nowIso();
   db.exec("BEGIN");
   try {
-    const evidenceResult = db.prepare("INSERT INTO growth_evidence(profile_id,skill_id,source_type,source_id,evidence_level,summary,observable_json,child_confirmed,guardian_confirmed,ai_context,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)").run(row.profile_id, challenge.skillId, "mini_boss", String(row.id), 2, String(body.summary || `完成${challenge.title}`).slice(0, 220), JSON.stringify([String(body.observableFact || challenge.success).slice(0, 220)]), 1, null, body.shareWithAi === false ? 0 : 1, now);
+    const weekly = db.prepare("SELECT * FROM weekly_boss_runs WHERE id=?").get(row.weekly_boss_run_id);
+    const evidenceResult = db.prepare("INSERT INTO growth_evidence(profile_id,skill_id,source_type,source_id,evidence_level,summary,observable_json,child_confirmed,guardian_confirmed,ai_context,created_at,journey_id,project_id,weekly_boss_run_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(row.profile_id, challenge.skillId, "mini_boss", String(row.id), 2, String(body.summary || `完成${challenge.title}`).slice(0, 220), JSON.stringify({ facts: [String(body.observableFact || challenge.success).slice(0, 220)], challenge: challenge.title }), 1, null, body.shareWithAi === false ? 0 : 1, now, Number(weekly?.journey_id || 0), Number(weekly?.source_project_id || 0), Number(row.weekly_boss_run_id));
     db.prepare("UPDATE daily_mini_bosses SET unlock_status='completed',evidence_id=?,updated_at=? WHERE id=?").run(Number(evidenceResult.lastInsertRowid), now, row.id);
     db.prepare("UPDATE weekly_boss_runs SET shield_broken=MIN(shield_total,shield_broken+1),hp_remaining=MAX(0,hp_remaining-3),status=CASE WHEN shield_broken+1>=shield_total THEN 'final_ready' ELSE status END,updated_at=? WHERE id=?").run(now, row.weekly_boss_run_id);
     db.exec("COMMIT");
@@ -3591,6 +3747,7 @@ async function handleGenerateDailyMissions(request, response) {
   const result = body.fast === true
     ? { book: { date: serverDateKey(), headline: "今天的成长关卡", rationale: "先根据当前目标和状态快速准备，AI会继续在后台校准。", blueprintVersion: Number(body.blueprint?.version || 0), goalId: Number(body.activeGoals?.[0]?.id || 0), goalTitle: String(body.activeGoals?.[0]?.objective || "当前成长主线").slice(0, 140), tasks: balancedMissionFallback(baseTasks).map((task) => normalizeMissionTask(task, task)) }, provider: "local" }
     : await generateDailyMissionBook(profile, body, baseTasks);
+  if (!revalidateProfileAfterAsync(user.id, profileIdValue, response)) return;
   const now = nowIso();
   db.prepare("INSERT INTO daily_mission_books(profile_id,mission_date,book_json,context_fingerprint,provider,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(profile_id,mission_date) DO UPDATE SET book_json=excluded.book_json,context_fingerprint=excluded.context_fingerprint,provider=excluded.provider,updated_at=excluded.updated_at").run(profileIdValue, serverDateKey(), JSON.stringify(result.book), fingerprint, result.provider, existing?.created_at || now, now);
   recordEvent(user.id, profileIdValue, "daily_missions_generated", { provider: result.provider, taskCount: result.book.tasks.length, blueprintVersion: result.book.blueprintVersion });

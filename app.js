@@ -654,6 +654,7 @@ const state = {
   selfCoachQuestion: "",
   selfCoachLoading: false,
   goals: [],
+  journey: null,
   growthBlueprint: null,
   growthBlueprintStale: false,
   growthBlueprintLoading: false,
@@ -974,6 +975,15 @@ async function loadGoals() {
 }
 
 async function loadGrowthBlueprint() {
+async function loadJourney() {
+  if (!currentProfile()) return;
+  try {
+    const response = await fetch(`/api/journey?profileId=${encodeURIComponent(state.childId)}`);
+    if (!response.ok) return;
+    state.journey = (await response.json()).journey || null;
+  } catch {}
+}
+
   if (!currentProfile()) return;
   try {
     const response = await fetch(`/api/growth-blueprint?profileId=${encodeURIComponent(state.childId)}`);
@@ -1828,6 +1838,7 @@ async function loadCloudProgress(profileId) {
   await loadDailyPlan();
   await loadDailyPlanFeedback();
   await loadBossSystem();
+  await loadJourney();
   if (!state.dailyMissionBook) setTimeout(async () => {
     await generateDailyMissionBook(false, true, true);
     generateDailyMissionBook(true, true, false);
@@ -2831,7 +2842,7 @@ function weeklyProjectTask() {
   if (!journey && !project) return null;
   const stage = project?.dailyStages?.[weekDayIndex()];
   const title = stage?.task || journey?.firstExperiment || journey?.weeklyPlan?.[0] || `推进：${project?.weeklyProduct || journey?.objective || journey?.title}`;
-  const projectId = state.bossState?.week?.id || journey?.id || "unconfirmed";
+  const projectId = state.bossState?.week?.sourceProjectId || state.journey?.project?.id || "unconfirmed";
   return { id: `project-${projectId}-${weekDayIndex() + 1}`, title, status: "pending", sourceRef: `project:${projectId}:${weekDayIndex() + 1}`, adjustment: stage?.name ? `${stage.name} · 为周成果积累证据` : "来自本周主线项目", taskType: "project" };
 }
 
@@ -3238,7 +3249,7 @@ async function generateDailyPlan(options = {}) {
 }
 
 function currentJourney() {
-  return state.goals.find((goal) => goal.status === "active" && goal.isPrimary) || state.goals.find((goal) => goal.status === "active") || null;
+  return state.journey?.goal || state.goals.find((goal) => goal.status === "active" && goal.isPrimary) || state.goals.find((goal) => goal.status === "active") || null;
 }
 
 async function rebuildTodayFromGoal(goal, options = {}) {
@@ -3257,7 +3268,8 @@ async function rebuildTodayFromGoal(goal, options = {}) {
         estimateMinutes: 10,
         energy: "normal",
         importance: 3,
-        goalId: activeGoal.id
+        goalId: activeGoal.id,
+        journeyId: activeGoal.journeyId || state.journey?.id || 0
       })
     });
     const action = await actionResponse.json();
