@@ -12,7 +12,6 @@ loadEnvFile(".env");
 
 const root = process.cwd();
 const bossCatalog = JSON.parse(readFileSync(join(root, "data", "boss-catalog.json"), "utf8"));
-const adminCuohuArchive = JSON.parse(readFileSync(join(root, "data", "guardian-contexts", "admin-cuohu-v1.json"), "utf8"));
 const plannerSkill = readFileSync(join(root, "ai-modules", "growth-planner-skill.md"), "utf8");
 const plannerOutputSchema = JSON.parse(readFileSync(join(root, "ai-modules", "growth-planner-output.schema.json"), "utf8"));
 const aiModuleCatalog = JSON.parse(readFileSync(join(root, "ai-modules", "catalog.json"), "utf8"));
