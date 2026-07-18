@@ -1,0 +1,56 @@
+name: Apply Journey Kernel v3
+
+on:
+  push:
+    branches:
+      - fix/journey-kernel-v3
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Assemble readable migration
+        run: cat .journey-patch/part-00.py .journey-patch/part-01.py .journey-patch/part-02.py > /tmp/apply_journey_kernel.py
+
+      - name: Apply Journey kernel
+        run: python /tmp/apply_journey_kernel.py
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Product validation
+        run: npm run check
+
+      - name: API regression suite
+        run: npm run test:api
+
+      - name: Verify deployment markers
+        run: |
+          grep -q 'GROWTHOS_JOURNEY_KERNEL_V2' api/server.js
+          grep -q 'url.pathname === "/api/journey"' api/server.js
+          grep -q 'schemaVersion: 13' api/server.js
+          grep -q 'state.journey?.goal' app.js
+          ! grep -q 'demo-login-hint' index.html
+
+      - name: Commit verified source
+        run: |
+          rm -rf .journey-patch
+          rm -f .github/workflows/apply-journey-kernel-v3.yml
+          git config user.name "growth-os-ci"
+          git config user.email "growth-os-ci@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: connect GrowthOS journey evidence loop"
+          git push origin HEAD:fix/journey-kernel-v3
