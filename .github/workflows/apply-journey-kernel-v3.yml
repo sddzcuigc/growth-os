@@ -21,6 +21,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
           fetch-depth: 0
+          show-progress: false
 
       - uses: actions/setup-node@v4
         with:
@@ -31,7 +32,10 @@ jobs:
         run: cat .journey-patch/part-00.py .journey-patch/part-01.py .journey-patch/part-02.py > /tmp/apply_journey_kernel.py
 
       - name: Apply Journey kernel
-        run: python /tmp/apply_journey_kernel.py
+        shell: bash
+        run: |
+          set -o pipefail
+          python /tmp/apply_journey_kernel.py 2>&1 | tail -80
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
