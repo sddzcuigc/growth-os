@@ -4,9 +4,13 @@ on:
   push:
     branches:
       - fix/journey-kernel-v3
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
+  pull-requests: read
 
 jobs:
   apply-and-verify:
@@ -15,6 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
