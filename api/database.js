@@ -18,9 +18,21 @@ function wrapStatement(statement) {
   };
 }
 
+function execWithMigrationTolerance(raw, sql) {
+  try {
+    return raw.exec(sql);
+  } catch (error) {
+    const statement = String(sql || "");
+    const message = String(error?.message || error || "");
+    const isAddColumnMigration = /^\s*ALTER\s+TABLE\b/i.test(statement) && /\bADD\s+COLUMN\b/i.test(statement);
+    if (isAddColumnMigration && /duplicate column name/i.test(message)) return undefined;
+    throw error;
+  }
+}
+
 function wrapDatabase(raw) {
   return {
-    exec: (sql) => raw.exec(sql),
+    exec: (sql) => execWithMigrationTolerance(raw, sql),
     prepare: (sql) => wrapStatement(raw.prepare(sql)),
     close: () => raw.close?.()
   };
