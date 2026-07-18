@@ -29,7 +29,7 @@ jobs:
           cache: npm
 
       - name: Assemble readable migration
-        run: cat .journey-patch/part-00.py .journey-patch/part-01a.py .journey-patch/part-00b.py .journey-patch/part-01b.py .journey-patch/part-02.py .journey-patch/part-03.py .journey-patch/part-04.py .journey-patch/part-05.py > /tmp/apply_journey_kernel.py
+        run: cat .journey-patch/part-00.py .journey-patch/part-01a.py .journey-patch/part-00b.py .journey-patch/part-01b.py .journey-patch/part-02.py .journey-patch/part-03.py .journey-patch/part-04.py .journey-patch/part-05.py .journey-patch/part-06.py > /tmp/apply_journey_kernel.py
 
       - name: Apply Journey kernel
         id: apply
@@ -88,10 +88,23 @@ jobs:
         continue-on-error: true
         run: |
           set +e
+          rm -rf /tmp/growth-os-http-tests
+          ENABLE_TEST_ADMIN=true GROWTH_OS_DATA_DIR=/tmp/growth-os-http-tests npm start > /tmp/growth-os-http-server.log 2>&1 &
+          server_pid=$!
+          for attempt in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:5173/api/status >/dev/null 2>&1 && break
+            sleep 0.2
+          done
           timeout 180s npm run test:api > /tmp/journey-api-tests.log 2>&1
           code=$?
+          kill "$server_pid" >/dev/null 2>&1 || true
+          wait "$server_pid" >/dev/null 2>&1 || true
+          if [ "$code" -ne 0 ]; then
+            printf '\n--- HTTP test server log ---\n' >> /tmp/journey-api-tests.log
+            cat /tmp/growth-os-http-server.log >> /tmp/journey-api-tests.log
+          fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          tail -240 /tmp/journey-api-tests.log
+          tail -280 /tmp/journey-api-tests.log
           exit 0
 
       - name: Upload API regression diagnostic
