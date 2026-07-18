@@ -36,7 +36,28 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Product validation
-        run: npm run check
+        id: product_check
+        shell: bash
+        continue-on-error: true
+        run: |
+          set +e
+          npm run check > /tmp/usability-product-check.log 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          tail -160 /tmp/usability-product-check.log
+          exit 0
+
+      - name: Upload product diagnostic
+        if: steps.product_check.outputs.exit_code != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: usability-product-check-diagnostic
+          path: /tmp/usability-product-check.log
+          if-no-files-found: error
+
+      - name: Stop on product failure
+        if: steps.product_check.outputs.exit_code != '0'
+        run: exit 1
 
       - name: API regression suite
         run: |
