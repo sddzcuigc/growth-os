@@ -31,6 +31,8 @@ validator = validator.replace(
     'if (!serverSource.includes(\'if (devAdminEnabled && loginName === "admin")\')) failures.push("development demo login is not locally gated");',
     'if (!serverSource.includes(\'if (demoLoginEnabled && loginName === "admin")\')) failures.push("public demo login is not enabled");',
 )
+validator = validator.replace('"只根据我的证据回答"', '"只根据我的成长记录回答"')
+validator = validator.replace('"六枚证据符文"', '"六枚成长徽章"')
 checks = '''
 if (!readFileSync("styles.css", "utf8").includes("GROWTHOS_RESPONSIVE_WORKBENCH_V2")) failures.push("responsive workbench marker missing");
 if (!serverSource.includes('url.pathname === "/api/models"')) failures.push("SiliconFlow model catalog route missing");
