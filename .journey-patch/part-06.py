@@ -6,10 +6,11 @@ delete_account_handler = '''async function handleDeleteAccount(request, response
   const user = requireUser(request, response); if (!user) return;
   const body = await readBodyJson(request);
   if (String(body.confirmation || "").trim() !== "删除我的账号") return sendJson(response, 400, { error: "请输入“删除我的账号”确认永久删除" });
-  const row = db.prepare("SELECT password_hash FROM users WHERE id=?").get(user.id);
+  const row = db.prepare("SELECT email,password_hash FROM users WHERE id=?").get(user.id);
   if (!row || !verifyPassword(String(body.password || ""), row.password_hash)) return sendJson(response, 401, { error: "当前密码不正确" });
   db.exec("BEGIN");
   try {
+    db.prepare("DELETE FROM auth_attempts WHERE attempt_key LIKE ?").run(`%:${row.email}`);
     db.prepare("DELETE FROM users WHERE id=?").run(user.id);
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
