@@ -1,4 +1,4 @@
-# Repair the existing validation script so it only checks files present in this repository.
+# Repair the existing validation/test scripts so they only use files present in this repository.
 import json
 package_path = ROOT / 'package.json'
 package = json.loads(package_path.read_text(encoding='utf-8'))
@@ -15,6 +15,8 @@ for relative in [
     if (ROOT / relative).exists():
         check_steps.append(f'node {relative}')
 package['scripts']['check'] = ' && '.join(check_steps)
+# These API tests mutate process.env and some start a server on the same port, so run files serially.
+package['scripts']['test:api'] = 'node --test --test-concurrency=1 tests/api/*.test.mjs'
 if not (ROOT / 'scripts/migrate-sqlite-to-libsql.mjs').exists():
     package['scripts'].pop('migrate:turso', None)
 package_path.write_text(json.dumps(package, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
