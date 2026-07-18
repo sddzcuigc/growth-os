@@ -25,6 +25,15 @@ def insert_after(text: str, anchor: str, addition: str, label: str) -> str:
             anchor + addition,
             label,
         )
+    if label == 'app load journey':
+        return _replace_in_function(
+            text,
+            'async function loadCloudProgress(profileId) {',
+            'function getPrefs() {',
+            anchor,
+            anchor + addition,
+            label,
+        )
     return _base_insert_after(text, anchor, addition, label)
 
 
