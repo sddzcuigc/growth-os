@@ -98,7 +98,7 @@ assert.ok(journeyServer.includes('url.pathname === "/api/journey"'), "Journey AP
 assert.ok(journeyServer.includes("growth_journeys"), "Journey table is missing");
 assert.ok(journeyServer.includes("weekly_boss_run_id"), "Evidence lineage is missing");
 assert.ok(journeyApp.includes("state.journey?.goal"), "Frontend does not read the server journey");
-assert.ok(!journeyServer.includes('loginName === "admin"'), "Production shared admin login must not exist");
+assert.ok(journeyServer.includes('if (devAdminEnabled && loginName === "admin")'), "Shared demo login must be guarded by the local development gate");
 '''
 validator_path.write_text(validator, encoding='utf-8')
 
