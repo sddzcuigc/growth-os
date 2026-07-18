@@ -24,10 +24,17 @@ validator = validator.replace(
     'if (!serverSource.includes(\'if (devAdminEnabled && loginName === "admin")\')) failures.push("development demo login is not locally gated");\nif (htmlSource.includes("内置测试：账号 admin")) failures.push("production login UI exposes shared demo credentials");\nif (serverSource.includes(\'"崔护"\') || serverSource.includes(\'"9岁3个月"\')) failures.push("production server contains real child demo data");',
     1,
 )
-validator = validator.replace(
-    'const journeyServer = readFileSync(resolve(root, "api/server.js"), "utf8");\nconst journeyApp = readFileSync(resolve(root, "app.js"), "utf8");',
-    'const journeyServer = readFileSync("api/server.js", "utf8");\nconst journeyApp = readFileSync("app.js", "utf8");',
-    1,
-)
-validator += '\nif (!databaseSource.includes("node:sqlite") || !serverSource.includes("openGrowthDatabase")) failures.push("database adapter is not wired to local SQLite");\n'
+# Remove the earlier appended assertions; they were after the failure summary and therefore ineffective.
+marker = '\n// Journey kernel deployment gates.'
+if marker in validator:
+    validator = validator.split(marker, 1)[0].rstrip() + '\n'
+journey_checks = '''
+if (!databaseSource.includes("node:sqlite") || !serverSource.includes("openGrowthDatabase")) failures.push("database adapter is not wired to local SQLite");
+if (!serverSource.includes("GROWTHOS_JOURNEY_KERNEL_V2")) failures.push("Journey kernel marker is missing");
+if (!serverSource.includes('url.pathname === "/api/journey"')) failures.push("Journey API route is missing");
+if (!serverSource.includes("growth_journeys")) failures.push("Journey table is missing");
+if (!serverSource.includes("weekly_boss_run_id")) failures.push("Evidence lineage is missing");
+if (!appSourceText.includes("state.journey?.goal")) failures.push("Frontend does not read the server journey");
+'''
+validator = validator.replace('\nif (failures.length) {', journey_checks + '\nif (failures.length) {', 1)
 validator_path.write_text(validator, encoding='utf-8')
