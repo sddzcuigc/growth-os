@@ -59,10 +59,52 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Product validation
-        run: npm run check
+        id: product_check
+        shell: bash
+        continue-on-error: true
+        run: |
+          set +e
+          npm run check > /tmp/journey-product-check.log 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          tail -160 /tmp/journey-product-check.log
+          exit 0
+
+      - name: Upload product validation diagnostic
+        if: steps.product_check.outputs.exit_code != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: journey-product-check-diagnostic
+          path: /tmp/journey-product-check.log
+          if-no-files-found: error
+
+      - name: Stop on product validation failure
+        if: steps.product_check.outputs.exit_code != '0'
+        run: exit 1
 
       - name: API regression suite
-        run: npm run test:api
+        id: api_tests
+        shell: bash
+        continue-on-error: true
+        run: |
+          set +e
+          npm run test:api > /tmp/journey-api-tests.log 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          tail -200 /tmp/journey-api-tests.log
+          exit 0
+
+      - name: Upload API regression diagnostic
+        if: steps.api_tests.outputs.exit_code != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: journey-api-tests-diagnostic
+          path: /tmp/journey-api-tests.log
+          if-no-files-found: error
+
+      - name: Stop on API regression failure
+        if: steps.api_tests.outputs.exit_code != '0'
+        run: exit 1
 
       - name: Verify deployment markers
         run: |
