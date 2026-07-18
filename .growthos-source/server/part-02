@@ -1,0 +1,115 @@
+    if (request.method === "GET" && url.pathname === "/api/metrics") return await handleMetrics(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/journal") return await handleListJournal(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/journal") return await handleCreateJournal(request, response);
+    if (request.method === "DELETE" && url.pathname.startsWith("/api/journal/")) return await handleDeleteJournal(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/journal/prompt") return await handleJournalPrompt(request, response);
+    if (request.method === "GET" && url.pathname === "/api/hypotheses") return await handleListHypotheses(request, response, url);
+    if (request.method === "POST" && /^\/api\/hypotheses\/\d+\/feedback$/.test(url.pathname)) return await handleHypothesisFeedback(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/strategy-insights") return await handleListStrategyInsights(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/strategy-insights/generate") return await handleGenerateStrategyInsights(request, response);
+    if (request.method === "PATCH" && /^\/api\/strategy-insights\/\d+$/.test(url.pathname)) return await handleStrategyInsightFeedback(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/ideas") return await handleListIdeas(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/ideas") return await handleCreateIdea(request, response);
+    if (request.method === "PATCH" && /^\/api\/ideas\/\d+$/.test(url.pathname)) return await handleUpdateIdea(request, response, url);
+    if (request.method === "DELETE" && /^\/api\/ideas\/\d+$/.test(url.pathname)) return await handleDeleteIdea(request, response, url);
+    if (request.method === "POST" && /^\/api\/ideas\/\d+\/develop$/.test(url.pathname)) return await handleDevelopIdea(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/idea-resurfacing") return await handleGetIdeaResurfacing(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/idea-resurfacing") return await handleCreateIdeaResurfacing(request, response);
+    if (request.method === "PATCH" && /^\/api\/idea-resurfacings\/\d+$/.test(url.pathname)) return await handleIdeaResurfacingOutcome(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/actions") return await handleListActions(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/actions") return await handleCreateAction(request, response);
+    if (request.method === "POST" && url.pathname === "/api/action-inbox/parse") return await handleParseActionInbox(request, response);
+    if (request.method === "POST" && url.pathname === "/api/capture/parse") return await handleParseCapture(request, response);
+    if (request.method === "GET" && url.pathname === "/api/planner/today") return await handlePlannerToday(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/planner/parse") return await handlePlannerParse(request, response);
+    if (request.method === "POST" && url.pathname === "/api/planner/recommend") return await handlePlannerRecommend(request, response);
+    if (request.method === "POST" && url.pathname === "/api/planner/accept") return await handlePlannerAccept(request, response);
+    if (request.method === "GET" && url.pathname === "/api/profile/questions") return await handleListProfileQuestions(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/profile/questions/next") return await handleNextProfileQuestion(request, response);
+    if (request.method === "POST" && /^\/api\/profile\/questions\/\d+\/answer$/.test(url.pathname)) return await handleAnswerProfileQuestion(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/profile/context-archive") return await handleGetProfileContextArchive(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/goals") return await handleListGoals(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/journey") return await handleGetJourney(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/onboarding/question") return await handleOnboardingQuestion(request, response);
+    if (request.method === "POST" && url.pathname === "/api/onboarding/portrait") return await handleOnboardingPortrait(request, response);
+    if (request.method === "GET" && url.pathname === "/api/growth-blueprint") return await handleGetGrowthBlueprint(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/growth-blueprint/refresh") return await handleRefreshGrowthBlueprint(request, response);
+    if (request.method === "GET" && url.pathname === "/api/daily-missions") return await handleGetDailyMissions(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/daily-missions/generate") return await handleGenerateDailyMissions(request, response);
+    if (request.method === "GET" && url.pathname === "/api/boss/catalog") return await handleBossCatalog(request, response);
+    if (request.method === "GET" && url.pathname === "/api/boss/week") return await handleGetWeeklyBoss(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/boss/daily/sync") return await handleSyncDailyBoss(request, response);
+    if (request.method === "POST" && /^\/api\/boss\/daily\/\d+\/complete$/.test(url.pathname)) return await handleCompleteMiniBoss(request, response, url);
+    if (request.method === "POST" && /^\/api\/boss\/week\/\d+\/final$/.test(url.pathname)) return await handleWeeklyBossFinal(request, response, url);
+    if (request.method === "POST" && /^\/api\/boss\/rewards\/\d+\/choose$/.test(url.pathname)) return await handleChooseBossReward(request, response, url);
+    if (request.method === "POST" && /^\/api\/boss\/vouchers\/\d+\/approve$/.test(url.pathname)) return await handleApproveRewardVoucher(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/boss/vouchers") return await handleListRewardVouchers(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/goals/shape") return await handleShapeGoal(request, response);
+    if (request.method === "POST" && url.pathname === "/api/goals") return await handleCreateGoal(request, response);
+    if (request.method === "PATCH" && /^\/api\/goals\/\d+$/.test(url.pathname)) return await handleUpdateGoal(request, response, url);
+    if (request.method === "DELETE" && /^\/api\/goals\/\d+$/.test(url.pathname)) return await handleDeleteGoal(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/self-coach") return await handleListSelfCoach(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/self-coach/ask") return await handleAskSelfCoach(request, response);
+    if (request.method === "PATCH" && /^\/api\/self-coach\/\d+$/.test(url.pathname)) return await handleSelfCoachFeedback(request, response, url);
+    if (request.method === "DELETE" && /^\/api\/self-coach\/\d+$/.test(url.pathname)) return await handleDeleteSelfCoach(request, response, url);
+    if (request.method === "PATCH" && /^\/api\/actions\/\d+$/.test(url.pathname)) return await handleUpdateAction(request, response, url);
+    if (request.method === "DELETE" && /^\/api\/actions\/\d+$/.test(url.pathname)) return await handleDeleteAction(request, response, url);
+    if (request.method === "POST" && /^\/api\/actions\/\d+\/breakdown$/.test(url.pathname)) return await handleBreakdownAction(request, response, url);
+    if (request.method === "POST" && /^\/api\/actions\/\d+\/negotiate$/.test(url.pathname)) return await handleNegotiateAction(request, response, url);
+    if (request.method === "PATCH" && /^\/api\/actions\/\d+\/defer$/.test(url.pathname)) return await handleDeferAction(request, response, url);
+    if (request.method === "POST" && /^\/api\/actions\/\d+\/rescue$/.test(url.pathname)) return await handleActionRescue(request, response, url);
+    if (request.method === "PATCH" && /^\/api\/action-rescues\/\d+$/.test(url.pathname)) return await handleActionRescueOutcome(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/habits") return await handleListHabits(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/habits") return await handleCreateHabit(request, response);
+    if (request.method === "DELETE" && /^\/api\/habits\/\d+$/.test(url.pathname)) return await handleDeleteHabit(request, response, url);
+    if (request.method === "POST" && /^\/api\/habits\/\d+\/checkin$/.test(url.pathname)) return await handleHabitCheckin(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/focus") return await handleGetFocus(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/focus") return await handleStartFocus(request, response);
+    if (request.method === "PATCH" && /^\/api\/focus\/\d+$/.test(url.pathname)) return await handleUpdateFocus(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/reviews") return await handleListReviews(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/reviews/generate") return await handleGenerateReview(request, response);
+    if (request.method === "PATCH" && /^\/api\/reviews\/\d+$/.test(url.pathname)) return await handleReviewFeedback(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/family-brief") return await handleGetFamilyBrief(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/family-brief/generate") return await handleGenerateFamilyBrief(request, response);
+    if (request.method === "PATCH" && /^\/api\/family-brief\/\d+$/.test(url.pathname)) return await handleUpdateFamilyBrief(request, response, url);
+    if (request.method === "DELETE" && /^\/api\/family-brief\/\d+$/.test(url.pathname)) return await handleDeleteFamilyBrief(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/task-feedback") return await handleListTaskFeedback(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/task-feedback") return await handleCreateTaskFeedback(request, response);
+    if (request.method === "GET" && url.pathname === "/api/artifacts") return await handleListArtifacts(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/artifacts") return await handleCreateArtifact(request, response);
+    if (request.method === "GET" && /^\/api\/artifacts\/\d+\/media$/.test(url.pathname)) return await handleArtifactMedia(request, response, url);
+    if (request.method === "PATCH" && /^\/api\/artifacts\/\d+$/.test(url.pathname)) return await handleUpdateArtifact(request, response, url);
+    if (request.method === "DELETE" && /^\/api\/artifacts\/\d+$/.test(url.pathname)) return await handleDeleteArtifact(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/projects") return await handleListProjects(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/projects/clarify") return await handleClarifyProject(request, response);
+    if (request.method === "POST" && url.pathname === "/api/projects") return await handleCreateProject(request, response);
+    if (request.method === "GET" && /^\/api\/projects\/\d+$/.test(url.pathname)) return await handleGetProject(request, response, url);
+    if (request.method === "PATCH" && /^\/api\/projects\/\d+$/.test(url.pathname)) return await handleUpdateProject(request, response, url);
+    if (request.method === "POST" && /^\/api\/projects\/\d+\/activate$/.test(url.pathname)) return await handleActivateProject(request, response, url);
+    if (request.method === "PATCH" && /^\/api\/projects\/\d+\/stages\/\d+$/.test(url.pathname)) return await handleUpdateProjectStage(request, response, url);
+    if (request.method === "POST" && /^\/api\/projects\/\d+\/package$/.test(url.pathname)) return await handlePackageProject(request, response, url);
+    if (request.method === "PATCH" && /^\/api\/project-experiences\/\d+$/.test(url.pathname)) return await handleUpdateProjectExperience(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/desks") return await handleGetGrowthDesks(request, response, url);
+    if (request.method === "PUT" && url.pathname === "/api/desks/preferences") return await handleUpdateDeskPreferences(request, response);
+    if (request.method === "POST" && url.pathname === "/api/desks/match") return await handleCreateDeskMatch(request, response);
+    if (request.method === "PATCH" && /^\/api\/desks\/matches\/\d+$/.test(url.pathname)) return await handleUpdateDeskMatch(request, response, url);
+    if (request.method === "POST" && /^\/api\/desks\/matches\/\d+\/room$/.test(url.pathname)) return await handleCreateProjectRoom(request, response, url);
+    if (request.method === "PATCH" && /^\/api\/desks\/rooms\/\d+$/.test(url.pathname)) return await handleUpdateProjectRoom(request, response, url);
+    if (request.method === "PATCH" && /^\/api\/desks\/rooms\/\d+\/checklist\/[a-z0-9-]+$/.test(url.pathname)) return await handleUpdateRoomChecklist(request, response, url);
+    if (request.method === "POST" && /^\/api\/desks\/rooms\/\d+\/message$/.test(url.pathname)) return await handlePostRoomMessage(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/daily-plan") return await handleGetDailyPlan(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/daily-plan-feedback") return await handleListDailyPlanFeedback(request, response, url);
+    if (request.method === "DELETE" && /^\/api\/daily-plan-feedback\/\d+$/.test(url.pathname)) return await handleDeleteDailyPlanFeedback(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/daily-plan/generate") return await handleGenerateDailyPlan(request, response);
+    if (request.method === "PATCH" && /^\/api\/daily-plan\/\d+$/.test(url.pathname)) return await handleUpdateDailyPlan(request, response, url);
+    if (request.method === "DELETE" && /^\/api\/daily-plan\/\d+$/.test(url.pathname)) return await handleDeleteDailyPlan(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/status") {
+      sendJson(response, 200, {
+        connected: Boolean(apiKey),
+        provider: aiProvider,
+        model,
+        newsAvailable: true,
+        modules: aiModuleCatalog.modules.length,
+        storage: {
+          mode: persistenceMode,
+          durable: persistenceMode !== "ephemeral",
