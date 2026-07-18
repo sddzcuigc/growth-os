@@ -1,0 +1,142 @@
+  CREATE TABLE IF NOT EXISTS growth_goals (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, title TEXT NOT NULL, why_text TEXT NOT NULL, success_signal TEXT NOT NULL, first_experiment TEXT NOT NULL, skill TEXT NOT NULL, horizon TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS self_coach_answers (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, question TEXT NOT NULL, answer TEXT NOT NULL, confidence TEXT NOT NULL, evidence_json TEXT NOT NULL, next_question TEXT NOT NULL, provider TEXT NOT NULL, feedback TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS action_decisions (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, action_id INTEGER NOT NULL REFERENCES actions(id) ON DELETE CASCADE, reason TEXT NOT NULL, outcome TEXT NOT NULL, note TEXT NOT NULL, created_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS growth_blueprints (profile_id TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE, blueprint_json TEXT NOT NULL, evidence_fingerprint TEXT NOT NULL, provider TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS daily_mission_books (profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, mission_date TEXT NOT NULL, book_json TEXT NOT NULL, context_fingerprint TEXT NOT NULL, provider TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(profile_id,mission_date));
+  CREATE TABLE IF NOT EXISTS weekly_boss_runs (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, boss_id TEXT NOT NULL, difficulty TEXT NOT NULL, week_start TEXT NOT NULL, source_blueprint_id TEXT NOT NULL, source_project_id TEXT NOT NULL, shield_total INTEGER NOT NULL, shield_broken INTEGER NOT NULL, hp_total INTEGER NOT NULL, hp_remaining INTEGER NOT NULL, status TEXT NOT NULL, selection_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(profile_id,week_start));
+  CREATE TABLE IF NOT EXISTS daily_core_plans (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, plan_date TEXT NOT NULL, weekly_boss_run_id INTEGER NOT NULL REFERENCES weekly_boss_runs(id) ON DELETE CASCADE, tasks_json TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(profile_id,plan_date));
+  CREATE TABLE IF NOT EXISTS daily_mini_bosses (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, weekly_boss_run_id INTEGER NOT NULL REFERENCES weekly_boss_runs(id) ON DELETE CASCADE, boss_date TEXT NOT NULL, template_type TEXT NOT NULL, unlock_status TEXT NOT NULL, challenge_json TEXT NOT NULL, evidence_id INTEGER NOT NULL DEFAULT 0, xp INTEGER NOT NULL, gems INTEGER NOT NULL, rune_type TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(profile_id,boss_date));
+  CREATE TABLE IF NOT EXISTS profile_questions (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, question_date TEXT NOT NULL, domain TEXT NOT NULL, question TEXT NOT NULL, why TEXT NOT NULL DEFAULT '', options_json TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open', answer TEXT NOT NULL DEFAULT '', source TEXT NOT NULL, created_at TEXT NOT NULL, answered_at TEXT NOT NULL DEFAULT '', UNIQUE(profile_id,question_date,domain));
+  CREATE TABLE IF NOT EXISTS growth_evidence (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, skill_id TEXT NOT NULL, source_type TEXT NOT NULL, source_id TEXT NOT NULL, evidence_level INTEGER NOT NULL, summary TEXT NOT NULL, observable_json TEXT NOT NULL, child_confirmed INTEGER NOT NULL, guardian_confirmed INTEGER, ai_context INTEGER NOT NULL, created_at TEXT NOT NULL, UNIQUE(profile_id,source_type,source_id));
+  CREATE TABLE IF NOT EXISTS profile_context_archives (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, archive_key TEXT NOT NULL, version TEXT NOT NULL, source_label TEXT NOT NULL, context_json TEXT NOT NULL, ai_context INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(profile_id,archive_key));
+  CREATE TABLE IF NOT EXISTS reward_drops (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, weekly_boss_run_id INTEGER NOT NULL REFERENCES weekly_boss_runs(id) ON DELETE CASCADE, candidates_json TEXT NOT NULL, chosen_reward_id TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(weekly_boss_run_id));
+  CREATE TABLE IF NOT EXISTS reward_vouchers (id INTEGER PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, reward_catalog_id TEXT NOT NULL, acquired_at TEXT NOT NULL, expires_at TEXT NOT NULL, status TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE INDEX IF NOT EXISTS action_decisions_action_time ON action_decisions(action_id,created_at);
+  CREATE INDEX IF NOT EXISTS blueprints_profile_time ON growth_blueprints(profile_id,updated_at);
+  CREATE INDEX IF NOT EXISTS mission_books_profile_date ON daily_mission_books(profile_id,mission_date);
+  CREATE INDEX IF NOT EXISTS boss_runs_profile_week ON weekly_boss_runs(profile_id,week_start,status);
+  CREATE INDEX IF NOT EXISTS mini_boss_profile_date ON daily_mini_bosses(profile_id,boss_date,unlock_status);
+  CREATE INDEX IF NOT EXISTS profile_questions_profile_date ON profile_questions(profile_id,question_date,status);
+  CREATE INDEX IF NOT EXISTS growth_evidence_profile_skill ON growth_evidence(profile_id,skill_id,evidence_level,created_at);
+  CREATE INDEX IF NOT EXISTS profile_context_archives_profile_time ON profile_context_archives(profile_id,ai_context,updated_at);
+  CREATE INDEX IF NOT EXISTS reward_vouchers_profile_status ON reward_vouchers(profile_id,status,acquired_at);
+  CREATE INDEX IF NOT EXISTS auth_attempts_updated_at ON auth_attempts(updated_at);
+  CREATE INDEX IF NOT EXISTS self_coach_profile_time ON self_coach_answers(profile_id,created_at);
+  CREATE INDEX IF NOT EXISTS goals_profile_status ON growth_goals(profile_id,status,updated_at);
+  CREATE INDEX IF NOT EXISTS rescues_action_time ON action_rescues(action_id,created_at);
+  CREATE INDEX IF NOT EXISTS strategy_profile_status ON strategy_insights(profile_id,status,confidence,updated_at);
+  CREATE INDEX IF NOT EXISTS daily_plans_profile_date ON daily_plans(profile_id,plan_date);
+  CREATE INDEX IF NOT EXISTS daily_feedback_profile_time ON daily_plan_feedback(profile_id,created_at);
+  CREATE INDEX IF NOT EXISTS artifacts_profile_time ON artifacts(profile_id,created_at);
+  CREATE INDEX IF NOT EXISTS growth_journeys_profile_status ON growth_journeys(profile_id,status,updated_at);
+  CREATE INDEX IF NOT EXISTS growth_projects_profile_status ON growth_projects(profile_id,status,updated_at);
+  CREATE INDEX IF NOT EXISTS project_gaps_project_order ON project_gaps(project_id,gap_order);
+  CREATE INDEX IF NOT EXISTS project_stages_project_order ON project_stages(project_id,stage_order);
+  CREATE INDEX IF NOT EXISTS project_experience_profile_time ON project_experience_cards(profile_id,updated_at);
+  CREATE INDEX IF NOT EXISTS desk_matches_profile_status ON desk_matches(profile_id,status,updated_at);
+  CREATE INDEX IF NOT EXISTS project_rooms_profile_status ON project_rooms(profile_id,status,updated_at);
+  CREATE INDEX IF NOT EXISTS community_posts_visibility_time ON community_posts(visibility,guardian_approved,updated_at);
+  CREATE INDEX IF NOT EXISTS safety_reports_profile_status ON safety_reports(profile_id,status,updated_at);
+  CREATE INDEX IF NOT EXISTS feedback_profile_time ON task_feedback(profile_id,feedback_date,updated_at);
+  CREATE INDEX IF NOT EXISTS reviews_profile_week ON weekly_reviews(profile_id,week_start);
+  CREATE INDEX IF NOT EXISTS family_briefs_profile_week ON family_briefs(profile_id,week_start,status);
+  CREATE INDEX IF NOT EXISTS focus_profile_status ON focus_sessions(profile_id,status,started_at);
+  CREATE INDEX IF NOT EXISTS habits_profile_active ON habits(profile_id,active,updated_at);
+  CREATE INDEX IF NOT EXISTS actions_profile_status ON actions(profile_id,status,due_at,updated_at);
+  CREATE INDEX IF NOT EXISTS action_occurrences_date ON action_occurrences(occurrence_date,status,action_id);
+  CREATE INDEX IF NOT EXISTS ideas_profile_status ON ideas(profile_id,status,updated_at);
+  CREATE INDEX IF NOT EXISTS idea_resurfacings_profile_time ON idea_resurfacings(profile_id,outcome,created_at);
+  CREATE INDEX IF NOT EXISTS journals_profile_time ON journals(profile_id, created_at);
+  CREATE INDEX IF NOT EXISTS events_profile_time ON events(profile_id, created_at);
+`);
+ensureColumn("journals", "ai_context", "INTEGER NOT NULL DEFAULT 1");
+ensureColumn("task_feedback", "motivation", "TEXT NOT NULL DEFAULT 'unknown'");
+ensureColumn("actions", "goal_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("ideas", "goal_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("ideas", "last_surfaced_at", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("ideas", "surface_count", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("ideas", "snoozed_until", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("actions", "not_before", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("actions", "defer_count", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("actions", "last_defer_reason", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("actions", "item_kind", "TEXT NOT NULL DEFAULT 'todo'");
+ensureColumn("actions", "start_at", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("actions", "end_at", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("actions", "reminder_at", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("actions", "recurrence_json", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("actions", "my_day_date", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("actions", "skill_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("actions", "planner_reason", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("actions", "generated", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("actions", "project_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("actions", "project_stage_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("users", "recovery_hash", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("users", "recovery_updated_at", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("growth_goals", "plan_json", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("growth_goals", "is_primary", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("journals", "goal_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("task_feedback", "goal_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("artifacts", "goal_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("growth_goals", "journey_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("growth_projects", "journey_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("actions", "journey_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("project_experience_cards", "journey_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("weekly_boss_runs", "journey_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("growth_evidence", "journey_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("growth_evidence", "project_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("growth_evidence", "project_stage_id", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("growth_evidence", "weekly_boss_run_id", "INTEGER NOT NULL DEFAULT 0");
+backfillGrowthJourneys();
+for (const profile of db.prepare("SELECT DISTINCT profile_id FROM growth_goals WHERE status='active'").all()) {
+  const primary = db.prepare("SELECT id FROM growth_goals WHERE profile_id=? AND status='active' AND is_primary=1 LIMIT 1").get(profile.profile_id);
+  if (!primary) {
+    const latest = db.prepare("SELECT id FROM growth_goals WHERE profile_id=? AND status='active' ORDER BY updated_at DESC,id DESC LIMIT 1").get(profile.profile_id);
+    if (latest) db.prepare("UPDATE growth_goals SET is_primary=1 WHERE id=?").run(latest.id);
+  }
+}
+const skillNameToId = {
+  自我调节: "self-regulation",
+  会学会想: "metacognition",
+  元认知: "metacognition",
+  表达沟通: "communication",
+  数据推理: "data-reasoning",
+  AI协作: "ai-literacy",
+  ai协作: "ai-literacy",
+  AI素养: "ai-literacy",
+  创造项目: "creation",
+  判断协作: "ethics-collaboration",
+  身心底座: "wellbeing"
+};
+const skillIdToName = {
+  "self-regulation": "自我调节", metacognition: "会学会想", communication: "表达沟通", "data-reasoning": "数据推理", "ai-literacy": "AI协作", creation: "创造项目", "ethics-collaboration": "判断协作", wellbeing: "身心底座"
+};
+
+const mimeTypes = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".webp": "image/webp",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".svg": "image/svg+xml"
+};
+
+async function requestHandler(request, response) {
+  try {
+    const url = new URL(request.url || "/", `http://${request.headers.host}`);
+    if (request.method === "POST" && url.pathname === "/api/auth/register") return await handleRegister(request, response);
+    if (request.method === "POST" && url.pathname === "/api/auth/login") return await handleLogin(request, response);
+    if (request.method === "POST" && url.pathname === "/api/auth/logout") return await handleLogout(request, response);
+    if (request.method === "POST" && url.pathname === "/api/auth/recovery/rotate") return await handleRotateRecovery(request, response);
+    if (request.method === "POST" && url.pathname === "/api/auth/recovery/reset") return await handleRecoveryReset(request, response);
+    if (request.method === "POST" && url.pathname === "/api/dev/login") return await handleDevLogin(request, response);
+    if (request.method === "GET" && url.pathname === "/api/account") return await handleAccount(request, response);
+    if (request.method === "DELETE" && url.pathname === "/api/account") return await handleDeleteAccount(request, response);
+    if (request.method === "POST" && url.pathname === "/api/profiles") return await handleCreateProfile(request, response);
+    if (request.method === "GET" && url.pathname === "/api/progress") return await handleGetProgress(request, response, url);
+    if (request.method === "PUT" && url.pathname === "/api/progress") return await handleSaveProgress(request, response);
+    if (request.method === "GET" && url.pathname === "/api/export") return await handleExport(request, response, url);
+    if (request.method === "DELETE" && url.pathname.startsWith("/api/memories/")) return await handleDeleteMemory(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/events") return await handleEvent(request, response);
