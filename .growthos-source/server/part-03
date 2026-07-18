@@ -1,0 +1,282 @@
+          label: database.label
+        }
+      });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/ai/modules") return await handleListAiModules(request, response);
+    if (request.method === "GET" && /^\/api\/ai\/modules\/[a-z0-9-]+$/.test(url.pathname)) return await handleGetAiModule(request, response, url);
+    if (request.method === "POST" && url.pathname === "/api/ai/test") return await handleAiModuleTest(request, response);
+
+    if (request.method === "GET" && url.pathname === "/api/context/news") {
+      await handleNewsContext(url, response);
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/coach") {
+      await handleCoach(request, response);
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/plan") {
+      await handlePlan(request, response);
+      return;
+    }
+
+    if (request.method !== "GET") {
+      sendJson(response, 405, { error: "Method not allowed" });
+      return;
+    }
+
+    const pathname = url.pathname === "/" ? "/index.html" : url.pathname;
+    const extension = extname(pathname);
+    const isPublicFile = pathname === "/index.html"
+      || pathname === "/app.js"
+      || extension === ".css"
+      || (pathname.startsWith("/assets/") && [".png", ".jpg", ".jpeg", ".webp", ".svg"].includes(extension));
+    if (!isPublicFile) {
+      sendJson(response, 404, { error: "Not found" });
+      return;
+    }
+    const filePath = safeJoin(root, pathname);
+    if (!filePath) {
+      sendJson(response, 403, { error: "Forbidden" });
+      return;
+    }
+    const content = await readFile(filePath);
+    response.writeHead(200, {
+      "content-type": mimeTypes[extname(filePath)] || "application/octet-stream"
+    });
+    response.end(content);
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      sendJson(response, 404, { error: "Not found" });
+      return;
+    }
+    console.error(error);
+    sendJson(response, 500, { error: "Internal server error" });
+  }
+}
+
+export default requestHandler;
+
+if (!process.env.VERCEL) {
+  createServer(requestHandler).listen(port, host, () => {
+    console.log(`Talent Task OS running at http://${host}:${port}`);
+    console.log(`SiliconFlow model: ${model}`);
+  });
+}
+
+function nowIso() { return new Date().toISOString(); }
+function aiPrompt(moduleId, fallbackPrompt = "") {
+  return String(aiModuleMap.get(moduleId)?.prompt || fallbackPrompt || "").trim();
+}
+function aiRuntimeTarget(overrides = {}) {
+  const overrideBaseUrl = String(overrides.baseUrl || "").trim();
+  const overrideModel = String(overrides.model || "").trim();
+  const overrideApiKey = String(overrides.apiKey || "").trim();
+  let resolvedBaseUrl = overrideBaseUrl || baseUrl;
+  try {
+    const parsed = new URL(resolvedBaseUrl);
+    const privateDevHost = ["localhost", "127.0.0.1"].includes(parsed.hostname)
+      || /^10\./.test(parsed.hostname)
+      || /^192\.168\./.test(parsed.hostname)
+      || /^172\.(1[6-9]|2\d|3[01])\./.test(parsed.hostname);
+    const localHttp = parsed.protocol === "http:" && privateDevHost;
+    if (parsed.protocol !== "https:" && !(process.env.NODE_ENV !== "production" && localHttp)) throw new Error("only HTTPS providers are available in production");
+    resolvedBaseUrl = parsed.toString().replace(/\/$/, "");
+  } catch (error) {
+    throw new Error(`模型地址无效：${error.message}`);
+  }
+  return { provider: String(overrides.provider || aiProvider).trim().slice(0, 80), baseUrl: resolvedBaseUrl, model: (overrideModel || model).slice(0, 160), apiKey: overrideApiKey || apiKey };
+}
+function publicAiModule(entry) {
+  return {
+    id: entry.id,
+    name: entry.name,
+    endpoints: entry.endpoints,
+    context: entry.context,
+    prompt: entry.prompt,
+    outputContract: entry.outputContract,
+    fallback: entry.fallback,
+    exampleInput: entry.exampleInput,
+    exampleOutput: entry.exampleOutput
+  };
+}
+function handleListAiModules(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  sendJson(response, 200, { runtime: { provider: aiProvider, baseUrl, model, connected: Boolean(apiKey) }, modules: aiModuleCatalog.modules.map(publicAiModule) });
+}
+function handleGetAiModule(request, response, url) {
+  const user = requireUser(request, response); if (!user) return;
+  const moduleId = url.pathname.split("/").pop();
+  const entry = aiModuleMap.get(moduleId);
+  if (!entry) return sendJson(response, 404, { error: "未找到这个AI模块" });
+  sendJson(response, 200, { runtime: { provider: aiProvider, baseUrl, model, connected: Boolean(apiKey) }, module: publicAiModule(entry) });
+}
+async function handleAiModuleTest(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  const body = await readBodyJson(request);
+  const entry = aiModuleMap.get(String(body.moduleId || ""));
+  if (!entry) return sendJson(response, 400, { error: "请选择目录中的AI模块" });
+  const target = aiRuntimeTarget(body);
+  if (!target.apiKey) return sendJson(response, 400, { error: "尚未配置模型密钥。可在服务端环境变量中设置，或仅在本次测试请求中提供。" });
+  const input = body.input && typeof body.input === "object" ? body.input : entry.exampleInput;
+  const apiResponse = await fetch(`${target.baseUrl}/chat/completions`, {
+    method: "POST",
+    signal: AbortSignal.timeout(30000),
+    headers: { authorization: `Bearer ${target.apiKey}`, "content-type": "application/json" },
+    body: JSON.stringify({ model: target.model, temperature: 0.35, max_tokens: 1400, response_format: { type: "json_object" }, messages: [
+      { role: "system", content: aiPrompt(entry.id, entry.prompt) },
+      { role: "user", content: JSON.stringify({ input, outputContract: entry.outputContract }) }
+    ] })
+  });
+  const raw = await apiResponse.text();
+  if (!apiResponse.ok) return sendJson(response, 502, { error: `模型返回 ${apiResponse.status}`, provider: target.provider, model: target.model, detail: raw.slice(0, 500) });
+  let content = raw;
+  try { content = JSON.parse(raw)?.choices?.[0]?.message?.content || raw; } catch {}
+  let output = content;
+  try { output = JSON.parse(content); } catch {}
+  recordEvent(user.id, null, "ai_module_tested", { moduleId: entry.id, provider: target.provider, model: target.model });
+  sendJson(response, 200, { moduleId: entry.id, provider: target.provider, model: target.model, output, raw: String(content).slice(0, 16000) });
+}
+function ensureColumn(table, column, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all().map((item) => item.name);
+  if (!columns.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+function profileId() { return `profile_${randomBytes(10).toString("hex")}`; }
+function hashPassword(password) {
+  const salt = randomBytes(16).toString("hex");
+  return `${salt}:${scryptSync(password, salt, 64).toString("hex")}`;
+}
+function verifyPassword(password, stored) {
+  const [salt, expectedHex] = String(stored).split(":");
+  if (!salt || !expectedHex) return false;
+  const actual = scryptSync(password, salt, 64);
+  const expected = Buffer.from(expectedHex, "hex");
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+function cookieMap(request) {
+  return Object.fromEntries(String(request.headers.cookie || "").split(";").map((part) => part.trim().split("=")).filter(([key]) => key));
+}
+function currentUser(request) {
+  const token = cookieMap(request).growth_session;
+  if (!token) return null;
+  return db.prepare(`SELECT users.id, users.email FROM sessions JOIN users ON users.id=sessions.user_id WHERE sessions.token=? AND sessions.expires_at>?`).get(token, nowIso()) || null;
+}
+function requireUser(request, response) {
+  const user = currentUser(request);
+  if (!user) sendJson(response, 401, { error: "请先登录" });
+  return user;
+}
+function publicProfiles(userId) {
+  return db.prepare(`SELECT profiles.id,name,age,avatar,base_template AS baseTemplate,profiles.created_at AS createdAt,
+    CASE WHEN consents.guardian_confirmed=1 THEN 1 ELSE 0 END AS consentGranted,
+    consents.consent_version AS consentVersion,consents.granted_at AS consentGrantedAt
+    FROM profiles LEFT JOIN consents ON consents.profile_id=profiles.id WHERE profiles.user_id=? ORDER BY profiles.created_at`).all(userId)
+    .map((profile) => ({ ...profile, consentGranted: Boolean(profile.consentGranted) }));
+}
+function createSession(response, userId) {
+  const token = randomBytes(32).toString("hex");
+  const expires = new Date(Date.now() + 30 * 86400000).toISOString();
+  db.prepare("INSERT INTO sessions(token,user_id,expires_at) VALUES(?,?,?)").run(token, userId, expires);
+  response.setHeader("set-cookie", sessionCookie(token, 2592000));
+}
+function sessionCookie(value, maxAge) {
+  return `growth_session=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${secureCookies ? "; Secure" : ""}`;
+}
+function requestIp(request) {
+  const forwarded = String(request.headers["x-vercel-forwarded-for"] || request.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwarded || request.socket?.remoteAddress || "local";
+}
+function authAttemptKey(type, scope) {
+  return createHash("sha256").update(`${type}\0${scope}`).digest("hex");
+}
+function authAttemptScopes(request, type, identity) {
+  const ip = requestIp(request);
+  const normalizedIdentity = String(identity || "unknown").trim().toLowerCase();
+  return [authAttemptKey(type, `ip:${ip}`), authAttemptKey(type, `identity:${ip}:${normalizedIdentity}`)];
+}
+function consumeAuthAttempt(request, type, identity, { max, ipMax = max * 3, windowMs }) {
+  const now = Date.now();
+  const cutoff = now - windowMs;
+  db.prepare("DELETE FROM auth_attempts WHERE updated_at<?").run(now - 7 * 86400000);
+  const keys = authAttemptScopes(request, type, identity);
+  const limits = [ipMax, max];
+  const upsert = db.prepare(`INSERT INTO auth_attempts(attempt_key,attempt_type,attempt_count,window_started_at,updated_at) VALUES(?,?,?,?,?)
+    ON CONFLICT(attempt_key) DO UPDATE SET
+      attempt_count=CASE WHEN auth_attempts.window_started_at<=? THEN 1 ELSE auth_attempts.attempt_count+1 END,
+      window_started_at=CASE WHEN auth_attempts.window_started_at<=? THEN excluded.window_started_at ELSE auth_attempts.window_started_at END,
+      updated_at=excluded.updated_at`);
+  return keys.every((key, index) => {
+    upsert.run(key, type, 1, now, now, cutoff, cutoff);
+    const row = db.prepare("SELECT attempt_count FROM auth_attempts WHERE attempt_key=?").get(key);
+    return Number(row?.attempt_count || 0) <= limits[index];
+  });
+}
+function clearAuthAttempts(request, type, identity) {
+  const [, identityKey] = authAttemptScopes(request, type, identity);
+  const statement = db.prepare("DELETE FROM auth_attempts WHERE attempt_key=?");
+  statement.run(identityKey);
+}
+const dummyRecoveryHash = hashPassword(randomBytes(24).toString("hex"));
+const dummyPasswordHash = hashPassword(randomBytes(24).toString("hex"));
+function recoveryCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = randomBytes(20);
+  const raw = [...bytes].map((byte) => alphabet[byte % alphabet.length]).join("");
+  return raw.match(/.{1,4}/g).join("-");
+}
+function normalizeRecoveryCode(value) {
+  return String(value || "").toUpperCase().replace(/[^A-Z2-9]/g, "");
+}
+async function handleRotateRecovery(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  const body = await readBodyJson(request);
+  const row = db.prepare("SELECT id,email,password_hash FROM users WHERE id=?").get(user.id);
+  const isDevAdmin = row.email === "admin@growth-os.local" && devAdminEnabled;
+  if (!isDevAdmin && !verifyPassword(String(body.currentPassword || ""), row.password_hash)) return sendJson(response, 401, { error: "当前密码不正确" });
+  const code = recoveryCode();
+  db.prepare("UPDATE users SET recovery_hash=?,recovery_updated_at=? WHERE id=?").run(hashPassword(normalizeRecoveryCode(code)), nowIso(), user.id);
+  recordEvent(user.id, null, "recovery_rotated", { isDevAdmin });
+  sendJson(response, 200, { recoveryCode: code, updatedAt: nowIso() });
+}
+async function handleRecoveryReset(request, response) {
+  const body = await readBodyJson(request);
+  const email = String(body.email || "").trim().toLowerCase();
+  const code = normalizeRecoveryCode(body.recoveryCode);
+  const newPassword = String(body.newPassword || "");
+  if (!consumeAuthAttempt(request, "recovery", email, { max: 5, windowMs: 15 * 60000 })) return sendJson(response, 429, { error: "尝试次数过多，请15分钟后再试" });
+  if (!/^\S+@\S+\.\S+$/.test(email) || code.length !== 20 || newPassword.length < 8) return sendJson(response, 400, { error: "恢复信息不正确" });
+  const row = db.prepare("SELECT id,email,recovery_hash FROM users WHERE email=?").get(email);
+  const validCode = verifyPassword(code, row?.recovery_hash || dummyRecoveryHash);
+  if (!row?.recovery_hash || !validCode) return sendJson(response, 400, { error: "恢复信息不正确" });
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE users SET password_hash=?,recovery_hash='',recovery_updated_at=? WHERE id=?").run(hashPassword(newPassword), nowIso(), row.id);
+    db.prepare("DELETE FROM sessions WHERE user_id=?").run(row.id);
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  clearAuthAttempts(request, "recovery", email);
+  recordEvent(row.id, null, "recovery_reset", { sessionsRevoked: true });
+  createSession(response, row.id);
+  sendJson(response, 200, { email: row.email, profiles: publicProfiles(row.id), recoveryConfigured: false, recoveryUpdatedAt: nowIso(), recoveryCodeUsed: true });
+}
+async function handleRegister(request, response) {
+  const body = await readBodyJson(request);
+  const email = String(body.email || "").trim().toLowerCase();
+  const password = String(body.password || "");
+  if (!/^\S+@\S+\.\S+$/.test(email) || password.length < 8) return sendJson(response, 400, { error: "请输入有效邮箱和至少8位密码" });
+  if (!consumeAuthAttempt(request, "register", email, { max: 5, ipMax: 12, windowMs: 60 * 60000 })) return sendJson(response, 429, { error: "注册尝试过于频繁，请1小时后再试" });
+  try {
+    const code = recoveryCode();
+    const result = db.prepare("INSERT INTO users(email,password_hash,created_at,recovery_hash,recovery_updated_at) VALUES(?,?,?,?,?)").run(email, hashPassword(password), nowIso(), hashPassword(normalizeRecoveryCode(code)), nowIso());
+    clearAuthAttempts(request, "register", email);
+    createSession(response, Number(result.lastInsertRowid));
+    sendJson(response, 201, { email, profiles: [], recoveryConfigured: true, recoveryUpdatedAt: nowIso(), recoveryCode: code });
+  } catch (error) {
+    sendJson(response, 409, { error: "这个邮箱已注册" });
+  }
+}
+async function handleLogin(request, response) {
+  const body = await readBodyJson(request);
