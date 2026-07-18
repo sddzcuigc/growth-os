@@ -29,3 +29,4 @@ if (!source.includes(before)) {
 
 fs.writeFileSync(file, source.replace(before, after));
 console.log("Patched ensureColumn for libSQL/Turso compatibility.");
+// Trigger the already-installed hotfix workflow.
