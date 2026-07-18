@@ -1,0 +1,163 @@
+  const loginName = String(body.email || "").trim().toLowerCase();
+  if (!consumeAuthAttempt(request, "login", loginName, { max: 10, ipMax: 30, windowMs: 15 * 60000 })) return sendJson(response, 429, { error: "登录尝试过多，请15分钟后再试" });
+  const email = loginName;
+  const row = db.prepare("SELECT id,email,password_hash,recovery_hash,recovery_updated_at FROM users WHERE email=?").get(email);
+  const passwordMatches = verifyPassword(String(body.password || ""), row?.password_hash || dummyPasswordHash);
+  if (!row || !passwordMatches) return sendJson(response, 401, { error: "邮箱或密码不正确" });
+  clearAuthAttempts(request, "login", loginName);
+  createSession(response, row.id);
+  sendJson(response, 200, { email: row.email, profiles: publicProfiles(row.id), recoveryConfigured: Boolean(row.recovery_hash), recoveryUpdatedAt: row.recovery_updated_at || "" });
+}
+function handleLogout(request, response) {
+  const token = cookieMap(request).growth_session;
+  const sessionUser = token ? db.prepare("SELECT users.id,users.email FROM sessions JOIN users ON users.id=sessions.user_id WHERE sessions.token=?").get(token) : null;
+  if (token) db.prepare("DELETE FROM sessions WHERE token=?").run(token);
+  if (sessionUser && isIsolatedDemoUser(sessionUser)) db.prepare("DELETE FROM users WHERE id=?").run(sessionUser.id);
+  response.setHeader("set-cookie", sessionCookie("", 0));
+  sendJson(response, 200, { ok: true });
+}
+function handleAccount(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  const recovery = db.prepare("SELECT recovery_hash,recovery_updated_at FROM users WHERE id=?").get(user.id);
+  const isDemo = isIsolatedDemoUser(user) || user.email === "builtin-admin@growth-os.local";
+  sendJson(response, 200, { email: isDemo ? "admin" : user.email, isTestAdmin: isDemo || user.email === "admin@growth-os.local", recoveryConfigured: isDemo ? false : Boolean(recovery?.recovery_hash), recoveryUpdatedAt: isDemo ? "" : recovery?.recovery_updated_at || "", profiles: publicProfiles(user.id) });
+}
+async function handleDeleteAccount(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  if (isDemoUser(user)) return sendJson(response, 403, { error: "内置测试账号不能删除" });
+  const body = await readBodyJson(request);
+  if (String(body.confirmation || "").trim() !== "删除我的账号") return sendJson(response, 422, { error: "请输入“删除我的账号”确认永久删除" });
+  const row = db.prepare("SELECT password_hash FROM users WHERE id=?").get(user.id);
+  if (!row || !verifyPassword(String(body.password || ""), row.password_hash)) return sendJson(response, 401, { error: "当前密码不正确" });
+  db.exec("BEGIN");
+  try {
+    db.prepare("DELETE FROM users WHERE id=?").run(user.id);
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  response.setHeader("set-cookie", sessionCookie("", 0));
+  sendJson(response, 200, { ok: true, deletedAt: nowIso() });
+}
+function profileContextArchive(profileIdValue) {
+  const row = db.prepare("SELECT archive_key AS archiveKey,version,source_label AS sourceLabel,context_json AS context,ai_context AS aiContext,updated_at AS updatedAt FROM profile_context_archives WHERE profile_id=? AND ai_context=1 ORDER BY updated_at DESC,id DESC LIMIT 1").get(profileIdValue);
+  return row ? { ...row, aiContext: Boolean(row.aiContext), context: parseStoredJson(row.context, {}) } : null;
+}
+function profileGuardianContext(profileIdValue) {
+  const archive = profileContextArchive(profileIdValue);
+  if (!archive) return null;
+  const { aiContextSummary, knownProfile, questionMap, version, source } = archive.context;
+  return { archiveKey: archive.archiveKey, version: version || archive.version, source: source || archive.sourceLabel, aiContextSummary: aiContextSummary || {}, knownProfile: knownProfile || {}, questionMap: questionMap || [] };
+}
+function handleGetProfileContextArchive(request, response, url) {
+  const user = requireUser(request, response); if (!user) return;
+  const profileIdValue = String(url.searchParams.get("profileId") || "");
+  if (!ownedProfile(user.id, profileIdValue)) return sendJson(response, 404, { error: "角色不存在" });
+  const archive = profileGuardianContext(profileIdValue);
+  if (!archive) return sendJson(response, 200, { archive: null });
+  sendJson(response, 200, { archive });
+}
+function isIsolatedDemoUser(user) { return /^demo-session-[a-f0-9]+@growth-os\.local$/.test(String(user?.email || "")); }
+function ensureDevAdmin() {
+  let user = db.prepare("SELECT id,email FROM users WHERE email=?").get("admin@growth-os.local");
+  if (!user) {
+    const result = db.prepare("INSERT INTO users(email,password_hash,created_at) VALUES(?,?,?)").run("admin@growth-os.local", hashPassword(randomBytes(24).toString("hex")), nowIso());
+    user = { id: Number(result.lastInsertRowid), email: "admin@growth-os.local" };
+  }
+  if (!publicProfiles(user.id).length) {
+    const id = profileId();
+    db.exec("BEGIN");
+    try {
+      db.prepare("INSERT INTO profiles(id,user_id,name,age,avatar,base_template,created_at) VALUES(?,?,?,?,?,?,?)").run(id, user.id, "测试冒险家", "9岁", "boy", "brother", nowIso());
+      db.prepare("INSERT INTO consents(profile_id,user_id,consent_version,guardian_confirmed,granted_at) VALUES(?,?,?,?,?)").run(id, user.id, "local-test-v1", 1, nowIso());
+      db.exec("COMMIT");
+    } catch (error) { db.exec("ROLLBACK"); throw error; }
+  }
+  return user;
+}
+function handleDevLogin(request, response) {
+  if (!devAdminEnabled) return sendJson(response, 404, { error: "Not found" });
+  const user = ensureDevAdmin();
+  createSession(response, user.id);
+  const recovery = db.prepare("SELECT recovery_hash,recovery_updated_at FROM users WHERE id=?").get(user.id);
+  sendJson(response, 200, { email: user.email, isTestAdmin: true, recoveryConfigured: Boolean(recovery?.recovery_hash), recoveryUpdatedAt: recovery?.recovery_updated_at || "", profiles: publicProfiles(user.id) });
+}
+async function handleCreateProfile(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  const body = await readBodyJson(request);
+  const name = String(body.name || "").trim().slice(0, 20);
+  const age = String(body.age || "").trim().slice(0, 20);
+  const avatar = body.avatar === "girl" ? "girl" : "boy";
+  const baseTemplate = body.baseTemplate === "sister" ? "sister" : "brother";
+  const guardianConsent = body.guardianConsent === true;
+  const consentVersion = "child-data-v1";
+  if (!name || !age) return sendJson(response, 400, { error: "请填写角色名和年龄" });
+  if (!guardianConsent) return sendJson(response, 400, { error: "创建儿童角色前需要家长或监护人同意" });
+  const id = profileId();
+  try {
+    db.exec("BEGIN");
+    db.prepare("INSERT INTO profiles(id,user_id,name,age,avatar,base_template,created_at) VALUES(?,?,?,?,?,?,?)").run(id, user.id, name, age, avatar, baseTemplate, nowIso());
+    db.prepare("INSERT INTO consents(profile_id,user_id,consent_version,guardian_confirmed,granted_at) VALUES(?,?,?,?,?)").run(id, user.id, consentVersion, 1, nowIso());
+    recordEvent(user.id, id, "profile_created", { baseTemplate, avatar, consentVersion });
+    db.exec("COMMIT");
+    sendJson(response, 201, publicProfiles(user.id).find((profile) => profile.id === id));
+  } catch { try { db.exec("ROLLBACK"); } catch {} sendJson(response, 409, { error: "角色名已存在" }); }
+}
+function ownedProfile(userId, id) { return db.prepare("SELECT * FROM profiles WHERE id=? AND user_id=?").get(id, userId); }
+function revalidateProfileAfterAsync(userId, id, response) {
+  if (ownedProfile(userId, id)) return true;
+  sendJson(response, 410, { error: "账号或角色已删除，本次生成未保存" });
+  return false;
+}
+function handleGetProgress(request, response, url) {
+  const user = requireUser(request, response); if (!user) return;
+  const id = String(url.searchParams.get("profileId") || "");
+  if (!ownedProfile(user.id, id)) return sendJson(response, 404, { error: "角色不存在" });
+  const snapshot = db.prepare("SELECT data_json,updated_at FROM snapshots WHERE profile_id=?").get(id);
+  const memories = db.prepare("SELECT id,kind,summary,evidence_json AS evidence,created_at AS createdAt FROM memories WHERE profile_id=? ORDER BY id DESC LIMIT 30").all(id).map((item) => ({...item,evidence:JSON.parse(item.evidence)}));
+  sendJson(response, 200, { data: snapshot ? JSON.parse(snapshot.data_json) : {}, updatedAt: snapshot?.updated_at || null, memories });
+}
+async function handleSaveProgress(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  const body = await readBodyJson(request);
+  const id = String(body.profileId || "");
+  if (!ownedProfile(user.id, id)) return sendJson(response, 404, { error: "角色不存在" });
+  const data = body.data && typeof body.data === "object" ? body.data : {};
+  db.prepare("INSERT INTO snapshots(profile_id,data_json,updated_at) VALUES(?,?,?) ON CONFLICT(profile_id) DO UPDATE SET data_json=excluded.data_json,updated_at=excluded.updated_at").run(id, JSON.stringify(data).slice(0, 1000000), nowIso());
+  const memory = body.memory;
+  if (memory?.summary) {
+    const result = db.prepare("INSERT INTO memories(profile_id,kind,summary,evidence_json,created_at) VALUES(?,?,?,?,?)").run(id, String(memory.kind || "progress").slice(0,30), String(memory.summary).slice(0,500), JSON.stringify(memory.evidence || {}), nowIso());
+    evolveHypotheses(id, { id: Number(result.lastInsertRowid), kind: memory.kind, summary: memory.summary, evidence: memory.evidence || {}, shareWithAi: true });
+  }
+  sendJson(response, 200, { ok: true, updatedAt: nowIso() });
+}
+function handleExport(request, response, url) {
+  const user = requireUser(request, response); if (!user) return;
+  const id = String(url.searchParams.get("profileId") || "");
+  const profile = ownedProfile(user.id, id);
+  if (!profile) return sendJson(response, 404, { error: "角色不存在" });
+  const snapshot = db.prepare("SELECT data_json,updated_at FROM snapshots WHERE profile_id=?").get(id);
+  const memories = db.prepare("SELECT kind,summary,evidence_json,created_at FROM memories WHERE profile_id=? ORDER BY id").all(id).map((item) => ({kind:item.kind,summary:item.summary,evidence:JSON.parse(item.evidence_json),createdAt:item.created_at}));
+  const journals = journalRows(id);
+  const hypotheses = hypothesisRows(id);
+  const taskFeedback = taskFeedbackRows(id, 1000);
+  const artifacts = db.prepare("SELECT * FROM artifacts WHERE profile_id=? ORDER BY id").all(id).map((row) => ({ ...publicArtifact(row), mediaData: row.media_data ? `data:${row.media_mime};base64,${row.media_data}` : "" }));
+  const strategyInsights = strategyRows(id);
+  const growthGoals = goalRows(id);
+  const selfCoachAnswers = selfCoachRows(id);
+  const actions = actionRows(id);
+  const actionOccurrences = db.prepare("SELECT action_occurrences.* FROM action_occurrences JOIN actions ON actions.id=action_occurrences.action_id WHERE actions.profile_id=? ORDER BY action_occurrences.id").all(id).map((item) => ({ id: Number(item.id), actionId: Number(item.action_id), occurrenceDate: item.occurrence_date, status: item.status, createdAt: item.created_at, updatedAt: item.updated_at }));
+  const actionDecisions = db.prepare("SELECT action_id AS actionId,reason,outcome,note,created_at AS createdAt FROM action_decisions WHERE profile_id=? ORDER BY id").all(id);
+  const actionRescues = db.prepare("SELECT id,action_id AS actionId,reason,response_json AS response,outcome,created_at AS createdAt,updated_at AS updatedAt FROM action_rescues WHERE profile_id=? ORDER BY id").all(id).map((item) => ({ ...item, response: parseStoredJson(item.response, {}) }));
+  const habits = habitRows(id);
+  const habitLogs = db.prepare("SELECT habit_logs.* FROM habit_logs JOIN habits ON habits.id=habit_logs.habit_id WHERE habits.profile_id=? ORDER BY habit_logs.id").all(id).map((item) => ({ id: Number(item.id), habitId: Number(item.habit_id), logDate: item.log_date, status: item.status, createdAt: item.created_at }));
+  const focusSessions = db.prepare("SELECT id,action_id AS actionId,title,planned_seconds AS plannedSeconds,status,elapsed_seconds AS elapsedSeconds,resumed_at AS resumedAt,started_at AS startedAt,ended_at AS endedAt,outcome FROM focus_sessions WHERE profile_id=? ORDER BY id").all(id);
+  const weeklyReviews = reviewRows(id);
+  response.setHeader("content-disposition", `attachment; filename="growth-${id}.json"`);
+  const ideas = ideaRows(id);
+  const ideaResurfacings = db.prepare("SELECT idea_id AS ideaId,prompt_json AS prompt,outcome,created_at AS createdAt,updated_at AS updatedAt FROM idea_resurfacings WHERE profile_id=? ORDER BY id").all(id).map((item) => ({ ...item, prompt: JSON.parse(item.prompt) }));
+  const dailyPlans = db.prepare("SELECT plan_date AS planDate,checkin_json AS checkin,plan_json AS plan,excluded_json AS excluded,status,feedback,created_at AS createdAt,updated_at AS updatedAt FROM daily_plans WHERE profile_id=? ORDER BY plan_date").all(id).map((item) => ({ ...item, checkin: parseStoredJson(item.checkin, {}), plan: parseStoredJson(item.plan, {}), excluded: parseStoredJson(item.excluded, []) }));
+  const dailyPlanFeedback = db.prepare("SELECT source_ref AS sourceRef,source_type AS sourceType,reason,created_at AS createdAt FROM daily_plan_feedback WHERE profile_id=? ORDER BY id").all(id);
+  const familyBriefs = db.prepare("SELECT week_start AS weekStart,report_json AS report,status,provider,created_at AS createdAt,updated_at AS updatedAt FROM family_briefs WHERE profile_id=? ORDER BY week_start").all(id).map((item) => ({ ...item, report: JSON.parse(item.report) }));
+  const blueprintRow = db.prepare("SELECT blueprint_json AS blueprint,evidence_fingerprint AS evidenceFingerprint,provider,created_at AS createdAt,updated_at AS updatedAt FROM growth_blueprints WHERE profile_id=?").get(id);
+  const growthBlueprint = blueprintRow ? { ...blueprintRow, blueprint: parseStoredJson(blueprintRow.blueprint, {}) } : null;
+  const dailyMissionBooks = db.prepare("SELECT mission_date AS missionDate,book_json AS book,context_fingerprint AS contextFingerprint,provider,created_at AS createdAt,updated_at AS updatedAt FROM daily_mission_books WHERE profile_id=? ORDER BY mission_date").all(id).map((item) => ({ ...item, book: parseStoredJson(item.book, {}) }));
+  const growthJourneys = db.prepare("SELECT id,title,status,active_goal_id AS activeGoalId,active_project_id AS activeProjectId,created_at AS createdAt,updated_at AS updatedAt FROM growth_journeys WHERE profile_id=? ORDER BY id").all(id).map((item)=>({...item,id:Number(item.id),activeGoalId:Number(item.activeGoalId||0),activeProjectId:Number(item.activeProjectId||0)}));
