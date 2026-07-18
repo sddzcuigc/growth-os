@@ -29,7 +29,7 @@ jobs:
           cache: npm
 
       - name: Assemble readable migration
-        run: cat .journey-patch/part-00.py .journey-patch/part-01a.py .journey-patch/part-00b.py .journey-patch/part-01b.py .journey-patch/part-02.py > /tmp/apply_journey_kernel.py
+        run: cat .journey-patch/part-00.py .journey-patch/part-01a.py .journey-patch/part-00b.py .journey-patch/part-01b.py .journey-patch/part-02.py .journey-patch/part-03.py > /tmp/apply_journey_kernel.py
 
       - name: Apply Journey kernel
         id: apply
