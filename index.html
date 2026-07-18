@@ -121,6 +121,20 @@
               <button type="button" data-action="close-settings" aria-label="关闭设置">×</button>
             </div>
             <div class="settings-body" id="settings-content"></div>
+            <section class="ai-preference-panel" id="ai-preference-panel">
+              <h3>AI速度与模型</h3>
+              <label>提问方式
+                <select id="setting-question-mode">
+                  <option value="fast">快速：3个关键问题</option>
+                  <option value="balanced">均衡：4个问题</option>
+                  <option value="deep">深入：6个问题</option>
+                </select>
+              </label>
+              <label>使用模型
+                <select id="setting-ai-model"><option value="">正在读取硅基流动模型…</option></select>
+              </label>
+              <small>快速模式默认少问、直接生成；模型越强通常等待越久。设置对当前角色生效。</small>
+            </section>
           </div>
         </section>
 
@@ -158,7 +172,7 @@
               <button class="auth-secondary" type="button" data-action="hide-recovery">返回密码登录</button>
             </div>
             <p class="auth-error" id="auth-error"></p>
-            <small>账户数据按角色隔离，并保存到本机 SQLite 数据库。</small>
+            <small>演示账号：admin / admin（公共演示数据）；正式使用请注册自己的账户。数据按角色隔离并保存到云端。</small>
           </div>
         </section>
 
