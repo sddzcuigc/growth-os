@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fix/usability-model-task-v7
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -15,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/usability-model-task-v7
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
           fetch-depth: 0
           show-progress: false
 
