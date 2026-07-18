@@ -16,6 +16,8 @@ def _replace_in_function(text: str, function_anchor: str, next_anchor: str, old:
 
 
 def insert_after(text: str, anchor: str, addition: str, label: str) -> str:
+    if label == 'journey helpers':
+        return _base_replace_once(text, anchor, addition + anchor, label)
     if label == 'action lineage vars':
         return _replace_in_function(
             text,
