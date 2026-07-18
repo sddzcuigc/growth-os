@@ -71,18 +71,16 @@ server = replace_once(
     'status storage',
 )
 
-# Production must not expose a shared admin/admin account.
-server, removed = re.subn(
-    r'''\n  if \(loginName === "admin"\) \{\n    if \(String\(body\.password \|\| ""\) !== "admin"\) return sendJson\(response, 401, \{ error: "账号或密码不正确" \}\);\n    const demo = createIsolatedDemoAccount\(\);\n    clearAuthAttempts\(request, "login", loginName\);\n    createSession\(response, demo\.id\);\n    return sendJson\(response, 200, \{ email: "admin", isTestAdmin: true, profiles: publicProfiles\(demo\.id\), recoveryConfigured: false, recoveryUpdatedAt: "" \}\);\n  \}''',
-    '',
+# Shared demo credentials are available only to the explicit local development gate.
+server = replace_once(
     server,
-    count=1,
+    '  if (loginName === "admin") {\n',
+    '  if (devAdminEnabled && loginName === "admin") {\n',
+    'development-only admin guard',
 )
-if removed != 1:
-    raise SystemExit(f'production admin branch: expected one block, removed {removed}')
 
 # Goal records expose their journey.
-server = replace_once(server, 'return { id: Number(row.id), title: row.title,', 'return { id: Number(row.id), journeyId: Number(row.journey_id || 0), title: row.title,', 'goal journey public')
+server = replace_once(server, 'return { id: Number(row.id), title: row.title, why: row.why_text,', 'return { id: Number(row.id), journeyId: Number(row.journey_id || 0), title: row.title, why: row.why_text,', 'goal journey public')
 
 journey_helpers = r'''
 // GROWTHOS_JOURNEY_KERNEL_V2
