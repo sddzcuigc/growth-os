@@ -32,10 +32,28 @@ jobs:
         run: cat .journey-patch/part-00.py .journey-patch/part-01.py .journey-patch/part-02.py > /tmp/apply_journey_kernel.py
 
       - name: Apply Journey kernel
+        id: apply
         shell: bash
+        continue-on-error: true
         run: |
-          set -o pipefail
-          python /tmp/apply_journey_kernel.py 2>&1 | tail -80
+          set +e
+          python /tmp/apply_journey_kernel.py > /tmp/journey-migration.log 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          tail -120 /tmp/journey-migration.log
+          exit 0
+
+      - name: Upload migration diagnostic
+        if: steps.apply.outputs.exit_code != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: journey-migration-diagnostic
+          path: /tmp/journey-migration.log
+          if-no-files-found: error
+
+      - name: Stop on migration failure
+        if: steps.apply.outputs.exit_code != '0'
+        run: exit 1
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
