@@ -1,0 +1,133 @@
+  const weeklyBossRuns = db.prepare("SELECT id,journey_id AS journeyId,boss_id AS bossId,difficulty,week_start AS weekStart,source_blueprint_id AS sourceBlueprintId,source_project_id AS sourceProjectId,shield_total AS shieldTotal,shield_broken AS shieldBroken,hp_total AS hpTotal,hp_remaining AS hpRemaining,status,selection_json AS selection,created_at AS createdAt,updated_at AS updatedAt FROM weekly_boss_runs WHERE profile_id=? ORDER BY week_start,id").all(id).map((item) => ({ ...item, selection: parseStoredJson(item.selection, {}) }));
+  const dailyCorePlans = db.prepare("SELECT id,plan_date AS planDate,weekly_boss_run_id AS weeklyBossRunId,tasks_json AS tasks,status,created_at AS createdAt,updated_at AS updatedAt FROM daily_core_plans WHERE profile_id=? ORDER BY plan_date,id").all(id).map((item) => ({ ...item, tasks: parseStoredJson(item.tasks, []) }));
+  const dailyMiniBosses = db.prepare("SELECT id,weekly_boss_run_id AS weeklyBossRunId,boss_date AS bossDate,template_type AS templateType,unlock_status AS unlockStatus,challenge_json AS challenge,evidence_id AS evidenceId,xp,gems,rune_type AS runeType,created_at AS createdAt,updated_at AS updatedAt FROM daily_mini_bosses WHERE profile_id=? ORDER BY boss_date,id").all(id).map((item) => ({ ...item, challenge: parseStoredJson(item.challenge, {}) }));
+  const profileQuestions = db.prepare("SELECT id,question_date AS questionDate,domain,question,why,options_json AS options,status,answer,source,created_at AS createdAt,answered_at AS answeredAt FROM profile_questions WHERE profile_id=? ORDER BY id").all(id).map((item) => ({ ...item, options: parseStoredJson(item.options, []) }));
+  const growthEvidence = db.prepare("SELECT id,journey_id AS journeyId,project_id AS projectId,project_stage_id AS projectStageId,weekly_boss_run_id AS weeklyBossRunId,skill_id AS skillId,source_type AS sourceType,source_id AS sourceId,evidence_level AS evidenceLevel,summary,observable_json AS observable,child_confirmed AS childConfirmed,guardian_confirmed AS guardianConfirmed,ai_context AS aiContext,created_at AS createdAt FROM growth_evidence WHERE profile_id=? ORDER BY id").all(id).map((item) => ({ ...item, observable: parseStoredJson(item.observable, {}), childConfirmed: Boolean(item.childConfirmed), guardianConfirmed: item.guardianConfirmed === null ? null : Boolean(item.guardianConfirmed), aiContext: Boolean(item.aiContext) }));
+  const contextArchives = db.prepare("SELECT archive_key AS archiveKey,version,source_label AS sourceLabel,context_json AS context,ai_context AS aiContext,created_at AS createdAt,updated_at AS updatedAt FROM profile_context_archives WHERE profile_id=? ORDER BY id").all(id).map((item) => ({ ...item, context: parseStoredJson(item.context, {}), aiContext: Boolean(item.aiContext) }));
+  const rewardDrops = db.prepare("SELECT id,weekly_boss_run_id AS weeklyBossRunId,candidates_json AS candidates,chosen_reward_id AS chosenRewardId,status,created_at AS createdAt,updated_at AS updatedAt FROM reward_drops WHERE profile_id=? ORDER BY id").all(id).map((item) => ({ ...item, candidates: parseStoredJson(item.candidates, []) }));
+  const rewardVouchers = db.prepare("SELECT id,reward_catalog_id AS rewardCatalogId,acquired_at AS acquiredAt,expires_at AS expiresAt,status,updated_at AS updatedAt FROM reward_vouchers WHERE profile_id=? ORDER BY id").all(id);
+  const projects = projectRows(id);
+  const desk = {
+    preferences: deskPreferences(id),
+    matches: db.prepare("SELECT * FROM desk_matches WHERE profile_id=? ORDER BY id").all(id).map(publicDeskMatch),
+    rooms: db.prepare("SELECT * FROM project_rooms WHERE profile_id=? ORDER BY id").all(id).map(publicProjectRoom),
+    communityPosts: db.prepare("SELECT * FROM community_posts WHERE profile_id=? ORDER BY id").all(id).map((row) => ({ ...publicCommunityPost(row), experienceId: Number(row.experience_id), visibility: row.visibility, guardianApproved: Boolean(row.guardian_approved) })),
+    safetyReports: safetyReportRows(id)
+  };
+  const consent = db.prepare("SELECT consent_version AS consentVersion,guardian_confirmed AS guardianConfirmed,granted_at AS grantedAt FROM consents WHERE profile_id=?").get(id);
+  sendJson(response, 200, {
+    schemaVersion: 13,
+    exportedAt: nowIso(),
+    account: user.email,
+    profile: { id, name: profile.name, age: profile.age, avatar: profile.avatar, baseTemplate: profile.base_template, createdAt: profile.created_at },
+    consent: consent ? { ...consent, guardianConfirmed: Boolean(consent.guardianConfirmed) } : null,
+    progress: snapshot ? JSON.parse(snapshot.data_json) : {},
+    growthJourneys, growthGoals, growthBlueprint, dailyMissionBooks, weeklyBossRuns, dailyCorePlans, dailyMiniBosses,
+    profileQuestions, growthEvidence, contextArchives, selfCoachAnswers, hypotheses, memories, journals,
+    ideas, ideaResurfacings, actions, actionOccurrences, actionDecisions, actionRescues, habits, habitLogs,
+    focusSessions, dailyPlans, dailyPlanFeedback, weeklyReviews, familyBriefs, taskFeedback, artifacts,
+    strategyInsights, rewardDrops, rewardVouchers, projects, desk
+  });
+}
+function handleDeleteMemory(request, response, url) {
+  const user = requireUser(request, response); if (!user) return;
+  const id = Number(url.pathname.split("/").pop());
+  const memory = db.prepare("SELECT memories.id,memories.profile_id FROM memories JOIN profiles ON profiles.id=memories.profile_id WHERE memories.id=? AND profiles.user_id=?").get(id, user.id);
+  if (!memory) return sendJson(response, 404, { error: "记忆不存在" });
+  db.prepare("DELETE FROM memories WHERE id=?").run(id);
+  retractStrategyEvidence(memory.profile_id, [`memory:${id}`]);
+  sendJson(response, 200, { ok: true });
+}
+
+const allowedEvents = new Set(["app_opened", "page_viewed", "coach_started", "coach_generated", "coach_failed", "quest_skipped", "quest_completed", "quest_undone", "reflection_saved", "task_feedback_saved", "artifact_saved", "artifact_deleted", "artifact_privacy_changed", "daily_plan_generated", "daily_plan_started", "daily_plan_completed", "daily_plan_swapped", "daily_plan_lightened", "action_inbox_parsed", "action_inbox_clarified", "action_inbox_duplicate", "capture_parsed", "capture_clarified", "capture_confirmed", "goal_shaped", "goal_created", "goal_status_changed", "goal_deleted", "goal_experiment_started", "self_coach_asked", "self_coach_feedback", "self_coach_deleted", "strategy_digest_generated", "strategy_feedback", "action_negotiated", "action_deferred", "action_restored", "action_rescue_requested", "action_rescue_outcome", "recovery_rotated", "recovery_reset", "insights_opened", "plan_generated", "news_synced", "journal_prompted", "journal_saved", "journal_deleted", "idea_captured", "idea_developed", "idea_started", "idea_completed", "idea_deleted", "idea_resurfaced", "idea_resurface_outcome", "action_created", "action_broken_down", "action_completed", "action_reopened", "action_deleted", "habit_created", "habit_done", "habit_skipped", "habit_reopened", "habit_deleted", "focus_started", "focus_paused", "focus_resumed", "focus_finished", "focus_cancelled", "review_generated", "review_feedback", "review_focus_adopted"]);
+function recordEvent(userId, profileIdValue, eventName, properties = {}) {
+  db.prepare("INSERT INTO events(user_id,profile_id,event_name,properties_json,created_at) VALUES(?,?,?,?,?)")
+    .run(userId, profileIdValue || null, eventName, JSON.stringify(properties).slice(0, 4000), nowIso());
+}
+async function handleEvent(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  const body = await readBodyJson(request);
+  const profileIdValue = String(body.profileId || "");
+  const eventName = String(body.eventName || "");
+  if (!allowedEvents.has(eventName)) return sendJson(response, 400, { error: "未知事件" });
+  if (profileIdValue && !ownedProfile(user.id, profileIdValue)) return sendJson(response, 404, { error: "角色不存在" });
+  const cleanProperties = body.properties && typeof body.properties === "object" ? Object.fromEntries(Object.entries(body.properties).slice(0, 12).map(([key, value]) => [String(key).slice(0, 40), typeof value === "string" ? value.slice(0, 120) : value])) : {};
+  recordEvent(user.id, profileIdValue || null, eventName, cleanProperties);
+  sendJson(response, 201, { ok: true });
+}
+function handleMetrics(request, response, url) {
+  const user = requireUser(request, response); if (!user) return;
+  const profileIdValue = String(url.searchParams.get("profileId") || "");
+  if (!ownedProfile(user.id, profileIdValue)) return sendJson(response, 404, { error: "角色不存在" });
+  const since = new Date(Date.now() - 7 * 86400000).toISOString();
+  const counts = Object.fromEntries(db.prepare("SELECT event_name,COUNT(*) AS count FROM events WHERE profile_id=? AND created_at>=? GROUP BY event_name").all(profileIdValue, since).map((row) => [row.event_name, Number(row.count)]));
+  const activeDays = Number(db.prepare("SELECT COUNT(DISTINCT substr(created_at,1,10)) AS count FROM events WHERE profile_id=? AND created_at>=?").get(profileIdValue, since)?.count || 0);
+  const generated = counts.coach_generated || 0;
+  const completed = counts.quest_completed || 0;
+  const skipped = counts.quest_skipped || 0;
+  sendJson(response, 200, {
+    periodDays: 7,
+    activeDays,
+    recommendations: generated,
+    completed,
+    reflections: counts.reflection_saved || 0,
+    skipped,
+    acceptanceRate: generated ? Math.round((completed / generated) * 100) : 0,
+    fullLoops: Math.min(completed, counts.reflection_saved || 0),
+    events: counts
+  });
+}
+
+function journalRows(profileIdValue) {
+  return db.prepare("SELECT id,source,prompt,content,tags_json AS tags,ai_context AS shareWithAi,goal_id AS goalId,created_at AS createdAt FROM journals WHERE profile_id=? ORDER BY id DESC LIMIT 30").all(profileIdValue)
+    .map((item) => ({ ...item, tags: JSON.parse(item.tags), shareWithAi: Boolean(item.shareWithAi) }));
+}
+function handleListJournal(request, response, url) {
+  const user = requireUser(request, response); if (!user) return;
+  const profileIdValue = String(url.searchParams.get("profileId") || "");
+  if (!ownedProfile(user.id, profileIdValue)) return sendJson(response, 404, { error: "角色不存在" });
+  sendJson(response, 200, { entries: journalRows(profileIdValue) });
+}
+async function handleCreateJournal(request, response) {
+  const user = requireUser(request, response); if (!user) return;
+  const body = await readBodyJson(request);
+  const profileIdValue = String(body.profileId || "");
+  if (!ownedProfile(user.id, profileIdValue)) return sendJson(response, 404, { error: "角色不存在" });
+  const source = ["self", "ai", "hybrid"].includes(body.source) ? body.source : "self";
+  const prompt = String(body.prompt || "").trim().slice(0, 300);
+  const content = String(body.content || "").trim().slice(0, 4000);
+  const tags = Array.isArray(body.tags) ? body.tags.map(String).map((tag) => tag.slice(0, 24)).slice(0, 8) : [];
+  const shareWithAi = body.shareWithAi !== false;
+  const goalId = activeGoalId(profileIdValue, body.goalId);
+  if (content.length < 2) return sendJson(response, 400, { error: "至少写下一句话" });
+  const createdAt = nowIso();
+  const result = db.prepare("INSERT INTO journals(profile_id,source,prompt,content,tags_json,ai_context,goal_id,created_at) VALUES(?,?,?,?,?,?,?,?)").run(profileIdValue, source, prompt, content, JSON.stringify(tags), shareWithAi ? 1 : 0, goalId, createdAt);
+  const safeSummary = `第一人称日记：${content.replace(/\s+/g, " ").slice(0, 180)}`;
+  const memoryResult = db.prepare("INSERT INTO memories(profile_id,kind,summary,evidence_json,created_at) VALUES(?,?,?,?,?)").run(profileIdValue, "journal", safeSummary, JSON.stringify({ journalId: Number(result.lastInsertRowid), source, tags, shareWithAi, goalId }), createdAt);
+  if (shareWithAi) evolveHypotheses(profileIdValue, { id: Number(memoryResult.lastInsertRowid), kind: "journal", summary: safeSummary, evidence: { journalId: Number(result.lastInsertRowid), tags }, shareWithAi });
+  recordEvent(user.id, profileIdValue, "journal_saved", { source, shareWithAi, tagCount: tags.length, lengthBand: content.length < 80 ? "short" : content.length < 240 ? "medium" : "long" });
+  sendJson(response, 201, journalRows(profileIdValue)[0]);
+}
+
+function hypothesisConfidence(evidenceCount, counterCount) {
+  return Math.max(0.05, Math.min(0.95, 0.25 + Math.log2(evidenceCount + 1) * 0.18 - counterCount * 0.2));
+}
+function upsertHypothesis(profileIdValue, hypothesis) {
+  const existing = db.prepare("SELECT * FROM memory_hypotheses WHERE profile_id=? AND hypothesis_key=?").get(profileIdValue, hypothesis.key);
+  const evidence = existing ? JSON.parse(existing.evidence_json) : [];
+  const nextEvidence = [{ memoryId: hypothesis.memoryId, note: hypothesis.note, at: nowIso() }, ...evidence.filter((item) => item.memoryId !== hypothesis.memoryId)].slice(0, 20);
+  const evidenceCount = existing ? Number(existing.evidence_count) + (evidence.some((item) => item.memoryId === hypothesis.memoryId) ? 0 : 1) : 1;
+  const counterCount = Number(existing?.counter_count || 0);
+  const confidence = hypothesisConfidence(evidenceCount, counterCount);
+  const status = confidence < 0.25 ? "challenged" : "active";
+  db.prepare(`INSERT INTO memory_hypotheses(profile_id,hypothesis_key,category,title,summary,confidence,evidence_count,counter_count,status,ai_context,evidence_json,updated_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(profile_id,hypothesis_key) DO UPDATE SET title=excluded.title,summary=excluded.summary,confidence=excluded.confidence,evidence_count=excluded.evidence_count,status=excluded.status,ai_context=MAX(memory_hypotheses.ai_context,excluded.ai_context),evidence_json=excluded.evidence_json,updated_at=excluded.updated_at`)
+    .run(profileIdValue, hypothesis.key, hypothesis.category, hypothesis.title, hypothesis.summary, confidence, evidenceCount, counterCount, status, hypothesis.shareWithAi ? 1 : 0, JSON.stringify(nextEvidence), nowIso());
+}
+function evolveHypotheses(profileIdValue, memory) {
+  const evidence = memory.evidence || {};
+  const tags = Array.isArray(evidence.tags) ? evidence.tags.map(String).filter(Boolean).slice(0, 6) : [];
+  for (const tag of tags) upsertHypothesis(profileIdValue, { key: `interest:${tag}`, category: "interest", title: `我可能会持续关注「${tag}」`, summary: `这个方向在我的第一人称记录或复盘中出现过。`, memoryId: memory.id, note: String(memory.summary).slice(0, 160), shareWithAi: memory.shareWithAi !== false });
+  const skill = String(evidence.skill || "").trim();
+  if (skill) upsertHypothesis(profileIdValue, { key: `skill-action:${skill}`, category: "strategy", title: `我正在用行动练习「${skillIdToName[skill] || skill}」`, summary: "这是从实际完成的行动中形成的成长线索。", memoryId: memory.id, note: String(memory.summary).slice(0, 160), shareWithAi: memory.shareWithAi !== false });
+}
