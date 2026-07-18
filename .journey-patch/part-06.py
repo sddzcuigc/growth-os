@@ -1,6 +1,6 @@
 # Complete account deletion and protect delayed AI writes after deletion.
 server = server_path.read_text(encoding='utf-8')
-server = insert_after(server, '    if (request.method === "GET" && url.pathname === "/api/account") return handleAccount(request, response);\n', '    if (request.method === "DELETE" && url.pathname === "/api/account") return handleDeleteAccount(request, response);\n', 'account delete route')
+server = insert_after(server, '    if (request.method === "GET" && url.pathname === "/api/account") return handleAccount(request, response);\n', '    if (request.method === "GET" && url.pathname === "/api/auth/me") return handleAccount(request, response);\n    if (request.method === "DELETE" && url.pathname === "/api/account") return handleDeleteAccount(request, response);\n', 'account routes')
 
 delete_account_handler = '''async function handleDeleteAccount(request, response) {
   const user = requireUser(request, response); if (!user) return;
