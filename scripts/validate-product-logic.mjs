@@ -43,6 +43,7 @@ const requiredScienceSources = [
 
 const context = loadAppContext();
 const serverSource = readFileSync("api/server.js", "utf8");
+const databaseSource = readFileSync("api/database.js", "utf8");
 const scienceSource = readFileSync("SCIENCE.md", "utf8");
 const htmlSource = readFileSync("index.html", "utf8");
 const appSourceText = readFileSync("app.js", "utf8");
@@ -165,7 +166,7 @@ for (const term of requiredPromptTerms) {
 for (const term of ["planningContext", "recentRecommendations", "至少改变3项", "/api/plan", "/api/context/news", "highestRecentOverlap"]) {
   if (!serverSource.includes(term)) failures.push(`server planning pipeline missing ${term}`);
 }
-for (const term of ["node:sqlite", "/api/auth/register", "/api/auth/login", "/api/dev/login", "/api/profiles", "/api/progress", "/api/export", "/api/memories/", "/api/events", "/api/metrics", "/api/journal", "/api/journal/prompt", "/api/hypotheses", "/api/ideas", "/api/actions", "/api/habits", "/api/focus", "/api/reviews", "/api/task-feedback", "/api/artifacts", "/api/daily-plan", "handleDevelopIdea", "handleBreakdownAction", "handleHabitCheckin", "handleStartFocus", "handleUpdateFocus", "handleGenerateReview", "handleReviewFeedback", "handleCreateTaskFeedback", "handleCreateArtifact", "handleArtifactMedia", "handleUpdateArtifact", "handleDeleteArtifact", "handleGenerateDailyPlan", "handleUpdateDailyPlan", "handleDeleteDailyPlan", "dailyPlanCandidates", "retractArtifactMemory", "feedbackCalibration", "reviewEvidence", "focusElapsedSeconds", "ensureIdeaAction", "hypothesisConfidence", "evolveHypotheses", "CREATE TABLE IF NOT EXISTS memories", "CREATE TABLE IF NOT EXISTS consents", "CREATE TABLE IF NOT EXISTS events", "CREATE TABLE IF NOT EXISTS journals", "CREATE TABLE IF NOT EXISTS memory_hypotheses", "CREATE TABLE IF NOT EXISTS ideas", "CREATE TABLE IF NOT EXISTS actions", "CREATE TABLE IF NOT EXISTS habits", "CREATE TABLE IF NOT EXISTS habit_logs", "CREATE TABLE IF NOT EXISTS focus_sessions", "CREATE TABLE IF NOT EXISTS weekly_reviews", "CREATE TABLE IF NOT EXISTS task_feedback", "CREATE TABLE IF NOT EXISTS artifacts", "CREATE TABLE IF NOT EXISTS daily_plans"]) {
+for (const term of ["/api/auth/register", "/api/auth/login", "/api/dev/login", "/api/profiles", "/api/progress", "/api/export", "/api/memories/", "/api/events", "/api/metrics", "/api/journal", "/api/journal/prompt", "/api/hypotheses", "/api/ideas", "/api/actions", "/api/habits", "/api/focus", "/api/reviews", "/api/task-feedback", "/api/artifacts", "/api/daily-plan", "handleDevelopIdea", "handleBreakdownAction", "handleHabitCheckin", "handleStartFocus", "handleUpdateFocus", "handleGenerateReview", "handleReviewFeedback", "handleCreateTaskFeedback", "handleCreateArtifact", "handleArtifactMedia", "handleUpdateArtifact", "handleDeleteArtifact", "handleGenerateDailyPlan", "handleUpdateDailyPlan", "handleDeleteDailyPlan", "dailyPlanCandidates", "retractArtifactMemory", "feedbackCalibration", "reviewEvidence", "focusElapsedSeconds", "ensureIdeaAction", "hypothesisConfidence", "evolveHypotheses", "CREATE TABLE IF NOT EXISTS memories", "CREATE TABLE IF NOT EXISTS consents", "CREATE TABLE IF NOT EXISTS events", "CREATE TABLE IF NOT EXISTS journals", "CREATE TABLE IF NOT EXISTS memory_hypotheses", "CREATE TABLE IF NOT EXISTS ideas", "CREATE TABLE IF NOT EXISTS actions", "CREATE TABLE IF NOT EXISTS habits", "CREATE TABLE IF NOT EXISTS habit_logs", "CREATE TABLE IF NOT EXISTS focus_sessions", "CREATE TABLE IF NOT EXISTS weekly_reviews", "CREATE TABLE IF NOT EXISTS task_feedback", "CREATE TABLE IF NOT EXISTS artifacts", "CREATE TABLE IF NOT EXISTS daily_plans"]) {
   if (!serverSource.includes(term)) failures.push(`persistent account system missing ${term}`);
 }
 for (const term of ["本周成长罗盘", "generate-review", "review-feedback", "generateWeeklyReview", "sendReviewFeedback", "confirmedWeeklyReview", "loadReviews"]) {
@@ -178,7 +179,7 @@ for (const term of ["pace=shrink", "preferredSupport", "不得推断能力高低
   if (!serverSource.includes(term)) failures.push(`feedback calibration safety missing ${term}`);
 }
 for (const term of ["ensureColumn(\"task_feedback\", \"motivation\"", "preferredMotivators", "motivationCounts", "动力线索至少重复两次", "motivationSupport", "motivator: motivation.motivator"]) if (!serverSource.includes(term)) failures.push(`motivation calibration server missing ${term}`);
-if (!serverSource.includes("schemaVersion: 11")) failures.push("export schema missing child-controlled family brief version");
+if (!serverSource.includes("schemaVersion: 13")) failures.push("export schema missing Journey evidence lineage version");
 for (const term of ["CREATE TABLE IF NOT EXISTS idea_resurfacings", "/api/idea-resurfacing", "handleCreateIdeaResurfacing", "handleIdeaResurfacingOutcome", "snoozed_until", "idea_resurface_outcome"]) {
   if (!serverSource.includes(term)) failures.push(`idea resurfacing backend missing ${term}`);
 }
@@ -233,8 +234,9 @@ for (const term of ["isVagueGoalText", "preferredRef"]) if (!serverSource.includ
 for (const term of ["mode必须为clarify", "goalClarifications", "目标设计需要连接GLM", "系统不会改用模板", "GLM没有满足该技能的安全约束", "GLM给出了不安全的水上练习选项", "家长只在岸上看"]) if (!serverSource.includes(term)) failures.push(`LLM-only goal clarification missing ${term}`);
 for (const term of ["goalQuestion", "goalClarifications", "answer-goal-clarification", "GLM生成的SMART目标", "不会套用通用模板"]) if (!appSourceText.includes(term)) failures.push(`LLM goal clarification UI missing ${term}`);
 if (appSourceText.includes("function onboardingGoalDraft()")) failures.push("onboarding still uses a local goal template");
-for (const term of ["ensureBuiltInDemoAccount", "builtin-admin@growth-os.local", 'loginName === "admin"', '"崔护"', '"9岁3个月"']) if (!serverSource.includes(term)) failures.push(`built-in demo account missing ${term}`);
-for (const term of ["内置测试：账号 admin", "邮箱或测试账号"]) if (!htmlSource.includes(term)) failures.push(`built-in demo login UI missing ${term}`);
+if (!serverSource.includes('if (devAdminEnabled && loginName === "admin")')) failures.push("development demo login is not locally gated");
+if (htmlSource.includes("内置测试：账号 admin")) failures.push("production login UI exposes shared demo credentials");
+if (serverSource.includes('"崔护"') || serverSource.includes('"9岁3个月"')) failures.push("production server contains real child demo data");
 for (const term of [">今天</b>", ">世界</b>", ">蓝图</b>", ">Boss</b>", ">背包</b>"]) if (!htmlSource.includes(term)) failures.push(`workflow navigation missing ${term}`);
 for (const term of ["CREATE TABLE IF NOT EXISTS weekly_boss_runs", "CREATE TABLE IF NOT EXISTS daily_core_plans", "CREATE TABLE IF NOT EXISTS daily_mini_bosses", "CREATE TABLE IF NOT EXISTS growth_evidence", "CREATE TABLE IF NOT EXISTS reward_drops", "CREATE TABLE IF NOT EXISTS reward_vouchers", "/api/boss/catalog", "/api/boss/week", "/api/boss/daily/sync", "handleWeeklyBossFinal", "handleChooseBossReward", "handleApproveRewardVoucher"]) {
   if (!serverSource.includes(term)) failures.push(`weekly Boss backend missing ${term}`);
@@ -379,6 +381,13 @@ if (!serverSource.includes("目标必须先由AI完成澄清和SMART设计") || 
 for (const term of ["/api/planner/today", "/api/planner/parse", "/api/planner/recommend", "/api/planner/accept", "plannerDayMode", "plannerOccursOn", "plannerSkill", "recurrence_json", "my_day_date", "CREATE TABLE IF NOT EXISTS action_occurrences", "recurring_action_completed"]) if (!serverSource.includes(term)) failures.push(`planner backend missing ${term}`);
 for (const term of ["renderDayPlanner", "AI安排今天", "planner-natural-text", "acceptPlannerItems", "之前未完成", "暑假 · 工作日"]) if (!appSourceText.includes(term)) failures.push(`planner UI missing ${term}`);
 for (const term of ["Prefer carrying forward", "summer vacation", "weekends", "weekly_project", "Return JSON only"]) if (!plannerSkillSource.includes(term)) failures.push(`growth planner skill missing ${term}`);
+
+if (!databaseSource.includes("node:sqlite") || !serverSource.includes("openGrowthDatabase")) failures.push("database adapter is not wired to local SQLite");
+if (!serverSource.includes("GROWTHOS_JOURNEY_KERNEL_V2")) failures.push("Journey kernel marker is missing");
+if (!serverSource.includes('url.pathname === "/api/journey"')) failures.push("Journey API route is missing");
+if (!serverSource.includes("growth_journeys")) failures.push("Journey table is missing");
+if (!serverSource.includes("weekly_boss_run_id")) failures.push("Evidence lineage is missing");
+if (!appSourceText.includes("state.journey?.goal")) failures.push("Frontend does not read the server journey");
 
 if (failures.length) {
   console.error(failures.map((failure) => `- ${failure}`).join("\n"));
