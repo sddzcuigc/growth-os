@@ -20,6 +20,7 @@ const baseUrl = process.env.AI_BASE_URL || process.env.SILICONFLOW_BASE_URL || "
 const model = process.env.AI_MODEL || process.env.SILICONFLOW_MODEL || "zai-org/GLM-5.2";
 const apiKey = process.env.AI_API_KEY || process.env.SILICONFLOW_API_KEY;
 const devAdminEnabled = process.env.NODE_ENV !== "production" && ["127.0.0.1", "localhost"].includes(host) && process.env.ENABLE_TEST_ADMIN !== "false";
+const demoLoginEnabled = process.env.DEMO_LOGIN_ENABLED !== "false";
 const dataDir = process.env.GROWTH_OS_DATA_DIR || (process.env.VERCEL ? "/tmp/growth-os" : join(root, "data"));
 const remoteDatabaseUrl = process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || "";
 const remoteDatabaseToken = process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN || "";
@@ -175,6 +176,7 @@ async function requestHandler(request, response) {
     if (request.method === "POST" && url.pathname === "/api/auth/recovery/rotate") return handleRotateRecovery(request, response);
     if (request.method === "POST" && url.pathname === "/api/auth/recovery/reset") return handleRecoveryReset(request, response);
     if (request.method === "POST" && url.pathname === "/api/dev/login") return handleDevLogin(request, response);
+    if (request.method === "GET" && url.pathname === "/api/models") return handleModels(request, response);
     if (request.method === "GET" && url.pathname === "/api/account") return handleAccount(request, response);
     if (request.method === "GET" && url.pathname === "/api/auth/me") return handleAccount(request, response);
     if (request.method === "DELETE" && url.pathname === "/api/account") return handleDeleteAccount(request, response);
@@ -339,6 +341,31 @@ if (!process.env.VERCEL) {
 }
 
 function nowIso() { return new Date().toISOString(); }
+
+function requestedModel(value) {
+  const candidate = String(value || "").trim();
+  return /^[A-Za-z0-9._/-]{3,160}$/.test(candidate) ? candidate : model;
+}
+let modelCatalogCache = { expiresAt: 0, models: [] };
+async function siliconFlowChatModels() {
+  if (!apiKey) return [model];
+  if (modelCatalogCache.expiresAt > Date.now() && modelCatalogCache.models.length) return modelCatalogCache.models;
+  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/models?type=text&sub_type=chat`, {
+    headers: { authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(5000)
+  });
+  if (!response.ok) throw new Error(`models ${response.status}`);
+  const json = await response.json();
+  const models = (Array.isArray(json.data) ? json.data : [])
+    .map((item) => String(item?.id || ""))
+    .filter((id) => /^[A-Za-z0-9._/-]{3,160}$/.test(id))
+    .sort();
+  modelCatalogCache = { expiresAt: Date.now() + 10 * 60000, models: models.length ? models : [model] };
+  return modelCatalogCache.models;
+}
+async function handleModels(request, response) {
+  try { sendJson(response, 200, { defaultModel: model, models: await siliconFlowChatModels() }); }
+  catch { sendJson(response, 200, { defaultModel: model, models: [model] }); }
+}
 function ensureColumn(table, column, definition) {
   const columns = db.prepare(`PRAGMA table_info(${table})`).all().map((item) => item.name);
   if (!columns.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
@@ -478,7 +505,7 @@ function clearLoginFailures(request, email) { db.prepare("DELETE FROM auth_attem
 async function handleLogin(request, response) {
   const body = await readBodyJson(request);
   const loginName = String(body.email || "").trim().toLowerCase();
-  if (devAdminEnabled && loginName === "admin") {
+  if (demoLoginEnabled && loginName === "admin") {
     if (String(body.password || "") !== "admin") return sendJson(response, 401, { error: "账号或密码不正确" });
     const demo = ensureBuiltInDemoAccount();
     createSession(response, demo.id);
@@ -824,7 +851,7 @@ async function handleGenerateStrategyInsights(request, response) {
   let provider = "local";
   if (apiKey) {
     try {
-      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(30000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.38, max_tokens: 900, response_format: { type: "json_object" }, messages: [
+      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(30000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: 0.38, max_tokens: 900, response_format: { type: "json_object" }, messages: [
         { role: "system", content: "你把儿童成长证据合并成可执行、可纠正的个人策略说明书。每条必须引用至少两个提供的ref；不能诊断、比较、贴人格或天赋标签；只总结什么方法在什么场景可能有帮助。使用第一人称自然中文。只返回JSON。" },
         { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, rejectedKeys: [...rejectedKeys], evidence, output: { insights: [{ key: "稳定英文短key", category: "starting/focus/learning/creating/recovery", statement: "第一人称可修正策略", whenToUse: "适用场景", question: "请孩子确认的一句话", evidenceRefs: ["至少2个原始ref"], confidence: "0.35-0.85" }] }, constraints: ["最多5条", "不同策略不得重复", "证据矛盾时降低confidence或不生成", "不得复活rejectedKeys"] }) }
       ] }) });
@@ -1051,7 +1078,7 @@ async function handleOnboardingQuestion(request, response) {
   let provider = "local";
   if (apiKey) {
     try {
-      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(9000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.55, max_tokens: 260, response_format: { type: "json_object" }, messages: [
+      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(9000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: 0.55, max_tokens: 260, response_format: { type: "json_object" }, messages: [
         { role: "system", content: "你为6-12岁孩子设计一个个性化追问，帮助形成SMART成长目标。问题必须基于已有答案、口语化、一次只问一件事，不诊断、不贴标签、不索取隐私。给4个互斥且儿童能懂的选项。只返回JSON。" },
         { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, questionPurpose: questionId === "personal-friction" ? "识别实现愿望时的主要阻碍" : "识别孩子认同的可观察成功画面", answers, output: { title: "一个带问号的问题", why: "一句为什么问", options: ["四个短选项"] } }) }
       ] }) });
@@ -1106,7 +1133,7 @@ async function handleOnboardingPortrait(request, response) {
   let provider = "local";
   if (apiKey) {
     try {
-      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(10000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.32, max_tokens: 520, response_format: { type: "json_object" }, messages: [
+      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(10000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: 0.32, max_tokens: 520, response_format: { type: "json_object" }, messages: [
         { role: "system", content: "你根据6-12岁孩子本人回答，写一份可纠正的第一版成长画像。只能描述回答支持的兴趣、愿望、当前卡点和支持偏好，不诊断、不贴性格或天赋标签，不把一次回答当稳定特征。要明确不确定性，并提醒孩子可以修改。只返回JSON。" },
         { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, answers, output: { summary: "100字内、孩子能看懂的清晰描述", signals: [{ title: "兴趣线索/成长愿望/当前卡点", text: "具体描述", evidence: "来自哪条回答，并说明只是当前线索" }], supportStyle: "怎样提问和安排任务更适合", uncertainty: "还不能确定什么、以后如何修正" } }) }
       ] }) });
@@ -1132,7 +1159,7 @@ async function handleShapeGoal(request, response) {
   try {
     const existing = goalRows(profileIdValue).filter((goal) => goal.status !== "done").map(({ title, why, successSignal, skill }) => ({ title, why, successSignal, skill }));
     const clarifications = body.clarifications && typeof body.clarifications === "object" ? body.clarifications : {};
-    const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(60000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.22, max_tokens: 700, response_format: { type: "json_object" }, messages: [
+    const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(60000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: 0.22, max_tokens: 700, response_format: { type: "json_object" }, messages: [
       { role: "system", content: "你是6-12岁儿童的目标设计师。先判断信息是否足够，禁止把所有愿望套成作品、最小版本或10分钟任务。游泳、骑车、球类、乐器、语言、生活自理等领域必须按该技能真实的学习规律定义结果。涉及水、火、道路、器械或身体安全时，必须询问当前水平、成人/教练支持或练习条件，并把安全陪同写进目标。所有选项本身也必须安全：不会游泳的孩子不得出现独自下水、家长只在岸上看、同龄人陪同等选项；只能是合格教练教学、具备救护能力的成人近距离全程陪同，或暂不练习等待安排。信息不足时mode必须为clarify，一次只问最关键的一个问题，给3-4个互斥、具体、儿童能区分的安全选项；信息足够时mode为draft，生成适龄SMART目标和3个KR。第一步可以是评估、预约、准备或一次安全练习，但必须服务于该领域，不能凭空写作品。只返回JSON。" },
       { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, wish: text, profileAnswers: body.context || {}, goalClarifications: clarifications, existingDirections: existing, allowedSkills: Object.keys(futureSkillFramework), output: { mode: "clarify或draft", clarification: { key: "稳定英文id", question: "一次只问一件事", why: "为什么必须先知道", options: ["3到4个互斥选项"] }, draft: { title: "孩子第一人称短目标", why: "内在动机", successSignal: "四周内可观察结果", firstExperiment: "符合领域与安全条件的第一步", skill: "能力id", horizon: "one_month", smart: { specific: "具体结果", measurable: "量化标准", achievable: "依据当前水平和条件", relevant: "与本人关系", timeBound: "四周" }, objective: "明确、可验证的四周目标", keyResults: [{ title: "可观察关键结果", target: 3, unit: "次" }], weeklyPlan: ["四周各一步"] } } }) }
     ] }) });
@@ -1288,7 +1315,7 @@ async function handleAskSelfCoach(request, response) {
   if (apiKey && ranked.length) {
     try {
       const recentRejected = selfCoachRows(profileIdValue).filter((item) => item.feedback === "not_me").slice(0, 4).map(({ question: rejectedQuestion, answer: rejectedAnswer }) => ({ question: rejectedQuestion, answer: rejectedAnswer }));
-      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(12000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.25, max_tokens: 620, response_format: { type: "json_object" }, messages: [
+      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(12000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: 0.25, max_tokens: 620, response_format: { type: "json_object" }, messages: [
         { role: "system", content: "你是6-12岁孩子的成长档案问答伙伴。只能根据提供的evidence回答并引用原始ref；区分事实、观察和线索。不能诊断、预测天赋、比较孩子、推断固定人格，不能把一次经历说成规律。证据不足就明确说还不知道。只能说查看了可参考记录，不得声称查看了所有记录。使用第一人称友好中文，回答问题本身，不说教。只返回JSON。" },
         { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, question, evidence: ranked, recentAnswersChildRejected: recentRejected, output: { answer: "不超过220字，明确证据强弱", confidence: "enough/some/little", evidenceRefs: ["1-4个提供的ref"], nextQuestion: "一个帮助孩子继续理解自己的可选问题，不超过45字" } }) }
       ] }) });
@@ -1403,7 +1430,7 @@ async function handleDevelopIdea(request, response, url) {
   let developed = fallback;
   if (apiKey) {
     try {
-      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(45000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.72, max_tokens: 480, response_format: { type: "json_object" }, messages: [
+      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(45000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: 0.72, max_tokens: 480, response_format: { type: "json_object" }, messages: [
         { role: "system", content: "你是6-12岁孩子的灵感孵化伙伴。帮助孩子把一个模糊想法变成可选择的小项目，但不要替孩子决定。给一个澄清问题、三个差异明显的可能方向、一个10分钟内可做的微行动。只返回JSON，不说教。" },
         { role: "user", content: JSON.stringify({ idea: { title: idea.title, note: idea.note }, growthHypotheses: hypotheses, output: { question: "最多35字", possibilities: ["三个孩子看得懂的方向"], tinyNextStep: "一个10分钟内行动", skill: "八类技能id", success: "这个微行动的完成标准" } }) }
       ] }) });
@@ -1445,7 +1472,7 @@ async function handleCreateIdeaResurfacing(request, response) {
   let provider = "local";
   if (apiKey) {
     try {
-      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(12000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.68, max_tokens: 420, response_format: { type: "json_object" }, messages: [
+      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(12000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: 0.68, max_tokens: 420, response_format: { type: "json_object" }, messages: [
         { role: "system", content: "你是6-12岁孩子的灵感唤醒伙伴。一次只温柔唤醒一个旧想法，用成长方向、孩子确认有效的方法和安全消息提供真正不同的新角度。不要催促、评价天赋、制造亏欠感或假装确定。给一个开放问题和一个10分钟内可停止的尝试。只返回JSON。" },
         { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, idea: { title: candidate.title, note: candidate.note, status: candidate.status }, current: { energy: String(body.energy || "normal"), availableMinutes: Math.max(5, Math.min(60, Number(body.availableMinutes || 10))) }, growthGoals: goals, confirmedStrategies: strategies, safeMessages: news, output: { whyNow: "不超过40字，说明这次的新连接，不使用应该/必须", question: "一个孩子能回答的开放问题", tinyStep: "10分钟内、可见、可随时停止", freshAngle: "与旧想法不同的新角度" } }) }
       ] }) });
@@ -1609,7 +1636,7 @@ function plannerContext(profileIdValue, dateKey) {
 }
 async function callPlannerSkill(mode, context, input = {}) {
   if (!apiKey) return null;
-  const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(12000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: mode === "extract" ? 0.1 : 0.35, max_tokens: 2200, response_format: { type: "json_object" }, messages: [
+  const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(12000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: mode === "extract" ? 0.1 : 0.35, max_tokens: 2200, response_format: { type: "json_object" }, messages: [
     { role: "system", content: `${plannerSkill}\n\nThe output contract is:\n${JSON.stringify(plannerOutputSchema)}` },
     { role: "user", content: JSON.stringify({ mode, context, input }) }
   ] }) });
@@ -1810,7 +1837,7 @@ async function handleParseCapture(request, response) {
       const recentIdeas = ideaRows(profileIdValue).slice(0, 8).map(({ title, note, status }) => ({ title, note: note.slice(0, 160), status }));
       const recentJournal = journalRows(profileIdValue).filter((entry) => entry.shareWithAi).slice(0, 5).map(({ content, tags }) => ({ content: content.slice(0, 180), tags }));
       const activeGoals = goalRows(profileIdValue).filter((goal) => goal.status === "active").map(({ id, title, why, successSignal, skill }) => ({ id, title, why, successSignal, skill }));
-      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(10000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.2, max_tokens: 600, response_format: { type: "json_object" }, messages: [
+      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(10000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: 0.2, max_tokens: 600, response_format: { type: "json_object" }, messages: [
         { role: "system", content: "你帮助6-12岁孩子整理一句随手记录。先判断它是action要做的事、idea想探索的灵感、journal感受或自我发现。不要把每个想法都变成任务。如果意图真的不清楚或行动缺少最影响执行的一项信息，只问一个可点选问题；已有answer后不得继续追问。保留孩子的第一人称原意，不诊断、不贴标签。只返回JSON。" },
         { role: "user", content: JSON.stringify({ localDate: serverDateKey(), child: { name: profile.name, age: profile.age }, input, answer, existingActions, recentIdeas, recentJournal, activeGoals, output: { status: "question或ready", question: "最多一个短问题", answerField: "category或minutes", options: [{ label: "2-4个短选项", value: "机器值" }], draft: { category: "action/idea/journal", title: "简短标题", content: "保留第一人称的正文", tags: ["0-4个短标签"], goalId: "只有明显相关时复制activeGoals中的id，否则0", action: { title: "动作开头的行动名", detail: "必要补充", estimateMinutes: "3-180", energy: "low/normal/high", importance: "1-3", dueAt: "YYYY-MM-DDTHH:mm或空", firstStep: "马上能做的第一小步" } } } }) }
       ] }) });
@@ -1850,7 +1877,7 @@ async function handleParseActionInbox(request, response) {
       const snapshot = db.prepare("SELECT data_json FROM snapshots WHERE profile_id=?").get(profileIdValue);
       const snapshotData = snapshot ? JSON.parse(snapshot.data_json) : {};
       const schedule = Array.isArray(snapshotData["schedule-items"]) ? snapshotData["schedule-items"].slice(0, 10).map(({ title, start, energy }) => ({ title, start, energy })) : [];
-      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(10000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.25, max_tokens: 480, response_format: { type: "json_object" }, messages: [
+      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(10000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: 0.25, max_tokens: 480, response_format: { type: "json_object" }, messages: [
         { role: "system", content: "你把6-12岁孩子的一句话整理成待办草稿。保留孩子原意，不扩大范围，不说教。如果缺少最影响执行的一项信息，只问一个可点选问题；已有answer后不得继续追问。日期按给定本地日期理解。只返回JSON。" },
         { role: "user", content: JSON.stringify({ localDate: serverDateKey(), localWeekday: new Intl.DateTimeFormat("zh-CN", { weekday: "long" }).format(new Date()), child: { name: profile.name, age: profile.age }, text, answer, existingActions, schedule, output: { status: "question或ready", question: "最多一个短问题", answerField: "minutes/due/importance", options: [{ label: "2-4个短选项", value: "机器值" }], draft: { title: "清楚的行动名", detail: "必要补充", estimateMinutes: "3-180", energy: "low/normal/high", importance: "1-3", dueAt: "YYYY-MM-DDTHH:mm或空", firstStep: "马上能做的第一小步" } } }) }
       ] }) });
@@ -1967,7 +1994,7 @@ async function handleNegotiateAction(request, response, url) {
     try {
       const strategies = strategyRows(action.profile_id).filter((item) => item.aiContext && item.status === "active").slice(0, 4).map(({ statement, whenToUse }) => ({ statement, whenToUse }));
       const recentDecisions = db.prepare("SELECT reason,outcome,created_at AS createdAt FROM action_decisions WHERE profile_id=? ORDER BY id DESC LIMIT 8").all(action.profile_id);
-      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(10000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.3, max_tokens: 360, response_format: { type: "json_object" }, messages: [
+      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(10000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: 0.3, max_tokens: 360, response_format: { type: "json_object" }, messages: [
         { role: "system", content: "你是6-12岁孩子的任务协商伙伴。孩子有权延期、缩小或放下一件事。根据原因提供一个5分钟内可做的小版本，但不劝说、不羞辱、不制造损失恐惧，也不把延期解释为懒惰。只返回JSON。" },
         { role: "user", content: JSON.stringify({ action: { title: action.title, detail: action.detail, estimateMinutes: action.estimate_minutes, dueAt: action.due_at, deferCount: action.defer_count }, reason, confirmedStrategies: strategies, recentDecisions, output: { message: "一句承认现实的回应", tinyStep: "5分钟内可完成的具体小版本", support: "一句明确说明延期或放下不是失败的话" } }) }
       ] }) });
@@ -2034,7 +2061,7 @@ async function handleBreakdownAction(request, response, url) {
   let result = fallback;
   if (apiKey) {
     try {
-      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(45000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.45, max_tokens: 360, response_format: { type: "json_object" }, messages: [
+      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(45000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: 0.45, max_tokens: 360, response_format: { type: "json_object" }, messages: [
         { role: "system", content: "你帮助6-12岁孩子把模糊事项拆成可独立执行的小步。步骤必须短、具体、孩子自己看得懂；不增加原任务范围。只返回JSON。" },
         { role: "user", content: JSON.stringify({ action: { title: action.title, detail: action.detail, estimateMinutes: action.estimate_minutes, energy: action.energy }, output: { steps: ["3-5个短步骤"], success: "可观察完成标准", estimateMinutes: "合理总分钟数" } }) }
       ] }) });
@@ -2067,7 +2094,7 @@ async function handleActionRescue(request, response, url) {
   if (apiKey) {
     try {
       const strategies = strategyRows(action.profile_id).filter((item) => item.aiContext && item.status === "active").slice(0, 5).map(({ statement, whenToUse, confidence, feedback }) => ({ statement, whenToUse, confidence, feedback }));
-      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(12000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.36, max_tokens: 300, response_format: { type: "json_object" }, messages: [
+      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(12000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: 0.36, max_tokens: 300, response_format: { type: "json_object" }, messages: [
         { role: "system", content: "你帮助6-12岁孩子在执行任务卡住时恢复行动。只给一个非常具体、范围更小的步骤，不增加任务，不评价、不说教、不把卡住称为失败或懒惰。只返回JSON。" },
         { role: "user", content: JSON.stringify({ action: { title: action.title, detail: action.detail, steps: JSON.parse(action.steps_json || "[]"), estimateMinutes: action.estimate_minutes }, reason, confirmedStrategies: strategies, output: { message: "一句理解当下的话", tinyStep: "马上能做、最多5分钟的单一步骤", support: "一句不施压的支持" } }) }
       ] }) });
@@ -2344,7 +2371,7 @@ async function handleGenerateReview(request, response) {
   let provider = "local";
   if (apiKey) {
     try {
-      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(60000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.48, max_tokens: 900, response_format: { type: "json_object" }, messages: [
+      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(60000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: 0.48, max_tokens: 900, response_format: { type: "json_object" }, messages: [
         { role: "system", content: "你是6-12岁孩子的每周成长回顾伙伴。只根据提供的行为证据总结，不诊断、不比较、不贴标签。日记是孩子第一人称表达，但要温和转述，不直接暴露隐私原文。区分事实、观察和线索。所有给孩子看的文字必须使用自然中文，禁止暴露英文枚举、技能ID、数据库字段或内部代码。只返回JSON。" },
         { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, evidence, output: { headline: "一句本周标题", wins: ["3条有具体证据的收获"], patterns: [{ observation: "可修正观察", evidence: "证据来源", confidence: "线索/正在形成/证据较强" }], nextFocus: { title: "下周一个重点", why: "原因", tinyExperiment: "10分钟内小实验" }, question: "请孩子确认的问题", gentleReset: "未完成时的温和重启建议" } }) }
       ] }) });
@@ -2431,7 +2458,7 @@ async function handleGenerateFamilyBrief(request, response) {
   let provider = "local";
   if (apiKey) {
     try {
-      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(12000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.38, max_tokens: 650, response_format: { type: "json_object" }, messages: [
+      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(12000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: 0.38, max_tokens: 650, response_format: { type: "json_object" }, messages: [
         { role: "system", content: "你为6-12岁孩子生成一份由孩子决定是否分享给家长的成长简报。只能使用提供的结构化行为证据。不得推测人格、天赋、诊断或比较；不得要求家长监控、惩罚或加任务。目标是帮助家长少催促、多看见自主性。绝不提及或虚构日记、私人感悟、问答原文。只返回JSON。" },
         { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, evidence, output: { headline: "温和短标题", visibleProgress: "一条有事实依据的可见进展", childStrategy: "孩子正在尝试的可修正方法", lessNagging: "家长本周只做的一条少催促建议", conversationStarter: "不带考问感的开放问题", boundary: "明确未使用日记和私人问答" } }) }
       ] }) });
@@ -2793,7 +2820,7 @@ async function handleGenerateDailyPlan(request, response) {
   let selected = { ref: fallback.ref, title: fallback.title, minutes: fallback.minutes, why: fallback.whyHint, firstStep: fallback.firstStep, support: motivation.text, motivator: motivation.motivator, provider: "local" };
   if (apiKey && body.enhance === true) {
     try {
-      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(12000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.38, max_tokens: 420, response_format: { type: "json_object" }, messages: [
+      const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(12000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: 0.38, max_tokens: 420, response_format: { type: "json_object" }, messages: [
         { role: "system", content: "你是6-12岁孩子的每日下一步教练。只能从候选中选择一个ref，不创造新任务。根据当下能量、时间、意图、截止时间和体验校准选择。decisionCalibration只有在同一协商原因重复至少两次后才激活，要尊重它但不能把当前节奏说成固定性格；截止紧急事项仍可优先。preferredMotivators只有在重复证据达到阈值后才会出现；support要贴合它。语气简短温和，不评价孩子好坏，不用成人管理口吻。只返回JSON。" },
         { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, checkin, swapReason, calibration, decisionCalibration, recommendationCalibration, candidates: candidates.map(({ score, ...candidate }) => candidate), output: { ref: "必须原样复制候选ref", title: "孩子看到的短标题", minutes: "不超过可用时间", why: "一句具体理由", firstStep: "马上能做的第一步", support: "一句低压力支持" } }) }
       ] }) });
@@ -2864,7 +2891,7 @@ async function handleJournalPrompt(request, response) {
   try {
     const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
       method: "POST", signal: AbortSignal.timeout(5000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ model, temperature: 0.7, max_tokens: 220, response_format: { type: "json_object" }, messages: [
+      body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: 0.7, max_tokens: 220, response_format: { type: "json_object" }, messages: [
         { role: "system", content: "你是6-12岁孩子的成长日记伙伴。只问一个温和、具体、没有标准答案的问题，帮助孩子记录感悟、灵感、困惑或自我发现。如果给了草稿，只追问草稿中尚未说清、但值得孩子自己探索的一点，不总结、不改写、不替孩子下结论。不要诊断，不要说教，不要重复近期问题。只返回JSON。" },
         { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, mode: String(body.mode || "hybrid"), draft: draft || undefined, recentJournal: recent, todayContext: body.todayContext || {}, output: { question: "最多38字", starter: "一个可选的回答开头，最多20字", suggestedTags: ["2-4个短标签"] } }) }
       ] })
@@ -3371,7 +3398,7 @@ async function generateGrowthBlueprint(profile, evidence) {
   const fallback = fallbackGrowthBlueprint(profile, evidence);
   if (!apiKey) return { blueprint: fallback, provider: "local" };
   try {
-    const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(14000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.32, max_tokens: 1100, response_format: { type: "json_object" }, messages: [
+    const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(14000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: 0.32, max_tokens: 1100, response_format: { type: "json_object" }, messages: [
       { role: "system", content: "你是6-12岁儿童的成长蓝图设计师。依据已确认画像和带来源证据，从给定8项未来能力中只选1个底座能力和1个探索能力。孩子亲自更正的描述优先级最高。日记是当下线索，不能据单条内容推断人格、天赋或诊断。目标必须适龄、具体、可观察，采用SMART与OKR，但不要把孩子变成KPI。AI只提问、提示、解释、查漏和检查，不能替孩子完成。只返回合法JSON。" },
       { role: "user", content: JSON.stringify({ child: { name: profile.name, age: profile.age }, framework: futureSkillFramework, evidence, output: { childSummary: "给孩子看的可修正描述", priorities: [{ skill: "能力id", name: "能力名", role: "底座或探索", confidence: "0到1", reason: "为什么现在发展", evidence: ["最多3条具体证据"], practices: ["3个适龄练法"] }], fourWeekPath: [{ skill: "能力id", objective: "SMART目标", keyResults: ["3个可观察KR"], firstExperiment: "今天10分钟内可做" }], nextQuestion: "下一条最值得问孩子的问题", adjustment: "本次根据什么变化" } }) }
     ] }) });
@@ -3712,7 +3739,7 @@ async function generateDailyMissionBook(profile, body, baseTasks) {
   const fallback = { date: serverDateKey(), headline: "今天的成长关卡", rationale: "任务来自成长蓝图、当前状态和真实生活底座。", blueprintVersion: Number(body.blueprint?.version || 0), goalId: Number(mainGoal?.id || 0), goalTitle: String(mainGoal?.objective || "当前成长主线").slice(0, 140), tasks: fallbackTasks };
   if (!apiKey) return { book: fallback, provider: "local" };
   try {
-    const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(60000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model, temperature: 0.48, max_tokens: 1200, response_format: { type: "json_object" }, messages: [
+    const apiResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: AbortSignal.timeout(60000), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ model: requestedModel(typeof body !== "undefined" ? body?.model : typeof payload !== "undefined" ? payload?.model : ""), temperature: 0.48, max_tokens: 1200, response_format: { type: "json_object" }, messages: [
       { role: "system", content: "你是6-12岁儿童的每日成长关卡设计师。系统已固定健康、学习、生活、责任、表达、未来六类各4个安全任务槽。你只需根据孩子画像、成长蓝图、SMART目标、日记体验和今日状态，为每类设计4个短小且形式不同的具体活动。不得诊断、贴标签、制造焦虑，不暗示24项必须全部完成。严格返回六类精简JSON，不要解释。" },
       { role: "user", content: JSON.stringify({ child: body.child, confirmedPortrait: body.confirmedPortrait, blueprint: body.blueprint, activeGoals: body.activeGoals, today: body.today, recentJournal: body.recentJournal, taskExperience: body.taskExperience, schedule: body.schedule, knowledgeFramework: body.knowledgeFramework, categoryExamples: Object.fromEntries(["健康", "学习", "生活", "责任", "表达", "未来"].map((category) => [category, fallbackTasks.filter((task) => task.category === category).map(({ title, stage, success }) => ({ title, stage, success }))])), output: { headline: "今日任务册短标题", rationale: "最多60字说明适配理由", categories: [{ category: "六类之一", activities: [{ title: "活动，最多24字", success: "可观察标准，最多32字" }] }] } }) }
     ] }) });

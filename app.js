@@ -633,7 +633,17 @@ const contextQuestions = [
   }
 ];
 
-const onboardingQuestionIds = ["current-interest", "growth-wish", "preferred-output", "ai-help-style", "personal-friction", "success-picture"];
+function initialOnboardingQuestionMode() {
+  const childId = localStorage.getItem("talent-os-child") || "brother";
+  try { return JSON.parse(localStorage.getItem(`talent-os-${childId}-app-settings`) || "{}").questionMode || "fast"; }
+  catch { return "fast"; }
+}
+const onboardingQuestionMode = initialOnboardingQuestionMode();
+const onboardingQuestionIds = onboardingQuestionMode === "deep"
+  ? ["current-interest", "growth-wish", "preferred-output", "ai-help-style", "personal-friction", "success-picture"]
+  : onboardingQuestionMode === "balanced"
+    ? ["current-interest", "growth-wish", "preferred-output", "success-picture"]
+    : ["current-interest", "growth-wish", "success-picture"];
 
 const state = {
   childId: localStorage.getItem("talent-os-child") || "brother",
@@ -713,7 +723,8 @@ const state = {
   actionInboxText: "",
   actionNegotiation: null,
   captureShareWithAi: true,
-  journalMode: "hybrid",
+  journalMode: "self",
+  availableModels: [],
   journalPrompt: null,
   journalLoading: false,
   journalDraft: "",
@@ -772,8 +783,8 @@ const tutorialSteps = [
   { icon: "face", kicker: "第一步 · AI先认识你", title: "先确认一份可以修改的画像", copy: "AI先问具体问题，再总结它怎样理解你。你确认或改正后，系统才开始规划。" },
   { icon: "map", kicker: "第二步 · 蓝图与世界", title: "一次只选择一条成长主线", copy: "画像连接未来能力树，形成成长蓝图；本周只匹配一只最值得挑战的Boss。" },
   { icon: "quest", kicker: "第三步 · 今天", title: "只看1到3项核心任务", copy: "任务来自蓝图和现实责任。不合适可以缩小、替换、延期或恢复，不会因为合理调整受罚。" },
-  { icon: "gem", kicker: "第四步 · 每日小Boss", title: "完成核心任务，解锁一次能力挑战", copy: "回答或做出真实行动，就会留下证据、打破一层护盾，并获得经验和宝石。" },
-  { icon: "question", kicker: "第五步 · 周Boss与奖励", title: "六天证据汇成一次周决战", copy: "证据足够才结算。击败Boss后奖励三选一，现实奖励还需要家长确认。" }
+  { icon: "gem", kicker: "第四步 · 每日小Boss", title: "完成核心任务，解锁一次能力挑战", copy: "回答或做出真实行动，就会留下完成记录、打破一层护盾，并获得经验和宝石。" },
+  { icon: "question", kicker: "第五步 · 周Boss与奖励", title: "六天完成记录汇成一次周挑战", copy: "完成记录达到要求才结算。击败Boss后奖励三选一，现实奖励还需要家长确认。" }
 ];
 
 function escapeHtml(value) {
@@ -844,13 +855,13 @@ function queueCloudSync(memory = null) {
 async function saveProgressToCloud(memory = null) {
   if (!currentProfile()) return;
   try {
-    await fetch("/api/progress", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, data: collectProfileSnapshot(), memory }) });
+    await fetch("/api/progress", { method: "PUT", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, data: collectProfileSnapshot(), memory }) });
   } catch { showToast("云端暂时离线，进度已保存在本机"); }
 }
 
 function trackEvent(eventName, properties = {}) {
   if (!state.account || !currentProfile()) return;
-  fetch("/api/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, eventName, properties }) }).catch(() => {});
+  fetch("/api/events", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, eventName, properties }) }).catch(() => {});
 }
 
 function aiEligibleMemories(memories) {
@@ -910,7 +921,7 @@ async function generateStrategyInsights() {
   state.strategyLoading = true;
   if (!insightsOverlay.hidden) insightsContent.innerHTML = renderInsightsPanel();
   try {
-    const response = await fetch("/api/strategy-insights/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId }) });
+    const response = await fetch("/api/strategy-insights/generate", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "暂时无法整理说明书");
     state.strategyInsights = result.insights || [];
@@ -999,12 +1010,12 @@ async function refreshGrowthBlueprint(force = false, quiet = false) {
   state.growthBlueprintLoading = true;
   if (!quiet) render();
   try {
-    const response = await fetch("/api/growth-blueprint/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, force }) });
+    const response = await fetch("/api/growth-blueprint/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, force }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "blueprint");
     state.growthBlueprint = result.blueprint;
     state.growthBlueprintStale = false;
-    if (!quiet) showToast(result.blueprint.provider === "siliconflow" ? "AI成长蓝图已根据新证据更新" : "成长蓝图已用本地规则更新");
+    if (!quiet) showToast(result.blueprint.provider === "siliconflow" ? "AI成长蓝图已根据新记录更新" : "成长蓝图已用本地规则更新");
   } catch { if (!quiet) showToast("蓝图暂时无法更新，已有计划不会丢失"); }
   finally { state.growthBlueprintLoading = false; render(); }
 }
@@ -1043,7 +1054,7 @@ async function parsePlannerText(answer = null) {
   state.plannerLoading = true;
   render();
   try {
-    const response = await fetch("/api/planner/parse", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, date: todayKey(), text, answer }) });
+    const response = await fetch("/api/planner/parse", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, date: todayKey(), text, answer }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "暂时无法理解这段安排");
     state.plannerParse = result;
@@ -1056,7 +1067,7 @@ async function requestPlannerRecommendations() {
   state.plannerLoading = true;
   render();
   try {
-    const response = await fetch("/api/planner/recommend", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, date: todayKey(), energy: getPrefs().energy || "normal" }) });
+    const response = await fetch("/api/planner/recommend", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, date: todayKey(), energy: getPrefs().energy || "normal" }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "暂时无法安排今天");
     state.plannerRecommendations = result;
@@ -1069,7 +1080,7 @@ async function acceptPlannerItems(items) {
   state.plannerLoading = true;
   render();
   try {
-    const response = await fetch("/api/planner/accept", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, date: todayKey(), items }) });
+    const response = await fetch("/api/planner/accept", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, date: todayKey(), items }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "暂时无法加入今天");
     state.planner = result;
@@ -1227,7 +1238,7 @@ async function syncBossCorePlan(tasks, quiet = false) {
   state.bossLoading = true;
   if (!quiet) render();
   try {
-    const response = await fetch("/api/boss/daily/sync", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, tasks: (tasks || defaultBossCoreTasks()).slice(0, 3) }) });
+    const response = await fetch("/api/boss/daily/sync", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, tasks: (tasks || defaultBossCoreTasks()).slice(0, 3) }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "核心计划暂时无法保存");
     state.bossState = result;
@@ -1257,7 +1268,7 @@ async function completeMiniBoss() {
   const mini = state.bossState?.miniBoss;
   const answer = document.querySelector("#mini-boss-evidence")?.value.trim() || "";
   if (!mini || mini.unlockStatus !== "unlocked") return;
-  if (answer.length < 2) { showToast("请留下一个真实回答或行动证据"); return; }
+  if (answer.length < 2) { showToast("请留下一个真实回答或完成说明"); return; }
   state.bossLoading = true;
   render();
   try {
@@ -1265,7 +1276,7 @@ async function completeMiniBoss() {
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "小Boss结算失败");
     state.bossState = result;
-    if (result.rewarded) grantBonusReward(`mini-boss:${mini.id}`, { xp: result.reward.xp, gems: result.reward.gems, label: "击败每日小Boss并获得符文" });
+    if (result.rewarded) grantBonusReward(`mini-boss:${mini.id}`, { xp: result.reward.xp, gems: result.reward.gems, label: "完成每日小Boss并获得成长徽章" });
   } catch (error) { showToast(error.message || "小Boss结算失败"); }
   finally { state.bossLoading = false; render(); }
 }
@@ -1314,7 +1325,7 @@ async function generateWeeklyReview() {
   state.reviewLoading = true;
   if (!insightsOverlay.hidden) insightsContent.innerHTML = renderInsightsPanel();
   try {
-    const response = await fetch("/api/reviews/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId }) });
+    const response = await fetch("/api/reviews/generate", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId }) });
     const review = await response.json();
     if (!response.ok) throw new Error(review.error || "review");
     state.reviews = [review, ...state.reviews.filter((item) => item.id !== review.id)];
@@ -1343,7 +1354,7 @@ async function generateFamilyBrief() {
   state.familyBriefLoading = true;
   if (!insightsOverlay.hidden) insightsContent.innerHTML = renderInsightsPanel();
   try {
-    const response = await fetch("/api/family-brief/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId }) });
+    const response = await fetch("/api/family-brief/generate", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId }) });
     const brief = await response.json();
     if (!response.ok) throw new Error(brief.error || "暂时无法生成家庭简报");
     state.familyBrief = brief;
@@ -1454,7 +1465,7 @@ async function closeFocusRescue() {
 async function startFocus(action) {
   const plannedMinutes = Number(document.querySelector("#focus-minutes")?.value || Math.min(20, action.estimateMinutes || 10));
   try {
-    const response = await fetch("/api/focus", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, actionId: action.id, title: action.title, plannedMinutes }) });
+    const response = await fetch("/api/focus", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, actionId: action.id, title: action.title, plannedMinutes }) });
     const session = await response.json();
     if (!response.ok) throw new Error(session.error || "start");
     state.focusSession = { ...session, clientLoadedAt: Date.now() };
@@ -1534,7 +1545,7 @@ async function parseActionInbox(answer = null) {
   state.actionInboxLoading = true;
   render();
   try {
-    const response = await fetch("/api/capture/parse", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, text: state.actionInboxText, answer }) });
+    const response = await fetch("/api/capture/parse", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, text: state.actionInboxText, answer }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "AI暂时没听清");
     state.actionInboxResult = result;
@@ -1549,17 +1560,17 @@ async function confirmActionInbox() {
     if (draft.category === "action") {
       const actionDraft = draft.action;
       const detail = [actionDraft.detail, actionDraft.firstStep ? `第一步：${actionDraft.firstStep}` : ""].filter(Boolean).join("\n");
-      const response = await fetch("/api/actions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, title: actionDraft.title, detail, estimateMinutes: actionDraft.estimateMinutes, energy: actionDraft.energy, importance: actionDraft.importance, dueAt: actionDraft.dueAt, goalId: draft.goalId || 0 }) });
+      const response = await fetch("/api/actions", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, title: actionDraft.title, detail, estimateMinutes: actionDraft.estimateMinutes, energy: actionDraft.energy, importance: actionDraft.importance, dueAt: actionDraft.dueAt, goalId: draft.goalId || 0 }) });
       const action = await response.json();
       if (!response.ok) throw new Error(action.error || "保存失败");
       state.actions = [action, ...state.actions];
     } else if (draft.category === "idea") {
-      const response = await fetch("/api/ideas", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, title: draft.title, note: draft.content, source: "self", goalId: draft.goalId || 0 }) });
+      const response = await fetch("/api/ideas", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, title: draft.title, note: draft.content, source: "self", goalId: draft.goalId || 0 }) });
       const idea = await response.json();
       if (!response.ok) throw new Error(idea.error || "保存失败");
       state.ideas = [idea, ...state.ideas];
     } else {
-      const response = await fetch("/api/journal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, source: "self", prompt: "", content: draft.content, tags: draft.tags, shareWithAi: state.captureShareWithAi, goalId: currentJourney()?.id || 0 }) });
+      const response = await fetch("/api/journal", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, source: "self", prompt: "", content: draft.content, tags: draft.tags, shareWithAi: state.captureShareWithAi, goalId: currentJourney()?.id || 0 }) });
       const entry = await response.json();
       if (!response.ok) throw new Error(entry.error || "保存失败");
       state.journals = [entry, ...state.journals].slice(0, 30);
@@ -1663,7 +1674,7 @@ async function applyActionNegotiation(id, outcome) {
 async function createIdea({ title, note = "", source = "self" }) {
   if (!title?.trim()) { showToast("先写下一点灵感"); return; }
   try {
-    const response = await fetch("/api/ideas", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, title: title.trim(), note, source, goalId: currentJourney()?.id || 0 }) });
+    const response = await fetch("/api/ideas", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, title: title.trim(), note, source, goalId: currentJourney()?.id || 0 }) });
     const idea = await response.json();
     if (!response.ok) throw new Error(idea.error || "保存失败");
     state.ideas = [idea, ...state.ideas];
@@ -1702,7 +1713,7 @@ async function requestIdeaResurfacing() {
   render();
   try {
     const answers = getCoachSession().answers || {};
-    const response = await fetch("/api/idea-resurfacing", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, energy: answers.energy || getPrefs().energy || "normal", availableMinutes: Number(answers.time || 10), news: getAppSettings().useNews ? getNewsContext() : [] }) });
+    const response = await fetch("/api/idea-resurfacing", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, energy: answers.energy || getPrefs().energy || "normal", availableMinutes: Number(answers.time || 10), news: getAppSettings().useNews ? getNewsContext() : [] }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "暂时没有灵感想醒来");
     state.ideaResurfacing = result.resurfacing;
@@ -1739,7 +1750,7 @@ async function requestJournalPrompt(useDraft = false) {
   state.journalLoading = true;
   render();
   try {
-    const response = await fetch("/api/journal/prompt", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, mode: state.journalMode, draft: useDraft ? state.journalDraft : "", todayContext: { answers: getCoachSession().answers, completed: doneToday().map((quest) => quest.title), latestReflection: getLogs()[0] || null } }) });
+    const response = await fetch("/api/journal/prompt", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, mode: state.journalMode, draft: useDraft ? state.journalDraft : "", todayContext: { answers: getCoachSession().answers, completed: doneToday().map((quest) => quest.title), latestReflection: getLogs()[0] || null } }) });
     if (!response.ok) throw new Error("journal-prompt");
     state.journalPrompt = await response.json();
   } catch { showToast("AI暂时没想好问题，你也可以自由写"); }
@@ -1753,7 +1764,7 @@ async function saveJournalEntry() {
   const shareWithAi = Boolean(document.querySelector("#journal-ai-context")?.checked);
   if (contentValue.length < 2) { showToast("至少写下一句话"); return; }
   try {
-    const response = await fetch("/api/journal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, source: state.journalMode, prompt: state.journalPrompt?.question || "", content: contentValue, tags, shareWithAi, goalId: currentJourney()?.id || 0 }) });
+    const response = await fetch("/api/journal", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, source: state.journalMode, prompt: state.journalPrompt?.question || "", content: contentValue, tags, shareWithAi, goalId: currentJourney()?.id || 0 }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "journal-save");
     state.journals = [result, ...state.journals].slice(0, 30);
@@ -1858,12 +1869,39 @@ function getAppSettings() {
     dailyTarget: 1,
     useNews: true,
     newsTopics: "AI教育, 科学发现, 儿童创造力, 未来技能",
-    motion: "gentle"
+    motion: "gentle",
+    questionMode: "fast",
+    aiModel: ""
   });
 }
 
 function setAppSettings(nextSettings) {
   writeJson(storageKey("app-settings"), { ...getAppSettings(), ...nextSettings });
+}
+
+function selectedAiModel() {
+  return String(getAppSettings().aiModel || state.modelStatus.model || "").trim();
+}
+function aiBody(payload = {}) {
+  return JSON.stringify({ model: selectedAiModel(), questionMode: getAppSettings().questionMode || "fast", ...payload });
+}
+async function loadAvailableModels() {
+  const select = document.querySelector("#setting-ai-model");
+  const modeSelect = document.querySelector("#setting-question-mode");
+  if (modeSelect) modeSelect.value = getAppSettings().questionMode || "fast";
+  if (!select) return;
+  try {
+    const response = await fetch("/api/models");
+    if (!response.ok) throw new Error("models");
+    const result = await response.json();
+    state.availableModels = Array.isArray(result.models) ? result.models : [];
+    const chosen = selectedAiModel() || result.defaultModel || state.modelStatus.model;
+    const models = [...new Set([chosen, ...state.availableModels])].filter(Boolean);
+    select.innerHTML = models.map((id) => `<option value="${escapeHtml(id)}" ${id === chosen ? "selected" : ""}>${escapeHtml(id)}</option>`).join("");
+  } catch {
+    const fallback = selectedAiModel() || state.modelStatus.model || "zai-org/GLM-5.2";
+    select.innerHTML = `<option value="${escapeHtml(fallback)}">${escapeHtml(fallback)}</option>`;
+  }
 }
 
 function getGrowthPlan() {
@@ -2183,7 +2221,7 @@ async function requestOnboardingQuestion(questionId) {
   render();
   try {
     const answers = Object.fromEntries(onboardingAnswerDetails().map(({ question, answer }) => [question.id, answer]));
-    const response = await fetch("/api/onboarding/question", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, questionId, answers }) });
+    const response = await fetch("/api/onboarding/question", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, questionId, answers }) });
     const result = await response.json();
     if (!response.ok || !result.question) throw new Error("question");
     writeJson(storageKey("onboarding-questions"), { ...readJson(storageKey("onboarding-questions"), {}), [questionId]: result.question });
@@ -2288,7 +2326,7 @@ function renderProfileOnboardingLegacy() {
     const displaySummary = portraitState?.correction || portrait?.summary || "";
     return `<section class="profile-onboarding complete"><header><span>画像确认 · 最后一步</span><strong>AI目前这样理解我</strong><p>这不是结论。画像只决定支持方式，不会直接冒充目标。</p></header>${state.onboardingPortraitLoading ? `<article class="onboarding-portrait loading"><small>正在整理6个回答</small><h2>AI在写一份可以被你纠正的描述</h2><div class="thinking-dots"><span></span><span></span><span></span></div></article>` : portrait ? `<article class="onboarding-portrait ${portraitState.confirmed ? "confirmed" : ""}"><header><span>${portraitState.correction ? "我的更正 · 最高优先级" : portraitState.provider === "siliconflow" ? "GLM第一版画像" : "本地第一版画像"}</span>${portraitState.confirmed ? "<b>已由我确认</b>" : "<b>等待我确认</b>"}</header><h2>${escapeHtml(displaySummary)}</h2>${portraitState.correction ? `<p class="portrait-ai-original"><small>AI原来的理解 · 仅供追溯，不再用于目标</small>${escapeHtml(portrait.summary)}</p>` : `<div class="portrait-signals">${(portrait.signals || []).map(signal => `<p><small>${escapeHtml(signal.title)}</small><strong>${escapeHtml(signal.text)}</strong><em>${escapeHtml(signal.evidence)}</em></p>`).join("")}</div><div class="portrait-support"><small>更适合我的支持方式</small><strong>${escapeHtml(portrait.supportStyle)}</strong></div>`}<p class="portrait-uncertainty">${escapeHtml(portrait.uncertainty)}</p>${state.onboardingPortraitEditing ? `<div class="portrait-correction"><label for="onboarding-portrait-correction">请用自己的话改正AI</label><textarea id="onboarding-portrait-correction" rows="4" maxlength="600" placeholder="例如：我不是怕做不好，我只是需要先知道第一步。">${escapeHtml(portraitState.correction || displaySummary)}</textarea><div><button type="button" data-action="save-onboarding-portrait-correction">保存我的更正</button><button type="button" data-action="cancel-onboarding-portrait-edit">取消</button></div></div>` : `<div class="portrait-actions"><button type="button" data-action="confirm-onboarding-portrait">${portraitState.confirmed ? "这仍然像我" : "这很像我"}</button><button type="button" data-action="edit-onboarding-portrait">${portraitState.confirmed ? "再次修改" : "有些不对，修改"}</button></div>`}</article>` : `<button class="onboarding-primary" type="button" data-action="generate-onboarding-portrait">生成我的第一版画像</button>`}${portraitState?.confirmed ? `<section class="onboarding-goal-project"><small>AI还差一个具体答案</small><h2>未来四周，你最想真正完成哪一件事？</h2><p>“更容易开始”是要训练的能力；目标必须是一件能完成、能看见结果的事。</p>${goalProject ? `<div class="chosen-goal-project"><span>具体成果</span><strong>${escapeHtml(goalProject)}</strong><button type="button" data-action="edit-onboarding-goal-project">重新说</button></div>` : `<div class="goal-project-entry"><input id="onboarding-goal-project" maxlength="160" placeholder="例如：完成一个能展示的搭建作品，并改进两版" /><button type="button" data-action="save-onboarding-goal-project">用这件事建立目标</button></div><div class="goal-project-suggestions">${goalSuggestions.map((value) => `<button type="button" data-action="save-onboarding-goal-project" data-value="${escapeHtml(value)}">${escapeHtml(value)}</button>`).join("")}</div>`}</section>${goalProject ? `<div class="onboarding-route"><small>这才是具体的SMART目标</small><h2>${escapeHtml(draft.objective)}</h2><p>${escapeHtml(draft.why)}</p><strong>四周完成标志：${escapeHtml(draft.successSignal)}</strong></div>` : ""}` : ""}<details class="onboarding-answer-evidence"><summary>查看AI参考的6个回答</summary><div class="onboarding-summary">${answers.map(({ question: item, answer }) => `<span>${escapeHtml(item.title.replace("？", ""))}<b>${escapeHtml(answer)}</b></span>`).join("")}</div></details>${state.onboardingError ? `<p class="onboarding-error">${escapeHtml(state.onboardingError)}</p>` : ""}<button class="onboarding-primary" type="button" data-action="finish-profile-onboarding" ${state.onboardingLoading || !portraitState?.confirmed || !goalProject ? "disabled" : ""}>${state.onboardingLoading ? "正在建立成长路线..." : !portraitState?.confirmed ? "请先确认或修改画像" : !goalProject ? "先说一件具体要完成的事" : "用这个目标开始"}</button></section>`;
   }
-  return `<section class="profile-onboarding"><header><span>${state.onboardingQuestionLoading ? "AI正在设计下一问" : "AI先认识我"} · ${progress + 1}/${onboardingQuestionIds.length}</span><strong>${escapeHtml(child().name)}，先不急着接任务</strong><p>每次只回答一个。后两题会根据前面的答案变化，没有标准答案。</p><div class="onboarding-progress"><i style="width:${percent}%"></i></div></header>${state.onboardingQuestionLoading ? `<article class="onboarding-question onboarding-thinking"><small>正在结合你刚才的回答</small><h2>AI在想一个真正有用的问题</h2><div class="thinking-dots"><span></span><span></span><span></span></div></article>` : `<article class="onboarding-question"><small>${["personal-friction","success-picture"].includes(question.id) ? "为我生成的问题" : "关于我自己"}</small><h2>${escapeHtml(question.title)}</h2><p>${escapeHtml(question.why)}</p><div>${question.options.map((option) => `<button type="button" data-action="answer-onboarding" data-question="${escapeHtml(question.id)}" data-value="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join("")}</div></article>`}${answers.length && !state.onboardingQuestionLoading ? `<button class="onboarding-back" type="button" data-action="undo-onboarding-answer" data-question="${escapeHtml(answers.at(-1).question.id)}">返回上一题</button>` : ""}<footer><span>认识我</span><i>→</i><span>SMART目标</span><i>→</i><span>OKR</span><i>→</i><span>今日一步</span></footer></section>`;
+  return `<section class="profile-onboarding"><header><span>${state.onboardingQuestionLoading ? "AI正在设计下一问" : "AI先认识我"} · ${progress + 1}/${onboardingQuestionIds.length}</span><strong>${escapeHtml(child().name)}，先不急着接任务</strong><p>每次只回答一个。深入模式会根据前面的答案补问；快速模式只问3个关键问题，没有标准答案。</p><div class="onboarding-progress"><i style="width:${percent}%"></i></div></header>${state.onboardingQuestionLoading ? `<article class="onboarding-question onboarding-thinking"><small>正在结合你刚才的回答</small><h2>AI在想一个真正有用的问题</h2><div class="thinking-dots"><span></span><span></span><span></span></div></article>` : `<article class="onboarding-question"><small>${["personal-friction","success-picture"].includes(question.id) ? "为我生成的问题" : "关于我自己"}</small><h2>${escapeHtml(question.title)}</h2><p>${escapeHtml(question.why)}</p><div>${question.options.map((option) => `<button type="button" data-action="answer-onboarding" data-question="${escapeHtml(question.id)}" data-value="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join("")}</div></article>`}${answers.length && !state.onboardingQuestionLoading ? `<button class="onboarding-back" type="button" data-action="undo-onboarding-answer" data-question="${escapeHtml(answers.at(-1).question.id)}">返回上一题</button>` : ""}<footer><span>认识我</span><i>→</i><span>SMART目标</span><i>→</i><span>OKR</span><i>→</i><span>今日一步</span></footer></section>`;
 }
 
 function renderProfileOnboarding() {
@@ -2297,7 +2335,7 @@ function renderProfileOnboarding() {
   const progress = answers.length;
   if (question) {
     const percent = Math.round((progress / onboardingQuestionIds.length) * 100);
-    return `<section class="profile-onboarding"><header><span>${state.onboardingQuestionLoading ? "AI正在设计下一问" : "AI先认识我"} · ${progress + 1}/${onboardingQuestionIds.length}</span><strong>${escapeHtml(child().name)}，先不急着接任务</strong><p>每次只回答一个。后两题会根据前面的答案变化，没有标准答案。</p><div class="onboarding-progress"><i style="width:${percent}%"></i></div></header>${state.onboardingQuestionLoading ? `<article class="onboarding-question onboarding-thinking"><small>正在结合你刚才的回答</small><h2>AI在想一个真正有用的问题</h2><div class="thinking-dots"><span></span><span></span><span></span></div></article>` : `<article class="onboarding-question"><small>${["personal-friction", "success-picture"].includes(question.id) ? "为我生成的问题" : "关于我自己"}</small><h2>${escapeHtml(question.title)}</h2><p>${escapeHtml(question.why)}</p><div>${question.options.map((option) => `<button type="button" data-action="answer-onboarding" data-question="${escapeHtml(question.id)}" data-value="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join("")}</div></article>`}${answers.length && !state.onboardingQuestionLoading ? `<button class="onboarding-back" type="button" data-action="undo-onboarding-answer" data-question="${escapeHtml(answers.at(-1).question.id)}">返回上一题</button>` : ""}<footer><span>认识我</span><i>→</i><span>SMART目标</span><i>→</i><span>OKR</span><i>→</i><span>今日一步</span></footer></section>`;
+    return `<section class="profile-onboarding"><header><span>${state.onboardingQuestionLoading ? "AI正在设计下一问" : "AI先认识我"} · ${progress + 1}/${onboardingQuestionIds.length}</span><strong>${escapeHtml(child().name)}，先不急着接任务</strong><p>每次只回答一个。深入模式会根据前面的答案补问；快速模式只问3个关键问题，没有标准答案。</p><div class="onboarding-progress"><i style="width:${percent}%"></i></div></header>${state.onboardingQuestionLoading ? `<article class="onboarding-question onboarding-thinking"><small>正在结合你刚才的回答</small><h2>AI在想一个真正有用的问题</h2><div class="thinking-dots"><span></span><span></span><span></span></div></article>` : `<article class="onboarding-question"><small>${["personal-friction", "success-picture"].includes(question.id) ? "为我生成的问题" : "关于我自己"}</small><h2>${escapeHtml(question.title)}</h2><p>${escapeHtml(question.why)}</p><div>${question.options.map((option) => `<button type="button" data-action="answer-onboarding" data-question="${escapeHtml(question.id)}" data-value="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join("")}</div></article>`}${answers.length && !state.onboardingQuestionLoading ? `<button class="onboarding-back" type="button" data-action="undo-onboarding-answer" data-question="${escapeHtml(answers.at(-1).question.id)}">返回上一题</button>` : ""}<footer><span>认识我</span><i>→</i><span>SMART目标</span><i>→</i><span>OKR</span><i>→</i><span>今日一步</span></footer></section>`;
   }
 
   const portraitState = getOnboardingPortrait();
@@ -2328,7 +2366,7 @@ async function finishProfileOnboarding() {
   try {
     if (!state.goals.some((goal) => goal.status === "active")) {
       const draft = state.goalDraft.draft;
-      const response = await fetch("/api/goals", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, ...draft }) });
+      const response = await fetch("/api/goals", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, ...draft }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "SMART目标建立失败");
       state.goals = [result, ...state.goals];
@@ -2821,11 +2859,54 @@ function fallbackDailyTodoCatalog() {
   });
 }
 
-function dailyTodoCatalog() {
+function rawDailyTodoCatalog() {
   const tasks = state.dailyMissionBook?.tasks;
   if (!Array.isArray(tasks) || !tasks.length) return fallbackDailyTodoCatalog();
   return tasks.map((task) => ({ ...task, id: String(task.id), micro: true, type: task.category, energy: task.minutes <= 5 ? "low" : "normal", reflect: "这次是自己完成，还是需要了帮助？" }));
 }
+
+// GROWTHOS_CONCRETE_TASKS_V2
+const clearTaskCategories = ["身体运动", "阅读表达", "数学数据", "生活自理", "创造项目", "AI与工具", "家庭责任", "户外探索"];
+function inferClearTaskCategory(task) {
+  const text = `${task?.category || ""} ${task?.type || ""} ${task?.title || ""}`;
+  if (/跳绳|跑步|运动|姿态|平板|球|身体/.test(text)) return "身体运动";
+  if (/阅读|故事|复述|写作|讲解|表达/.test(text)) return "阅读表达";
+  if (/数学|计算|数据|统计|预算|比较/.test(text)) return "数学数据";
+  if (/整理|书包|洗|做饭|生活|收纳/.test(text)) return "生活自理";
+  if (/AI|电脑|打字|文件|核验/.test(text)) return "AI与工具";
+  if (/家庭|合作|家务|分工|帮助/.test(text)) return "家庭责任";
+  if (/户外|观察|地图|路线|自然/.test(text)) return "户外探索";
+  return "创造项目";
+}
+function measurableSuccess(task, category, minutes) {
+  const supplied = String(task?.success || task?.successCriteria || "").trim();
+  if (/\d|分钟|秒|次|个|页|米|字|道|拍照|录音|讲给|勾选/.test(supplied)) return supplied;
+  const text = `${task?.title || ""} ${task?.steps?.join(" ") || ""}`;
+  if (/跳绳/.test(text)) return "连续跳绳3分钟，基础目标180次，挑战目标300次，记录总次数";
+  if (/跑步|快走/.test(text)) return `连续运动${Math.max(5, minutes)}分钟，记录时间或距离`;
+  if (/阅读|读书/.test(text)) return "读完4页，并用自己的话复述3句话";
+  if (/数学|计算|口算/.test(text)) return "完成10道题，至少答对8道，并订正错题";
+  if (/写作|作文|日记/.test(text)) return "写满5行或80字，完成后自己检查1遍";
+  if (/打字/.test(text)) return "10分钟输入100字，错字不超过5个，并保存文件";
+  if (/整理|书包|收纳/.test(text)) return "10分钟内按清单检查5项，完成后拍照或勾选确认";
+  if (category === "身体运动") return `连续完成${Math.max(5, minutes)}分钟，记录次数、时间或距离中的1项`;
+  if (category === "阅读表达") return `在${minutes}分钟内完成1段阅读，并讲出3个要点`;
+  if (category === "数学数据") return `在${minutes}分钟内完成10个可核对的小题或记录项`;
+  return `在${minutes}分钟内完成1个看得见、能检查的结果`;
+}
+function concretizeQuest(task, index = 0) {
+  const minutes = Math.max(3, Math.min(60, Number(task?.minutes || 10)));
+  const category = clearTaskCategories.includes(task?.category) ? task.category : inferClearTaskCategory(task);
+  const success = measurableSuccess(task, category, minutes);
+  const steps = Array.isArray(task?.steps) && task.steps.length
+    ? task.steps.slice(0, 4).map(String)
+    : ["准备需要的东西", `连续做${minutes}分钟`, "按完成标准检查并记录结果"];
+  return { ...task, category, type: category, minutes, success, completionCheck: success, steps, firstStep: String(task?.firstStep || steps[0] || "先准备好需要的东西").slice(0, 120), id: task?.id || `clear-task-${index}` };
+}
+function dailyTodoCatalog() {
+  return rawDailyTodoCatalog().map(concretizeQuest);
+}
+
 
 function dailyRoutineTasks() {
   return fallbackDailyTodoCatalog().filter((task) => task.track === "routine").sort((a, b) => a.schedule.time.localeCompare(b.schedule.time));
@@ -2964,7 +3045,7 @@ async function askSelfCoach(preset = "") {
   state.selfCoachLoading = true;
   if (!insightsOverlay.hidden) insightsContent.innerHTML = renderInsightsPanel();
   try {
-    const response = await fetch("/api/self-coach/ask", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, question }) });
+    const response = await fetch("/api/self-coach/ask", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, question }) });
     const answer = await response.json();
     if (!response.ok) throw new Error(answer.error || "AI暂时不知道怎么回答");
     state.selfCoachAnswers = [answer, ...state.selfCoachAnswers.filter((item) => item.id !== answer.id)].slice(0, 20);
@@ -3001,18 +3082,18 @@ function renderInsightsPanel() {
   const logs = getLogs();
   const funCount = logs.filter((log) => log.fun === "有趣").length;
   const review = state.reviews[0];
-  const confidenceLabel = (value) => value >= 70 ? "证据较强" : value >= 45 ? "正在形成" : "只是线索";
+  const confidenceLabel = (value) => value >= 70 ? "记录较多" : value >= 45 ? "正在形成" : "只是线索";
   const strategyCategory = { starting: "开始任务", focus: "保持专注", learning: "学习方法", creating: "推进作品", recovery: "恢复状态" };
-  const coachConfidence = { enough: "有多条证据", some: "有一些线索", little: "证据还很少" };
+  const coachConfidence = { enough: "有多条记录", some: "有一些线索", little: "记录还很少" };
   const coachPrompts = ["我卡住时，什么办法可能有用？", "最近我正在推进什么？", "什么任务更容易让我愿意继续？"];
   const swapReasonLabels = { too_big: "感觉有点大", not_interesting: "当时没兴趣", unclear: "不知道怎么开始", not_now: "只是当时不合适" };
   const swapSourceLabels = { action: "行动", habit: "小习惯", idea: "灵感", recharge: "恢复活动" };
   return `
     <section class="insight-hero">
       <span class="face ${escapeHtml(child().avatar)} large"></span>
-      <div><small>不是分数，是成长证据</small><h3>${escapeHtml(child().name)}正在成为更懂自己的人</h3><p>Lv.${economy.level} · 完成${economy.completed}个行动 · ${memories.length}条长期记忆</p></div>
+      <div><small>不是分数，是成长记录</small><h3>${escapeHtml(child().name)}正在成为更懂自己的人</h3><p>Lv.${economy.level} · 完成${economy.completed}个行动 · ${memories.length}条长期记忆</p></div>
     </section>
-    <section class="insights-section self-coach-section"><div class="page-head"><div><h3>问问我的成长档案</h3><small>只根据我的证据回答</small></div></div>
+    <section class="insights-section self-coach-section"><div class="page-head"><div><h3>问问我的成长档案</h3><small>只根据我的成长记录回答</small></div></div>
       <div class="self-coach-prompts">${coachPrompts.map((question) => `<button type="button" data-action="ask-self-coach-preset" data-question="${escapeHtml(question)}">${escapeHtml(question)}</button>`).join("")}</div>
       <div class="self-coach-input"><input id="self-coach-question" maxlength="300" value="${escapeHtml(state.selfCoachQuestion)}" placeholder="例如：我什么时候更容易开始？" ${state.selfCoachLoading ? "disabled" : ""} /><button type="button" data-action="ask-self-coach" ${state.selfCoachLoading ? "disabled" : ""}>${state.selfCoachLoading ? "正在查找证据..." : "问一问"}</button></div>
       <div class="self-coach-history">${state.selfCoachAnswers.slice(0, 6).map((item) => `<article class="self-coach-answer ${escapeHtml(item.feedback || "")}"><header><span>${escapeHtml(coachConfidence[item.confidence] || "证据线索")}</span><small>${item.provider === "siliconflow" ? "GLM有来源回答" : "本地有来源回答"}</small></header><h4>${escapeHtml(item.question)}</h4><p>${escapeHtml(item.answer)}</p>${item.evidence.length ? `<details><summary>查看${item.evidence.length}条来源</summary>${item.evidence.map((source) => `<div><b>${escapeHtml(source.kind)}</b><span>${escapeHtml(source.text)}</span></div>`).join("")}</details>` : `<div class="self-coach-no-evidence">成长档案还没有足够来源</div>`}${item.nextQuestion ? `<button class="self-coach-next" type="button" data-action="ask-self-coach-preset" data-question="${escapeHtml(item.nextQuestion)}">还可以想：${escapeHtml(item.nextQuestion)}</button>` : ""}<footer><button type="button" data-action="self-coach-feedback" data-answer-id="${item.id}" data-feedback="helpful">这对我有帮助</button><button type="button" data-action="self-coach-feedback" data-answer-id="${item.id}" data-feedback="not_me">这不像我</button><button type="button" data-action="delete-self-coach" data-answer-id="${item.id}">删除</button></footer>${item.feedback ? `<small class="self-coach-feedback-state">${item.feedback === "helpful" ? "我已确认有帮助" : "我已否定这条回答"}</small>` : ""}</article>`).join("") || `<p class="empty-state">你可以主动问自己，而不只是等AI给结论。</p>`}</div>
@@ -3036,7 +3117,7 @@ function renderInsightsPanel() {
     <section class="insights-section hypothesis-section"><div class="page-head"><h3>关于我的成长假设</h3><small>不是定论，可以反驳</small></div>
       <div class="hypothesis-list">${state.hypotheses.length ? state.hypotheses.slice(0, 8).map((item) => `<article class="${escapeHtml(item.status)}"><div class="hypothesis-head"><span>${escapeHtml(confidenceLabel(item.confidence))}</span><strong>${item.confidence}%</strong></div><h4>${escapeHtml(item.title)}</h4><p>${escapeHtml(item.summary)}</p><div class="confidence-track"><i style="width:${Math.max(4, item.confidence)}%"></i></div><small>${item.evidenceCount}条证据 · ${item.counterCount}条反证${item.aiContext ? " · AI可参考" : " · 暂不进入AI"}</small><div class="hypothesis-actions"><button type="button" data-action="hypothesis-feedback" data-hypothesis-id="${item.id}" data-value="confirm">像我</button><button type="button" data-action="hypothesis-feedback" data-hypothesis-id="${item.id}" data-value="unsure">还不确定</button><button type="button" data-action="hypothesis-feedback" data-hypothesis-id="${item.id}" data-value="reject">不像我</button></div></article>`).join("") : `<p class="empty-state">多记录几次日记或完成行动后，系统才会提出可验证的成长假设。</p>`}</div>
     </section>
-    <section class="insights-section"><div class="page-head"><h3>我保存的成长证据</h3><small>私人记录不会给AI参考</small></div>
+    <section class="insights-section"><div class="page-head"><h3>我保存的成长记录</h3><small>私人记录不会给AI参考</small></div>
       <div class="memory-list">${memories.length ? memories.map((memory) => { const privateMemory = memory.evidence?.shareWithAi === false; return `<article class="${privateMemory ? "private-memory" : ""}"><span>${privateMemory ? "私人记录" : memory.kind === "completion" ? "行动" : "成长证据"}</span><p>${escapeHtml(memory.summary)}</p>${privateMemory ? `<small>AI不参考</small>` : ""}<button type="button" data-action="forget-memory" data-memory-id="${memory.id}">${privateMemory ? "删除" : "这不像我"}</button></article>`; }).join("") : `<p class="empty-state">完成任务并复盘后，这里会出现有来源的长期记忆。</p>`}</div>
     </section>
     <p class="insight-ethics">成长档案只描述可观察行为，不做天赋定论。任何记忆都可以删除或在之后被新证据修正。</p>`;
@@ -3230,7 +3311,7 @@ async function generateDailyPlan(options = {}) {
   if (!options.quiet) render();
   try {
     if (!state.dailyMissionBook?.tasks?.length) await generateDailyMissionBook(false, true, true);
-    const response = await fetch("/api/daily-plan/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, energy: state.dailyCheckin.energy || state.dailyPlan?.checkin.energy || "normal", minutes: Number(state.dailyCheckin.minutes || state.dailyPlan?.checkin.minutes || 10), intent: state.dailyCheckin.intent || state.dailyPlan?.checkin.intent || "finish", swap: options.swap === true, swapReason: options.swapReason || "", lighter: options.lighter === true, preferredRef: options.preferredRef || "" }) });
+    const response = await fetch("/api/daily-plan/generate", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, energy: state.dailyCheckin.energy || state.dailyPlan?.checkin.energy || "normal", minutes: Number(state.dailyCheckin.minutes || state.dailyPlan?.checkin.minutes || 10), intent: state.dailyCheckin.intent || state.dailyPlan?.checkin.intent || "finish", swap: options.swap === true, swapReason: options.swapReason || "", lighter: options.lighter === true, preferredRef: options.preferredRef || "" }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "今天暂时选不出下一步");
     state.dailyPlan = result;
@@ -3384,7 +3465,7 @@ async function startDailyPlan() {
   }
   if (plan.sourceType === "blueprint") {
     try {
-      const response = await fetch("/api/actions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, title: plan.title, detail: `${plan.why}\n第一步：${plan.firstStep}`, estimateMinutes: plan.minutes, energy: "normal", importance: 2 }) });
+      const response = await fetch("/api/actions", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, title: plan.title, detail: `${plan.why}\n第一步：${plan.firstStep}`, estimateMinutes: plan.minutes, energy: "normal", importance: 2 }) });
       const action = await response.json();
       if (!response.ok) throw new Error(action.error || "action");
       state.actions = [action, ...state.actions];
@@ -3612,7 +3693,7 @@ function renderBossPage() {
   const project = week.selection?.project;
   return `<section class="page-purpose"><span>Boss</span><div><strong>一周只挑战一种关键能力</strong><small>用一个真实项目连续练习，周末以作品和证据完成决战。</small></div></section>${renderWeeklyBossSummary()}
     ${project ? `<section class="panel weekly-project-contract"><small>本周主线项目</small><h2>${escapeHtml(project.drivingQuestion)}</h2><div><span>周成果</span><strong>${escapeHtml(project.weeklyProduct)}</strong></div><ol>${project.dailyStages.map((stage, index) => `<li class="${index === weekDayIndex() ? "today" : ""}"><b>${index + 1}</b><div><strong>${escapeHtml(stage.name)}</strong><small>${escapeHtml(stage.task)}</small></div></li>`).join("")}</ol><footer>完成标准：${project.successCriteria.map(escapeHtml).join(" / ")}</footer></section>` : ""}
-    <section class="panel rune-board"><div class="page-head"><h2 class="panel-title">六枚证据符文</h2><span class="tag">${week.shieldBroken}/6</span></div><div>${["weakness","method","action","resilience","transfer","result"].map((rune, index) => `<span class="${index < week.shieldBroken ? "earned" : ""}"><b>${index < week.shieldBroken ? "✓" : index + 1}</b>${runeLabel(rune)}</span>`).join("")}</div></section>
+    <section class="panel rune-board"><div class="page-head"><h2 class="panel-title">六枚成长徽章</h2><span class="tag">${week.shieldBroken}/6</span></div><div>${["weakness","method","action","resilience","transfer","result"].map((rune, index) => `<span class="${index < week.shieldBroken ? "earned" : ""}"><b>${index < week.shieldBroken ? "✓" : index + 1}</b>${runeLabel(rune)}</span>`).join("")}</div></section>
     <section class="panel boss-trace"><h2 class="panel-title">为什么是这只Boss</h2>${week.selection.reasons.map((reason) => `<p>${escapeHtml(reason)}</p>`).join("")}<small>目录 ${escapeHtml(week.boss.id)} · 技能 ${escapeHtml(week.boss.skillId)} · 蓝图版本 ${escapeHtml(week.sourceBlueprintId)}</small></section>
     <section class="panel boss-final ${week.status}"><small>周日综合决战</small><h2>${escapeHtml(week.boss.finalChallengeTemplate)}</h2>${week.status === "final_ready" ? `<textarea id="weekly-boss-reflection" rows="3" placeholder="这周我用了什么方法？下次想怎样调整？"></textarea><button class="primary-action" type="button" data-action="finish-weekly-boss">开始决战</button>` : week.status === "defeated" ? `<strong>Boss已击败，奖励三选一已送到背包。</strong>` : `<p>还需 ${Math.max(0, week.shieldTotal - week.shieldBroken)} 枚每日符文。证据不足不会判定孩子失败。</p>`}</section>
     ${runes.length ? `<section class="panel evidence-timeline"><h2 class="panel-title">本周真实证据</h2>${runes.map((item) => `<article><span>E${item.level}</span><div><strong>${escapeHtml(item.summary)}</strong><small>${escapeHtml(item.createdAt.slice(0,10))}</small></div></article>`).join("")}</section>` : ""}`;
@@ -3866,7 +3947,7 @@ async function shapeGrowthGoal() {
   render();
   try {
     const context = Object.fromEntries(contextAnswerDetails().map(({ question, answer }) => [question.id, { question: question.title, answer }]));
-    const response = await fetch("/api/goals/shape", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, text: state.goalText, context, clarifications: state.goalClarifications }) });
+    const response = await fetch("/api/goals/shape", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, text: state.goalText, context, clarifications: state.goalClarifications }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "AI暂时没整理清楚");
     if (result.needsClarification) {
@@ -3884,7 +3965,7 @@ async function confirmGrowthGoal() {
   const draft = state.goalDraft?.draft;
   if (!draft) return;
   try {
-    const response = await fetch("/api/goals", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, ...draft }) });
+    const response = await fetch("/api/goals", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, ...draft }) });
     const goal = await response.json();
     if (!response.ok) throw new Error(goal.error || "方向保存失败");
     await loadGoals();
@@ -3924,7 +4005,7 @@ async function startGoalExperiment(id) {
   const goal = state.goals.find((item) => item.id === Number(id));
   if (!goal) return;
   try {
-    const response = await fetch("/api/actions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, title: goal.firstExperiment, detail: `来自成长方向：${goal.title}`, estimateMinutes: 10, energy: "normal", importance: 2, goalId: goal.id }) });
+    const response = await fetch("/api/actions", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, title: goal.firstExperiment, detail: `来自成长方向：${goal.title}`, estimateMinutes: 10, energy: "normal", importance: 2, goalId: goal.id }) });
     const action = await response.json();
     if (!response.ok) throw new Error(action.error || "行动创建失败");
     state.actions = [action, ...state.actions];
@@ -4043,17 +4124,17 @@ function renderSkills() {
 
 function renderGrowthBlueprint() {
   const blueprint = state.growthBlueprint;
-  if (!blueprint) return `<section class="panel growth-blueprint empty-blueprint"><div class="page-head"><div><h2 class="panel-title">${pixelIcon("skill-ai", "")} AI成长蓝图</h2><small>画像 × 未来能力 × 真实证据</small></div></div><p>AI会从已确认画像、日记、任务体验和作品中，只挑两个最值得发展的方向。</p><button type="button" data-action="refresh-growth-blueprint" ${state.growthBlueprintLoading ? "disabled" : ""}>${state.growthBlueprintLoading ? "正在生成蓝图..." : "生成我的成长蓝图"}</button></section>`;
+  if (!blueprint) return `<section class="panel growth-blueprint empty-blueprint"><div class="page-head"><div><h2 class="panel-title">${pixelIcon("skill-ai", "")} AI成长蓝图</h2><small>画像 × 未来能力 × 真实记录</small></div></div><p>AI会从已确认画像、日记、任务体验和作品中，只挑两个最值得发展的方向。</p><button type="button" data-action="refresh-growth-blueprint" ${state.growthBlueprintLoading ? "disabled" : ""}>${state.growthBlueprintLoading ? "正在生成蓝图..." : "生成我的成长蓝图"}</button></section>`;
   const priorities = Array.isArray(blueprint.priorities) ? blueprint.priorities : [];
   const paths = Array.isArray(blueprint.fourWeekPath) ? blueprint.fourWeekPath : [];
   return `<section class="panel growth-blueprint">
-    <div class="page-head"><div><h2 class="panel-title">${pixelIcon("skill-ai", "")} AI成长蓝图</h2><small>${blueprint.provider === "siliconflow" ? "GLM根据真实证据生成" : "本地证据规则生成"}</small></div><span class="tag">V${blueprint.version || 2}</span></div>
-    ${state.growthBlueprintStale ? `<div class="blueprint-update">日记或行动带来了新证据，蓝图等你确认更新。</div>` : ""}
+    <div class="page-head"><div><h2 class="panel-title">${pixelIcon("skill-ai", "")} AI成长蓝图</h2><small>${blueprint.provider === "siliconflow" ? "AI根据真实记录生成" : "本地证据规则生成"}</small></div><span class="tag">V${blueprint.version || 2}</span></div>
+    ${state.growthBlueprintStale ? `<div class="blueprint-update">日记或行动带来了新记录，蓝图等你确认更新。</div>` : ""}
     <p class="blueprint-summary">${escapeHtml(blueprint.childSummary)}</p>
-    <div class="blueprint-priorities">${priorities.map((item, index) => `<article><header><span>${escapeHtml(item.role || (index ? "探索" : "底座"))}</span><strong>${escapeHtml(item.name || skillDisplayName(item.skill))}</strong><em>${Math.round(Number(item.confidence || 0.5) * 100)}%线索</em></header><p>${escapeHtml(item.reason)}</p><div class="blueprint-evidence">${item.evidence?.length ? item.evidence.map((value) => `<span>${escapeHtml(value)}</span>`).join("") : `<span>证据还少，先做小实验</span>`}</div><div class="blueprint-practice">${(item.practices || []).map((value) => `<b>${escapeHtml(value)}</b>`).join("")}</div></article>`).join("")}</div>
+    <div class="blueprint-priorities">${priorities.map((item, index) => `<article><header><span>${escapeHtml(item.role || (index ? "探索" : "底座"))}</span><strong>${escapeHtml(item.name || skillDisplayName(item.skill))}</strong><em>${Math.round(Number(item.confidence || 0.5) * 100)}%线索</em></header><p>${escapeHtml(item.reason)}</p><div class="blueprint-evidence">${item.evidence?.length ? item.evidence.map((value) => `<span>${escapeHtml(value)}</span>`).join("") : `<span>记录还少，先做个小实验</span>`}</div><div class="blueprint-practice">${(item.practices || []).map((value) => `<b>${escapeHtml(value)}</b>`).join("")}</div></article>`).join("")}</div>
     <div class="blueprint-path"><small>未来四周 · SMART + OKR</small>${paths.map((path) => `<article><strong>${escapeHtml(path.objective)}</strong>${(path.keyResults || []).map((kr, index) => `<p><b>KR${index + 1}</b>${escapeHtml(kr)}</p>`).join("")}<footer>今天先做：${escapeHtml(path.firstExperiment)}</footer></article>`).join("")}</div>
     <div class="blueprint-question"><small>AI下一步想了解</small><strong>${escapeHtml(blueprint.nextQuestion || "最近哪件事最想变得更容易？")}</strong></div>
-    <footer class="blueprint-footer"><span>${escapeHtml(blueprint.adjustment || "孩子的更正始终优先")}</span><button type="button" data-action="refresh-growth-blueprint" ${state.growthBlueprintLoading ? "disabled" : ""}>${state.growthBlueprintLoading ? "更新中..." : state.growthBlueprintStale ? "根据新证据更新" : "重新校准"}</button></footer>
+    <footer class="blueprint-footer"><span>${escapeHtml(blueprint.adjustment || "孩子的更正始终优先")}</span><button type="button" data-action="refresh-growth-blueprint" ${state.growthBlueprintLoading ? "disabled" : ""}>${state.growthBlueprintLoading ? "更新中..." : state.growthBlueprintStale ? "根据新记录更新" : "重新校准"}</button></footer>
   </section>`;
 }
 
@@ -4304,7 +4385,7 @@ async function saveArtifact() {
   if (saveButton) { saveButton.disabled = true; saveButton.textContent = "正在放上作品架..."; }
   try {
     const mediaData = file ? await fileToDataUrl(file) : "";
-    const response = await fetch("/api/artifacts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, taskKey, title, skill: linkedTask?.skill || "creation", type: state.artifactMode, caption, content: contentText, linkUrl, mediaData, shareWithAi, goalId: currentJourney()?.id || 0 }) });
+    const response = await fetch("/api/artifacts", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, taskKey, title, skill: linkedTask?.skill || "creation", type: state.artifactMode, caption, content: contentText, linkUrl, mediaData, shareWithAi, goalId: currentJourney()?.id || 0 }) });
     const artifact = await response.json();
     if (!response.ok) throw new Error(artifact.error || "artifact");
     const revision = Boolean(state.artifactRevision);
@@ -4345,7 +4426,7 @@ async function deleteArtifact(id) {
     revokeBonusReward(`artifact:${id}`);
     await loadCloudProgress(state.childId);
     render();
-    showToast("作品及关联成长证据已删除");
+    showToast("作品及关联成长记录已删除");
   } catch { showToast("暂时无法删除作品"); }
 }
 
@@ -4354,7 +4435,7 @@ function renderArtifactStudio() {
   const type = state.artifactMode;
   const revision = state.artifactRevision;
   return `<section class="panel artifact-panel">
-    <div class="page-head"><h2 class="panel-title">${pixelIcon("skill-craft", "")} 我的作品架</h2><span class="tag">${state.artifacts.length}件证据</span></div>
+    <div class="page-head"><h2 class="panel-title">${pixelIcon("skill-craft", "")} 我的作品架</h2><span class="tag">${state.artifacts.length}件作品</span></div>
     <p class="artifact-intro">留下一个看得见的版本。作品不需要完美，它会记录我怎么一步步变好。</p>
     <div class="artifact-modes" role="group" aria-label="作品类型">${[["text","写下来"],["photo","拍下来"],["audio","讲出来"],["link","作品链接"]].map(([value,label]) => `<button type="button" data-action="set-artifact-mode" data-mode="${value}" class="${type === value ? "active" : ""}">${label}</button>`).join("")}</div>
     <div class="artifact-form">
@@ -4596,7 +4677,7 @@ async function saveReflection() {
   setPrefs({ likedTags: nextLiked, hardTags: nextHard });
   setLogs([log, ...getLogs()]);
   try {
-    const response = await fetch("/api/task-feedback", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profileId: state.childId, taskKey: selectedTask.key, taskTitle: selectedTask.title, skill: selectedTask.skill, mode: selectedTask.mode, difficulty, enjoyment, support, motivation, note: log.note, feedbackDate: todayKey(), goalId: currentJourney()?.id || 0 }) });
+    const response = await fetch("/api/task-feedback", { method: "POST", headers: { "content-type": "application/json" }, body: aiBody({ profileId: state.childId, taskKey: selectedTask.key, taskTitle: selectedTask.title, skill: selectedTask.skill, mode: selectedTask.mode, difficulty, enjoyment, support, motivation, note: log.note, feedbackDate: todayKey(), goalId: currentJourney()?.id || 0 }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "feedback");
     state.taskFeedback = [result.entry, ...state.taskFeedback.filter((entry) => !(entry.taskKey === result.entry.taskKey && entry.feedbackDate === result.entry.feedbackDate))];
@@ -4986,6 +5067,7 @@ document.addEventListener("click", async (event) => {
   const openSettingsButton = event.target.closest("[data-action='open-settings']");
   if (openSettingsButton) {
     openSettings();
+    loadAvailableModels();
     return;
   }
 
@@ -5006,7 +5088,9 @@ document.addEventListener("click", async (event) => {
     setAppSettings({
       dailyTarget: Number(document.querySelector("#setting-daily-target")?.value || 1),
       useNews: Boolean(document.querySelector("#setting-use-news")?.checked),
-      newsTopics: document.querySelector("#setting-news-topics")?.value.trim() || "AI教育, 科学发现, 儿童创造力, 未来技能"
+      newsTopics: document.querySelector("#setting-news-topics")?.value.trim() || "AI教育, 科学发现, 儿童创造力, 未来技能",
+      questionMode: document.querySelector("#setting-question-mode")?.value || "fast",
+      aiModel: document.querySelector("#setting-ai-model")?.value || selectedAiModel()
     });
     clearAiCoachResult();
     showToast("设置已保存，下一次推荐会使用");

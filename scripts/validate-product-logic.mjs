@@ -186,7 +186,7 @@ for (const term of ["CREATE TABLE IF NOT EXISTS idea_resurfacings", "/api/idea-r
 for (const term of ["CREATE TABLE IF NOT EXISTS growth_goals", "/api/goals/shape", "handleShapeGoal", "handleCreateGoal", "handleUpdateGoal", "handleDeleteGoal", "goalRows", "同时保留三个方向就够了", "goal_id AS goalId", "matchingGoalId", "goalTitle"]) if (!serverSource.includes(term)) failures.push(`growth goals server missing ${term}`);
 for (const term of ["当前成长主线", "生成SMART目标", "采用这个目标", "安排第一个行动", "shapeGrowthGoal", "confirmGrowthGoal", "startGoalExperiment", "currentJourney", "capture-goal-link", "daily-goal-link"]) if (!appSourceText.includes(term)) failures.push(`growth goals UI missing ${term}`);
 for (const term of ["CREATE TABLE IF NOT EXISTS self_coach_answers", "/api/self-coach/ask", "handleAskSelfCoach", "selfCoachEvidence", "rankSelfCoachEvidence", "entry.shareWithAi", "只能根据提供的evidence回答", "allowedRefs", "证据不足就明确说还不知道", "handleSelfCoachFeedback", "handleDeleteSelfCoach"]) if (!serverSource.includes(term)) failures.push(`self coach server missing ${term}`);
-for (const term of ["问问我的成长档案", "只根据我的证据回答", "askSelfCoach", "feedbackSelfCoach", "deleteSelfCoachAnswer", "查看${item.evidence.length}条来源", "这对我有帮助", "这不像我"]) if (!appSourceText.includes(term)) failures.push(`self coach UI missing ${term}`);
+for (const term of ["问问我的成长档案", "只根据我的成长记录回答", "askSelfCoach", "feedbackSelfCoach", "deleteSelfCoachAnswer", "查看${item.evidence.length}条来源", "这对我有帮助", "这不像我"]) if (!appSourceText.includes(term)) failures.push(`self coach UI missing ${term}`);
 for (const term of ["CREATE TABLE IF NOT EXISTS action_decisions", "not_before", "defer_count", "/negotiate", "/defer", "handleNegotiateAction", "handleDeferAction", "孩子有权延期、缩小或放下一件事", "也不是失败", "status = \"someday\"", "status = \"dropped\""]) if (!serverSource.includes(term)) failures.push(`action negotiation server missing ${term}`);
 for (const term of ["现在不合适", "现在为什么不适合做", "现在没力气", "缩成5分钟", "明天再做", "放到以后", "不做了", "以后再看", "requestActionNegotiation", "applyActionNegotiation"]) if (!appSourceText.includes(term)) failures.push(`action negotiation UI missing ${term}`);
 for (const term of ["actionDecisionCalibration", "reasonCounts", "activeSignals", "reasonCounts.no_time >= 2", "reasonCounts.no_energy >= 2", "reasonCounts.unclear >= 2", "reasonCounts.not_important >= 2", "这是当前节奏，不是能力或性格标签", "decisionCalibration.preferShort", "decisionCalibration.preferLowEnergy", "decisionCalibration.preferClearStep", "decisionCalibration.preferImportant"]) if (!serverSource.includes(term)) failures.push(`decision calibration server missing ${term}`);
@@ -234,14 +234,14 @@ for (const term of ["isVagueGoalText", "preferredRef"]) if (!serverSource.includ
 for (const term of ["mode必须为clarify", "goalClarifications", "目标设计需要连接GLM", "系统不会改用模板", "GLM没有满足该技能的安全约束", "GLM给出了不安全的水上练习选项", "家长只在岸上看"]) if (!serverSource.includes(term)) failures.push(`LLM-only goal clarification missing ${term}`);
 for (const term of ["goalQuestion", "goalClarifications", "answer-goal-clarification", "GLM生成的SMART目标", "不会套用通用模板"]) if (!appSourceText.includes(term)) failures.push(`LLM goal clarification UI missing ${term}`);
 if (appSourceText.includes("function onboardingGoalDraft()")) failures.push("onboarding still uses a local goal template");
-if (!serverSource.includes('if (devAdminEnabled && loginName === "admin")')) failures.push("development demo login is not locally gated");
+if (!serverSource.includes('if (demoLoginEnabled && loginName === "admin")')) failures.push("public demo login is not enabled");
 if (htmlSource.includes("内置测试：账号 admin")) failures.push("production login UI exposes shared demo credentials");
 if (serverSource.includes('"崔护"') || serverSource.includes('"9岁3个月"')) failures.push("production server contains real child demo data");
 for (const term of [">今天</b>", ">世界</b>", ">蓝图</b>", ">Boss</b>", ">背包</b>"]) if (!htmlSource.includes(term)) failures.push(`workflow navigation missing ${term}`);
 for (const term of ["CREATE TABLE IF NOT EXISTS weekly_boss_runs", "CREATE TABLE IF NOT EXISTS daily_core_plans", "CREATE TABLE IF NOT EXISTS daily_mini_bosses", "CREATE TABLE IF NOT EXISTS growth_evidence", "CREATE TABLE IF NOT EXISTS reward_drops", "CREATE TABLE IF NOT EXISTS reward_vouchers", "/api/boss/catalog", "/api/boss/week", "/api/boss/daily/sync", "handleWeeklyBossFinal", "handleChooseBossReward", "handleApproveRewardVoucher"]) {
   if (!serverSource.includes(term)) failures.push(`weekly Boss backend missing ${term}`);
 }
-for (const term of ["renderWeeklyBossSummary", "renderCoreMissionPanel", "renderMiniBossPanel", "renderBossWorlds", "renderRewardBackpack", "只看1到3项核心任务", "六枚证据符文", "合理调整后的项目任务也能解锁"]) {
+for (const term of ["renderWeeklyBossSummary", "renderCoreMissionPanel", "renderMiniBossPanel", "renderBossWorlds", "renderRewardBackpack", "只看1到3项核心任务", "六枚成长徽章", "合理调整后的项目任务也能解锁"]) {
   if (!appSourceText.includes(term)) failures.push(`weekly Boss workflow missing ${term}`);
 }
 if (appSourceText.includes('<div class="action-quick-add"')) failures.push("legacy multi-field quick-add is still rendered");
@@ -388,6 +388,12 @@ if (!serverSource.includes('url.pathname === "/api/journey"')) failures.push("Jo
 if (!serverSource.includes("growth_journeys")) failures.push("Journey table is missing");
 if (!serverSource.includes("weekly_boss_run_id")) failures.push("Evidence lineage is missing");
 if (!appSourceText.includes("state.journey?.goal")) failures.push("Frontend does not read the server journey");
+
+if (!readFileSync("styles.css", "utf8").includes("GROWTHOS_RESPONSIVE_WORKBENCH_V2")) failures.push("responsive workbench marker missing");
+if (!serverSource.includes('url.pathname === "/api/models"')) failures.push("SiliconFlow model catalog route missing");
+if (!appSourceText.includes("GROWTHOS_CONCRETE_TASKS_V2")) failures.push("concrete measurable task normalizer missing");
+if (!htmlSource.includes("setting-question-mode") || !htmlSource.includes("setting-ai-model")) failures.push("AI preference controls missing");
+if (appSourceText.includes("证据符文")) failures.push("confusing evidence rune wording remains");
 
 if (failures.length) {
   console.error(failures.map((failure) => `- ${failure}`).join("\n"));
