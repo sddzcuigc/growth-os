@@ -29,9 +29,17 @@ def insert_after(text: str, anchor: str, addition: str, label: str) -> str:
 
 
 def replace_once(text: str, old: str, new: str, label: str) -> str:
+    if label in {'action insert sql', 'action insert values'}:
+        return _replace_in_function(
+            text,
+            'async function handleCreateAction(request, response) {',
+            'async function handleUpdateAction(request, response, url) {',
+            old,
+            new,
+            label,
+        )
     if label == 'action public lineage':
         query_old = 'SELECT id,title,detail,status,estimate_minutes AS estimateMinutes,energy,importance,due_at AS dueAt,source,source_ref AS sourceRef,goal_id AS goalId,'
         query_new = 'SELECT id,journey_id AS journeyId,project_id AS projectId,title,detail,status,estimate_minutes AS estimateMinutes,energy,importance,due_at AS dueAt,source,source_ref AS sourceRef,goal_id AS goalId,'
         return _base_replace_once(text, query_old, query_new, 'action row lineage')
     return _base_replace_once(text, old, new, label)
-
