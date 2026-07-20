@@ -28,9 +28,31 @@ jobs:
       - name: Apply deterministic fixes
         run: node scripts/apply-current-fixes.mjs
       - name: Verify syntax and API regressions
+        id: verify
+        continue-on-error: true
+        shell: bash
         run: |
-          npm run check
-          node --test tests/api/auth-security.test.mjs tests/api/account-deletion-race.test.mjs
+          set -o pipefail
+          {
+            npm run check
+            node --test tests/api/auth-security.test.mjs tests/api/account-deletion-race.test.mjs
+          } 2>&1 | tee fix-verification.log
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: current-fix-verification
+          path: |
+            fix-verification.log
+            app.js
+            api/server.js
+            index.html
+            styles.css
+            tests/api/auth-security.test.mjs
+          retention-days: 2
+      - name: Stop on verification failure
+        if: steps.verify.outcome != 'success'
+        run: exit 1
       - name: Commit verified product changes
         run: |
           git config user.name "growth-os-fix-bot"
