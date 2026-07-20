@@ -17,15 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Show relevant frontend and backend code
-        run: |
-          echo '=== installProfiles ==='
-          grep -n -B 20 -A 45 'function installProfiles' app.js || true
-          echo '=== loadAccount ==='
-          grep -n -B 20 -A 70 'function loadAccount' app.js || true
-          echo '=== render startup ==='
-          tail -n 30 app.js
-          echo '=== demo auth ==='
-          grep -n -B 10 -A 70 'demoLoginEnabled\|ensureBuiltInDemoAccount\|loginName === "admin"' api/server.js || true
-          echo '=== profile UI ==='
-          grep -n -B 5 -A 15 'demo-login-hint\|profile-overlay' index.html || true
+      - name: Collect focused code snippets
+        run: node scripts/inspect-current-fixes.mjs
+      - name: Upload focused code snippets
+        uses: actions/upload-artifact@v4
+        with:
+          name: current-fix-inspection
+          path: inspection-snippets.txt
+          retention-days: 2
