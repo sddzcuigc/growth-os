@@ -11,9 +11,11 @@ function around(file, needle, before = 20, after = 60) {
 }
 
 around("app.js", "function installProfiles");
-around("app.js", "function loadAccount");
-around("app.js", "render();", 5, 10);
+around("app.js", "async function loadAccount");
+around("app.js", "function render()", 10, 120);
 around("api/server.js", "const demoLoginEnabled", 5, 30);
 around("api/server.js", "function ensureBuiltInDemoAccount", 10, 70);
-around("index.html", "demo-login-hint", 8, 12);
+around("index.html", "demo-login-hint", 8, 20);
+around("styles.css", ".profile-overlay", 15, 45);
+around("styles.css", "[hidden]", 10, 20);
 writeFileSync("inspection-snippets.txt", sections.join("\n"));
