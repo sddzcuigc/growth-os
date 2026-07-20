@@ -1,0 +1,41 @@
+name: Apply Current Production Fixes
+
+on:
+  push:
+    branches:
+      - fix/profile-auth-hydration
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/profile-auth-hydration
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Apply deterministic fixes
+        run: node scripts/apply-current-fixes.mjs
+      - name: Verify syntax and API regressions
+        run: |
+          npm run check
+          node --test tests/api/auth-security.test.mjs tests/api/account-deletion-race.test.mjs
+      - name: Commit verified product changes
+        run: |
+          git config user.name "growth-os-fix-bot"
+          git config user.email "growth-os-fix-bot@users.noreply.github.com"
+          git add app.js api/server.js index.html styles.css tests/api/auth-security.test.mjs
+          if git diff --cached --quiet; then
+            echo "No product changes to commit"
+          else
+            git commit -m "fix: hydrate profiles and disable production demo login"
+            git push origin HEAD:fix/profile-auth-hydration
+          fi
