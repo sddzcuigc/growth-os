@@ -5009,7 +5009,7 @@ document.addEventListener("click", async (event) => {
     error.textContent = "正在验证恢复码...";
     const payload = { email: document.querySelector("#recovery-email")?.value.trim(), recoveryCode: document.querySelector("#recovery-code")?.value.trim(), newPassword: document.querySelector("#recovery-new-password")?.value || "" };
     fetch("/api/auth/recovery/reset", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.error); state.account = result; installProfiles(result.profiles); authOverlay.hidden = true; document.querySelector("#auth-login-fields").hidden = false; document.querySelector("#auth-recovery-fields").hidden = true; if (state.profiles.length) await loadCloudProgress(state.childId); render(); showToast("密码已重设，旧设备会自动退出"); })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.error); state.account = result; installProfiles(result.profiles); profileOverlay.hidden = state.profiles.length > 0; render(); authOverlay.hidden = true; document.querySelector("#auth-login-fields").hidden = false; document.querySelector("#auth-recovery-fields").hidden = true; if (state.profiles.length) { try { await loadCloudProgress(state.childId); } catch { showToast("部分云端档案暂时没有载入"); } render(); } showToast("密码已重设，旧设备会自动退出"); })
       .catch((failure) => { error.textContent = failure.message || "恢复失败"; });
     return;
   }
@@ -5027,7 +5027,7 @@ document.addEventListener("click", async (event) => {
     const error = document.querySelector("#auth-error");
     error.textContent = "正在连接成长档案...";
     fetch(`/api/auth/${authAction.dataset.action}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password }) })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.error); const oneTimeCode = result.recoveryCode || ""; const { recoveryCode: _recoveryCode, ...account } = result; state.account = account; installProfiles(result.profiles); authOverlay.hidden = true; profileOverlay.hidden = state.profiles.length > 0; if (state.profiles.length) await loadCloudProgress(state.childId); render(); if (oneTimeCode) showRecoveryCode(oneTimeCode); })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.error); const oneTimeCode = result.recoveryCode || ""; const { recoveryCode: _recoveryCode, ...account } = result; state.account = account; installProfiles(result.profiles); profileOverlay.hidden = state.profiles.length > 0; render(); authOverlay.hidden = true; if (state.profiles.length) { try { await loadCloudProgress(state.childId); } catch { showToast("部分云端档案暂时没有载入"); } render(); } if (oneTimeCode) showRecoveryCode(oneTimeCode); })
       .catch((failure) => { error.textContent = failure.message || "连接失败"; });
     return;
   }
