@@ -1,0 +1,86 @@
+name: Apply verified GrowthOS journey patch
+
+on:
+  push:
+    branches:
+      - fix/evidence-loop-final
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: "github.event_name == 'pull_request' || !contains(github.event.head_commit.message, '[verified-journey]')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out clean main baseline
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Rebuild readable patch from audit branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin fix/evidence-loop-journey-kernel
+          : > /tmp/growthos.patch
+          for part in 000 001 002 003 004 005; do
+            git show "origin/fix/evidence-loop-journey-kernel:.growthos-patch/part-${part}" >> /tmp/growthos.patch
+          done
+          test "$(wc -l < /tmp/growthos.patch)" -gt 700
+
+      - name: Apply readable patch
+        id: patch
+        shell: bash
+        run: |
+          set +e
+          patch -p1 --forward --batch --verbose < /tmp/growthos.patch > /tmp/growthos-patch.log 2>&1
+          status=$?
+          cat /tmp/growthos-patch.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload patch diagnostics
+        if: steps.patch.outputs.status != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: growthos-final-patch-diagnostics
+          path: /tmp/growthos-patch.log
+          retention-days: 1
+
+      - name: Stop on patch mismatch
+        if: steps.patch.outputs.status != '0'
+        run: exit 1
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Validate product structure
+        run: npm run check
+
+      - name: Run API regression suite
+        run: npm run test:api
+
+      - name: Commit verified source to final branch
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/apply-growthos-final.yml
+          rm -rf .growthos-critical .growthos-patch .growthos-sync
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: unify GrowthOS evidence journey [verified-journey]"
+          git push --force origin HEAD:fix/evidence-loop-final
