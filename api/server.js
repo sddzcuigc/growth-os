@@ -20,7 +20,7 @@ const baseUrl = process.env.AI_BASE_URL || process.env.SILICONFLOW_BASE_URL || "
 const model = process.env.AI_MODEL || process.env.SILICONFLOW_MODEL || "zai-org/GLM-5.2";
 const apiKey = process.env.AI_API_KEY || process.env.SILICONFLOW_API_KEY;
 const devAdminEnabled = process.env.NODE_ENV !== "production" && ["127.0.0.1", "localhost"].includes(host) && process.env.ENABLE_TEST_ADMIN !== "false";
-const demoLoginEnabled = process.env.DEMO_LOGIN_ENABLED !== "false";
+const demoLoginEnabled = devAdminEnabled && process.env.DEMO_LOGIN_ENABLED === "true";
 const dataDir = process.env.GROWTH_OS_DATA_DIR || (process.env.VERCEL ? "/tmp/growth-os" : join(root, "data"));
 const remoteDatabaseUrl = process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || "";
 const remoteDatabaseToken = process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN || "";
@@ -388,7 +388,9 @@ function cookieMap(request) {
 function currentUser(request) {
   const token = cookieMap(request).growth_session;
   if (!token) return null;
-  return db.prepare(`SELECT users.id, users.email FROM sessions JOIN users ON users.id=sessions.user_id WHERE sessions.token=? AND sessions.expires_at>?`).get(token, nowIso()) || null;
+  const user = db.prepare(`SELECT users.id, users.email FROM sessions JOIN users ON users.id=sessions.user_id WHERE sessions.token=? AND sessions.expires_at>?`).get(token, nowIso()) || null;
+  if (!demoLoginEnabled && user?.email === "builtin-admin@growth-os.local") return null;
+  return user;
 }
 function requireUser(request, response) {
   const user = currentUser(request);
