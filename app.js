@@ -653,6 +653,7 @@ const state = {
   planLoading: false,
   modelStatus: { connected: false, model: "GLM-5.2", provider: "SiliconFlow", newsAvailable: false },
   account: null,
+  accountHydrating: true,
   profiles: [],
   cloudMemories: [],
   metrics: { activeDays: 0, recommendations: 0, completed: 0, reflections: 0, acceptanceRate: 0, fullLoops: 0 },
@@ -1785,15 +1786,22 @@ function hydrateProfileData(data) {
 }
 
 function installProfiles(profiles) {
-  state.profiles = profiles || [];
+  const previousProfileIds = state.profiles.map((profile) => profile.id);
+  state.profiles = Array.isArray(profiles) ? profiles : [];
+  for (const id of previousProfileIds) {
+    if (!state.profiles.some((profile) => profile.id === id)) delete children[id];
+  }
   for (const profile of state.profiles) {
     const template = children[profile.baseTemplate] || children.brother;
     children[profile.id] = { ...structuredClone(template), name: profile.name, shortAge: profile.age, avatar: profile.avatar };
   }
   if (!state.profiles.some((profile) => profile.id === state.childId)) state.childId = state.profiles[0]?.id || "brother";
+  if (state.profiles.length) localStorage.setItem("talent-os-child", state.childId);
+  else localStorage.removeItem("talent-os-child");
 }
 
 async function loadAccount() {
+  state.accountHydrating = true;
   let account;
   try {
     const response = await fetch("/api/account");
@@ -1809,16 +1817,28 @@ async function loadAccount() {
       } catch {}
     }
   }
-  if (!account) { authOverlay.hidden = false; return; }
+  if (!account) {
+    state.account = null;
+    state.profiles = [];
+    state.accountHydrating = false;
+    authOverlay.hidden = false;
+    profileOverlay.hidden = true;
+    document.body?.classList.remove("account-loading");
+    render();
+    return;
+  }
   state.account = account;
-  installProfiles(state.account.profiles);
+  installProfiles(account.profiles);
   authOverlay.hidden = true;
-  if (!state.profiles.length) profileOverlay.hidden = false;
-  else {
+  profileOverlay.hidden = state.profiles.length > 0;
+  state.accountHydrating = false;
+  render();
+  document.body?.classList.remove("account-loading");
+  if (state.profiles.length) {
     try { await loadCloudProgress(state.childId); }
     catch (error) { console.warn("成长档案加载失败", error); showToast("部分云端档案暂时没有载入"); }
+    render();
   }
-  render();
 }
 
 async function loadCloudProgress(profileId) {
@@ -5015,11 +5035,31 @@ document.addEventListener("click", async (event) => {
   if (event.target.closest("[data-action='open-profile-creator']")) { closeSettings(); profileOverlay.hidden = false; return; }
   if (event.target.closest("[data-action='close-profile-creator']")) { if (state.profiles.length) profileOverlay.hidden = true; return; }
   if (event.target.closest("[data-action='create-profile']")) {
+    const button = event.target.closest("[data-action='create-profile']");
     const payload = { name: document.querySelector("#profile-name")?.value.trim(), age: document.querySelector("#profile-age")?.value.trim(), avatar: document.querySelector("#profile-avatar")?.value, baseTemplate: document.querySelector("#profile-template")?.value, guardianConsent: Boolean(document.querySelector("#profile-consent")?.checked) };
     const error = document.querySelector("#profile-error");
-    fetch("/api/profiles", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) })
-      .then(async (response) => { const profile = await response.json(); if (!response.ok) throw new Error(profile.error); installProfiles([...state.profiles, profile]); state.childId = profile.id; profileOverlay.hidden = true; render(); showToast("新角色已创建"); })
-      .catch((failure) => { error.textContent = failure.message || "创建失败"; });
+    error.textContent = "";
+    button.disabled = true;
+    button.textContent = "正在创建...";
+    try {
+      const response = await fetch("/api/profiles", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      const profile = await response.json();
+      if (!response.ok) throw new Error(profile.error || "创建失败");
+      const profiles = [...state.profiles.filter((item) => item.id !== profile.id), profile];
+      state.account = { ...state.account, profiles };
+      installProfiles(profiles);
+      state.childId = profile.id;
+      localStorage.setItem("talent-os-child", profile.id);
+      profileOverlay.hidden = true;
+      render();
+      showToast("新角色已创建");
+      try { await loadCloudProgress(profile.id); } catch {}
+      render();
+    } catch (failure) {
+      error.textContent = failure.message || "创建失败";
+      button.disabled = false;
+      button.textContent = "创建角色";
+    }
     return;
   }
   if (event.target.closest("[data-action='export-progress']")) {
@@ -5353,7 +5393,8 @@ document.addEventListener("keydown", async (event) => {
   if (event.target?.id === "self-coach-question" && event.key === "Enter") { event.preventDefault(); await askSelfCoach(); }
 });
 
+document.body?.classList.add("account-loading");
 render();
 loadRuntimeStatus();
-loadAccount();
+loadAccount().finally(() => document.body?.classList.remove("account-loading"));
 setTimeout(() => trackEvent("app_opened", { page: state.page }), 800);

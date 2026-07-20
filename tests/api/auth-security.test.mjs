@@ -39,6 +39,9 @@ async function directRequest(requestPath, { method = "GET", body, cookie = "", i
 test("auth protections enforce lockout, CSRF and destructive confirmations", async () => {
   const email = `security-${Date.now()}@example.test`;
   const password = "StrongPass123!";
+  const demoLogin = await directRequest("/api/auth/login", { method: "POST", body: { email: "admin", password: "admin" } });
+  assert.equal(demoLogin.status, 401);
+
   const registered = await directRequest("/api/auth/register", { method: "POST", body: { email, password } });
   assert.equal(registered.status, 201);
   const cookie = String(registered.headers["set-cookie"]).split(";")[0];
