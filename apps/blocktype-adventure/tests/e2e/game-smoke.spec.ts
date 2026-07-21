@@ -1,11 +1,22 @@
 import { expect, test } from '@playwright/test';
 
+type EnemySnapshot = {
+  id: number;
+  word: string;
+  progress: number;
+  x: number;
+};
+
 type SceneSnapshot = {
   active: boolean;
   paused: boolean;
   finished: boolean;
   enemyCount: number;
   total: number;
+  correct: number;
+  incorrect: number;
+  lockedTargetId: number | null;
+  enemies: EnemySnapshot[];
 };
 
 async function snapshot(page: import('@playwright/test').Page): Promise<SceneSnapshot> {
@@ -14,11 +25,17 @@ async function snapshot(page: import('@playwright/test').Page): Promise<SceneSna
       __BLOCKTYPE_GAME__?: {
         scene: {
           getScene: (key: string) => {
-            scene: { isActive: () => boolean };
+            scene: { isActive: () => boolean; restart: () => void };
             paused: boolean;
             finished: boolean;
-            enemies: unknown[];
-            stats: { total: number };
+            enemies: Array<{
+              id: number;
+              word: string;
+              progress: number;
+              container: { x: number };
+            }>;
+            stats: { total: number; correct: number; incorrect: number };
+            typingSystem: { lockedTargetId: number | null };
           };
         };
       };
@@ -31,7 +48,29 @@ async function snapshot(page: import('@playwright/test').Page): Promise<SceneSna
       finished: scene.finished,
       enemyCount: scene.enemies.length,
       total: scene.stats.total,
+      correct: scene.stats.correct,
+      incorrect: scene.stats.incorrect,
+      lockedTargetId: scene.typingSystem.lockedTargetId,
+      enemies: scene.enemies.map((enemy) => ({
+        id: enemy.id,
+        word: enemy.word,
+        progress: enemy.progress,
+        x: enemy.container.x,
+      })),
     };
+  });
+}
+
+async function restartScene(page: import('@playwright/test').Page): Promise<void> {
+  await page.evaluate(() => {
+    const root = globalThis as typeof globalThis & {
+      __BLOCKTYPE_GAME__?: {
+        scene: { getScene: (key: string) => { scene: { restart: () => void } } };
+      };
+    };
+    const scene = root.__BLOCKTYPE_GAME__?.scene.getScene('game');
+    if (!scene) throw new Error('GameScene is unavailable');
+    scene.scene.restart();
   });
 }
 
@@ -67,5 +106,63 @@ test('loads canvas and handles keyboard pause/input without browser errors', asy
   await page.reload();
   await expect(page.locator('#game canvas')).toBeVisible();
   await expect.poll(async () => (await snapshot(page)).enemyCount).toBeGreaterThan(0);
+  expect(browserErrors).toEqual([]);
+});
+
+test('locks the nearest same-initial enemy, rolls back with Backspace, and resets on restart', async ({ page }) => {
+  const browserErrors: string[] = [];
+  page.on('pageerror', (error) => browserErrors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(message.text());
+  });
+
+  // Phaser word/kind/lane selection calls Math.random three times per spawn.
+  // The sequence makes the first two words "stone" and "star" without changing production code.
+  await page.addInitScript(() => {
+    const values = [0.07, 0.2, 0.2, 0.58, 0.2, 0.2];
+    let index = 0;
+    Math.random = () => values[index++] ?? 0.1;
+  });
+
+  await page.goto('/');
+  await expect(page.locator('#game canvas')).toBeVisible();
+  await expect.poll(async () => (await snapshot(page)).enemyCount).toBeGreaterThanOrEqual(2);
+
+  const beforeInput = await snapshot(page);
+  const sameInitial = beforeInput.enemies.filter((enemy) => enemy.word.startsWith('s'));
+  expect(sameInitial).toHaveLength(2);
+
+  const nearest = [...sameInitial].sort((a, b) => a.x - b.x)[0];
+  await page.keyboard.press('s');
+
+  await expect.poll(async () => (await snapshot(page)).lockedTargetId).toBe(nearest.id);
+  let afterLock = await snapshot(page);
+  expect(afterLock.enemies.find((enemy) => enemy.id === nearest.id)?.progress).toBe(1);
+
+  const secondCharacter = nearest.word[1];
+  await page.keyboard.press(secondCharacter);
+  await expect.poll(async () => {
+    const state = await snapshot(page);
+    return state.enemies.find((enemy) => enemy.id === nearest.id)?.progress;
+  }).toBe(2);
+
+  const urlBeforeBackspace = page.url();
+  const totalBeforeBackspace = (await snapshot(page)).total;
+  await page.keyboard.press('Backspace');
+  await expect.poll(async () => {
+    const state = await snapshot(page);
+    return state.enemies.find((enemy) => enemy.id === nearest.id)?.progress;
+  }).toBe(1);
+  expect(page.url()).toBe(urlBeforeBackspace);
+  expect((await snapshot(page)).total).toBe(totalBeforeBackspace);
+
+  await restartScene(page);
+  await expect.poll(async () => (await snapshot(page)).enemyCount).toBeGreaterThan(0);
+  afterLock = await snapshot(page);
+  expect(afterLock.total).toBe(0);
+  expect(afterLock.correct).toBe(0);
+  expect(afterLock.incorrect).toBe(0);
+  expect(afterLock.lockedTargetId).toBeNull();
+  expect(afterLock.enemies.every((enemy) => enemy.progress === 0)).toBe(true);
   expect(browserErrors).toEqual([]);
 });
