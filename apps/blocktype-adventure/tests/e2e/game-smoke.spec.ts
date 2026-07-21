@@ -74,6 +74,26 @@ async function restartScene(page: import('@playwright/test').Page): Promise<void
   });
 }
 
+async function prepareSameInitialTargets(page: import('@playwright/test').Page): Promise<void> {
+  await page.evaluate(() => {
+    const root = globalThis as typeof globalThis & {
+      __BLOCKTYPE_GAME__?: {
+        scene: {
+          getScene: (key: string) => {
+            enemies: Array<{ word: string; progress: number }>;
+          };
+        };
+      };
+    };
+    const scene = root.__BLOCKTYPE_GAME__?.scene.getScene('game');
+    if (!scene || scene.enemies.length < 2) throw new Error('Two live enemies are required');
+    scene.enemies[0].word = 'stone';
+    scene.enemies[0].progress = 0;
+    scene.enemies[1].word = 'star';
+    scene.enemies[1].progress = 0;
+  });
+}
+
 test('loads canvas and handles keyboard pause/input without browser errors', async ({ page }) => {
   const browserErrors: string[] = [];
   page.on('pageerror', (error) => browserErrors.push(error.message));
@@ -118,21 +138,14 @@ test('locks the nearest same-initial enemy, rolls back with Backspace, and reset
 
   await page.goto('/');
   await expect(page.locator('#game canvas')).toBeVisible();
+  await expect.poll(async () => (await snapshot(page)).enemyCount).toBeGreaterThanOrEqual(2);
 
-  // Keep engine startup untouched. Only subsequent enemy word selection is deterministic.
-  await page.evaluate(() => {
-    const root = globalThis as typeof globalThis & { __BLOCKTYPE_ORIGINAL_RANDOM__?: () => number };
-    root.__BLOCKTYPE_ORIGINAL_RANDOM__ = Math.random;
-    Math.random = () => 0.07;
-  });
-
-  await expect.poll(async () => {
-    const state = await snapshot(page);
-    return state.enemies.filter((enemy) => enemy.word.startsWith('s')).length;
-  }).toBeGreaterThanOrEqual(2);
-
+  // Normalize only the two fixture words; movement, distance, keyboard events and restart stay real.
+  await prepareSameInitialTargets(page);
   const beforeInput = await snapshot(page);
   const sameInitial = beforeInput.enemies.filter((enemy) => enemy.word.startsWith('s'));
+  expect(sameInitial).toHaveLength(2);
+
   const nearest = [...sameInitial].sort((a, b) => a.x - b.x)[0];
   await page.keyboard.press('s');
 
@@ -157,10 +170,6 @@ test('locks the nearest same-initial enemy, rolls back with Backspace, and reset
   expect(page.url()).toBe(urlBeforeBackspace);
   expect((await snapshot(page)).total).toBe(totalBeforeBackspace);
 
-  await page.evaluate(() => {
-    const root = globalThis as typeof globalThis & { __BLOCKTYPE_ORIGINAL_RANDOM__?: () => number };
-    if (root.__BLOCKTYPE_ORIGINAL_RANDOM__) Math.random = root.__BLOCKTYPE_ORIGINAL_RANDOM__;
-  });
   await restartScene(page);
   await expect.poll(async () => (await snapshot(page)).enemyCount).toBeGreaterThan(0);
   afterLock = await snapshot(page);
