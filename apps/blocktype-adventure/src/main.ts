@@ -17,4 +17,8 @@ const config: Phaser.Types.Core.GameConfig = {
   scene: [GameScene],
 };
 
-new Phaser.Game(config);
+const game = new Phaser.Game(config);
+
+// Read-only browser test seam. It exposes the Phaser game instance so Playwright can
+// verify real scene state without duplicating gameplay rules in DOM-only test code.
+(globalThis as typeof globalThis & { __BLOCKTYPE_GAME__?: Phaser.Game }).__BLOCKTYPE_GAME__ = game;
