@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 0.1.4 - Runtime typing integration
+
+### 修改
+
+- `GameScene` 已接入 `TypingSystem`，移除场景内独立维护的目标锁定规则。
+- 实际游戏中的首字母选敌、锁定保持、错误输入、完成解锁、Backspace 和目标移除统一由可测试核心处理。
+- 敌人位置在每次输入时转换为 `distanceToBase`，继续保证同首字母目标优先选择最接近基地者。
+- Backspace 现在显式阻止浏览器默认行为，避免页面导航风险。
+
+### 验证
+
+- 已完成代码提交并触发专用 CI。
+- 本轮最终 CI 结果需等待 GitHub Actions 完成后确认。
+- 浏览器完整流程和独立 Vercel 项目仍未验证。
+
 ## 0.1.3 - Typing core CI compatibility fix
 
 ### 修复
