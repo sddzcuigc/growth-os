@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## 0.2.0 - User state flow
+
+### 新增
+
+- 增加开始界面；初始不生成敌人、不计键盘输入，点击“开始游戏”后才进入战斗。
+- 增加明确暂停遮罩和继续提示。
+- 结算页增加“返回首页”，并保留“再来一局”直接开战。
+- Playwright 覆盖开始、战斗、暂停、恢复、结算、重玩和返回首页完整状态闭环。
+
+### 修复
+
+- 修复 Phaser 场景重启数据保留导致“返回首页”后仍自动开始战斗的问题；返回首页现在显式使用 `autoStart:false`。
+
+### 验证
+
+- 首次 GitHub Actions Run `29877217317` 在浏览器测试中发现状态泄漏。
+- 修复后的 Run `29877451027` 成功。
+- 依赖安装、TypeScript 检查、6 组 Vitest、Vite 构建、Chromium 安装、4 组 Playwright 测试和 dist 上传全部通过。
+
 ## 0.1.9 - High-speed keyboard baseline
 
 ### 新增
