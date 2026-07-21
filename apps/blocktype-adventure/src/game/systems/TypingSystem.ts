@@ -36,7 +36,7 @@ export class TypingSystem {
 
     const selected = targets
       .filter((target) => target.word[target.progress]?.toLowerCase() === normalizedKey)
-      .toSorted((a, b) => a.distanceToBase - b.distanceToBase)[0] ?? null;
+      .sort((a, b) => a.distanceToBase - b.distanceToBase)[0] ?? null;
 
     this.state.lockedTargetId = selected?.id ?? null;
     return selected;
