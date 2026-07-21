@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## 0.1.7 - Input browser verification
+
+### 新增
+
+- 扩展 Playwright 场景快照，覆盖敌人 ID、单词、进度、位置、锁定目标和输入统计。
+- 增加同首字符最近目标锁定、锁定保持、Backspace 回退、浏览器导航抑制和场景重开状态清理测试。
+- GitHub Actions 在浏览器测试失败时上传 Playwright report、trace、截图和视频诊断；成功时跳过诊断上传。
+
+### 测试策略
+
+- 等待两个真实移动敌人后，仅将临时测试目标的单词规范化为 `stone` 和 `star`。
+- 敌人距离、移动、键盘事件、`TypingSystem` 判定、Backspace 和场景重开仍走生产代码。
+- 放弃通过覆盖全局 `Math.random` 控制 Phaser 选词的方案，因为实测无法稳定控制 `Phaser.Utils.Array.GetRandom`。
+
+### 验证
+
+- GitHub Actions Run `29866501947` 成功。
+- 依赖安装、TypeScript 检查、6 组 Vitest、Vite 构建、Chromium 安装、2 组 Playwright 测试和 dist 上传全部通过。
+
 ## 0.1.6 - Browser smoke verification
 
 ### 新增
