@@ -2,9 +2,10 @@
 
 ## P0
 
-- [ ] 在可执行环境运行 `npm install`、`npm run check`、`npm run build`。
-- [ ] 修复所有阻断构建和游戏启动的问题。
+- [x] 建立专用 GitHub Actions 工作流，自动执行 `npm install`、`npm run check`、`npm run build`。
+- [ ] 取得首次 CI 实际运行结果，并修复所有阻断构建和游戏启动的问题。
 - [ ] 增加完整游戏流程自动化测试。
+- [ ] 建立独立 Vercel 项目，将 Root Directory 设置为 `apps/blocktype-adventure`。
 
 ## P1
 
