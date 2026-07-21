@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 0.1.1 - CI validation setup
+
+### 新增
+
+- 新增 `.github/workflows/blocktype-adventure-ci.yml`。
+- 工作流在子项目目录执行依赖安装、TypeScript 类型检查和 Vite 构建。
+- 工作流仅在 BlockType Adventure 文件或自身配置变化时触发，避免影响仓库其他应用。
+
+### 修复
+
+- 移除对尚不存在 `package-lock.json` 的 npm 缓存配置，避免 CI 在安装前因缓存路径缺失失败。
+
+### 验证
+
+- 工作流文件已提交到开发分支。
+- 截至本次记录，GitHub 尚未返回首次工作流运行结果，因此不能声称构建已通过。
+- 浏览器完整流程和独立 Vercel 项目仍未验证。
+
 ## 0.1.0 - Bootstrap
 
 ### 新增
