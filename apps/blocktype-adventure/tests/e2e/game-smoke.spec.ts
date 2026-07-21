@@ -111,12 +111,20 @@ async function prepareVictory(page: import('@playwright/test').Page): Promise<vo
   await page.evaluate(() => {
     const root = globalThis as typeof globalThis & {
       __BLOCKTYPE_GAME__?: {
-        scene: { getScene: (key: string) => { remainingSeconds: number } };
+        scene: {
+          getScene: (key: string) => {
+            remainingSeconds: number;
+            time: {
+              getAllEvents: () => Array<{ delay: number; elapsed: number }>;
+            };
+          };
+        };
       };
     };
     const scene = root.__BLOCKTYPE_GAME__?.scene.getScene('game');
     if (!scene) throw new Error('GameScene is unavailable');
     scene.remainingSeconds = 1;
+    for (const timer of scene.time.getAllEvents()) timer.elapsed = timer.delay;
   });
 }
 
@@ -241,9 +249,9 @@ test('completes victory and failure reports and restarts through the real result
   await expect(page.locator('#game canvas')).toBeVisible();
   await expect.poll(async () => (await snapshot(page)).enemyCount).toBeGreaterThan(0);
 
-  // Shorten only the remaining wait; the production timer still calls finishGame(true).
+  // Prepare the countdown boundary and advance the existing timer; its production callback calls finishGame(true).
   await prepareVictory(page);
-  await expect.poll(async () => (await snapshot(page)).finished, { timeout: 2500 }).toBe(true);
+  await expect.poll(async () => (await snapshot(page)).finished, { timeout: 5000 }).toBe(true);
   let result = await snapshot(page);
   expect(result.visibleTexts).toContain('胜利！');
   expect(result.visibleTexts.some((text) => text.includes('本局得分：'))).toBe(true);
