@@ -448,7 +448,7 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.scene.restart({ autoStart: true }));
     const home = this.add.text(775, 555, '返回首页', {
       fontFamily: 'sans-serif', fontSize: '28px', color: '#ffffff', backgroundColor: '#315b78', padding: { x: 30, y: 13 }, fontStyle: 'bold',
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.scene.restart());
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.scene.restart({ autoStart: false }));
     this.overlay = this.add.container(0, 0, [dim, panel, title, report, restart, home]).setDepth(100);
   }
 }
