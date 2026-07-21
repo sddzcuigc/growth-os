@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 96" preserveAspectRatio="none" role="img" aria-labelledby="title">
+  <title id="title">绿色主按钮背景</title>
+  <defs>
+    <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#73c94d"/>
+      <stop offset="1" stop-color="#3e922f"/>
+    </linearGradient>
+  </defs>
+  <path d="M16 4h328l12 12v64l-12 12H16L4 80V16L16 4Z" fill="url(#fill)" stroke="#214f24" stroke-width="8" stroke-linejoin="round"/>
+  <path d="M18 14h324l5 5v13H13V19l5-5Z" fill="#a7e178" opacity=".55"/>
+  <path d="M18 82h324" stroke="#285f27" stroke-width="7" stroke-linecap="round" opacity=".8"/>
+</svg>
