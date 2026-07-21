@@ -17,6 +17,8 @@ type SceneSnapshot = {
   total: number;
   correct: number;
   incorrect: number;
+  completedWords: number;
+  errorKeys: Record<string, number>;
   lockedTargetId: number | null;
   enemies: EnemySnapshot[];
   visibleTexts: string[];
@@ -41,7 +43,13 @@ async function snapshot(page: import('@playwright/test').Page): Promise<SceneSna
               progress: number;
               container: { x: number };
             }>;
-            stats: { total: number; correct: number; incorrect: number };
+            stats: {
+              total: number;
+              correct: number;
+              incorrect: number;
+              completedWords: number;
+              errorKeys: Record<string, number>;
+            };
             typingSystem: { lockedTargetId: number | null };
             children: { list: TextLike[] };
             overlay?: { list: TextLike[] };
@@ -62,6 +70,8 @@ async function snapshot(page: import('@playwright/test').Page): Promise<SceneSna
       total: scene.stats.total,
       correct: scene.stats.correct,
       incorrect: scene.stats.incorrect,
+      completedWords: scene.stats.completedWords,
+      errorKeys: { ...scene.stats.errorKeys },
       lockedTargetId: scene.typingSystem.lockedTargetId,
       enemies: scene.enemies.map((enemy) => ({
         id: enemy.id,
@@ -147,6 +157,60 @@ async function prepareBaseBreach(page: import('@playwright/test').Page): Promise
     scene.baseHealth = 1;
     scene.enemies[0].container.x = 154;
   });
+}
+
+async function prepareHighSpeedTarget(page: import('@playwright/test').Page, word: string): Promise<void> {
+  await page.evaluate((targetWord) => {
+    const root = globalThis as typeof globalThis & {
+      __BLOCKTYPE_GAME__?: {
+        scene: {
+          getScene: (key: string) => {
+            enemies: Array<{
+              word: string;
+              progress: number;
+              speed: number;
+              container: { x: number; destroy: (destroyChildren?: boolean) => void };
+            }>;
+            stats: {
+              score: number;
+              combo: number;
+              maxCombo: number;
+              total: number;
+              correct: number;
+              incorrect: number;
+              completedWords: number;
+              startedAt: number;
+              errorKeys: Record<string, number>;
+            };
+            typingSystem: { reset: () => void };
+            time: { timeScale: number };
+          };
+        };
+      };
+    };
+    const scene = root.__BLOCKTYPE_GAME__?.scene.getScene('game');
+    if (!scene || scene.enemies.length === 0) throw new Error('A live enemy is required');
+
+    scene.time.timeScale = 0;
+    for (const enemy of scene.enemies.slice(1)) enemy.container.destroy(true);
+    scene.enemies.splice(1);
+
+    const target = scene.enemies[0];
+    target.word = targetWord;
+    target.progress = 0;
+    target.speed = 0;
+    target.container.x = 900;
+    scene.typingSystem.reset();
+    scene.stats.score = 0;
+    scene.stats.combo = 0;
+    scene.stats.maxCombo = 0;
+    scene.stats.total = 0;
+    scene.stats.correct = 0;
+    scene.stats.incorrect = 0;
+    scene.stats.completedWords = 0;
+    scene.stats.startedAt = Date.now();
+    scene.stats.errorKeys = {};
+  }, word);
 }
 
 async function clickRestartButton(page: import('@playwright/test').Page): Promise<void> {
@@ -300,5 +364,50 @@ test('completes victory and failure reports and restarts through the real result
   expect(restarted.correct).toBe(0);
   expect(restarted.incorrect).toBe(0);
   expect(restarted.lockedTargetId).toBeNull();
+  expect(browserErrors).toEqual([]);
+});
+
+test('receives ordered keyboard input at 10, 20, and 30 characters per second', async ({ page }) => {
+  const browserErrors = collectBrowserErrors(page);
+  const word = 'abcdefghijklmnopqrstuvwx';
+  const firstHalf = word.slice(0, 12);
+  const secondHalf = word.slice(12);
+  const wrongKey = 'z';
+
+  for (const rate of [10, 20, 30]) {
+    await page.goto('/');
+    await expect(page.locator('#game canvas')).toBeVisible();
+    await expect.poll(async () => (await snapshot(page)).enemyCount).toBeGreaterThan(0);
+    await prepareHighSpeedTarget(page, word);
+
+    await page.evaluate(() => {
+      const root = globalThis as typeof globalThis & { __BLOCKTYPE_KEY_TRACE__?: string[] };
+      root.__BLOCKTYPE_KEY_TRACE__ = [];
+      window.addEventListener('keydown', (event) => {
+        if (/^[a-zA-Z]$/.test(event.key)) root.__BLOCKTYPE_KEY_TRACE__?.push(event.key.toLowerCase());
+      }, { capture: true, once: false });
+    });
+
+    const delay = Math.round(1000 / rate);
+    await page.keyboard.type(firstHalf, { delay });
+    await page.keyboard.press(wrongKey);
+    await page.keyboard.type(secondHalf, { delay });
+
+    await expect.poll(async () => (await snapshot(page)).total).toBe(word.length + 1);
+    const state = await snapshot(page);
+    const trace = await page.evaluate(() => {
+      const root = globalThis as typeof globalThis & { __BLOCKTYPE_KEY_TRACE__?: string[] };
+      return root.__BLOCKTYPE_KEY_TRACE__ ?? [];
+    });
+
+    expect(trace.join('')).toBe(`${firstHalf}${wrongKey}${secondHalf}`);
+    expect(state.correct).toBe(word.length);
+    expect(state.incorrect).toBe(1);
+    expect(state.completedWords).toBe(1);
+    expect(state.errorKeys).toEqual({ [wrongKey]: 1 });
+    expect(state.lockedTargetId).toBeNull();
+    expect(state.enemyCount).toBe(0);
+  }
+
   expect(browserErrors).toEqual([]);
 });
