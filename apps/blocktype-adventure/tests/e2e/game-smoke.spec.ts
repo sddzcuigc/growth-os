@@ -119,18 +119,20 @@ test('locks the nearest same-initial enemy, rolls back with Backspace, and reset
   await page.goto('/');
   await expect(page.locator('#game canvas')).toBeVisible();
 
-  // Override randomness only after Phaser has initialized, then restart the real scene.
-  // Every generated word becomes "stone" without changing production code or engine startup.
+  // Keep engine startup untouched. Only subsequent enemy word selection is deterministic.
   await page.evaluate(() => {
+    const root = globalThis as typeof globalThis & { __BLOCKTYPE_ORIGINAL_RANDOM__?: () => number };
+    root.__BLOCKTYPE_ORIGINAL_RANDOM__ = Math.random;
     Math.random = () => 0.07;
   });
-  await restartScene(page);
-  await expect.poll(async () => (await snapshot(page)).enemyCount).toBeGreaterThanOrEqual(2);
+
+  await expect.poll(async () => {
+    const state = await snapshot(page);
+    return state.enemies.filter((enemy) => enemy.word.startsWith('s')).length;
+  }).toBeGreaterThanOrEqual(2);
 
   const beforeInput = await snapshot(page);
   const sameInitial = beforeInput.enemies.filter((enemy) => enemy.word.startsWith('s'));
-  expect(sameInitial.length).toBeGreaterThanOrEqual(2);
-
   const nearest = [...sameInitial].sort((a, b) => a.x - b.x)[0];
   await page.keyboard.press('s');
 
@@ -155,6 +157,10 @@ test('locks the nearest same-initial enemy, rolls back with Backspace, and reset
   expect(page.url()).toBe(urlBeforeBackspace);
   expect((await snapshot(page)).total).toBe(totalBeforeBackspace);
 
+  await page.evaluate(() => {
+    const root = globalThis as typeof globalThis & { __BLOCKTYPE_ORIGINAL_RANDOM__?: () => number };
+    if (root.__BLOCKTYPE_ORIGINAL_RANDOM__) Math.random = root.__BLOCKTYPE_ORIGINAL_RANDOM__;
+  });
   await restartScene(page);
   await expect.poll(async () => (await snapshot(page)).enemyCount).toBeGreaterThan(0);
   afterLock = await snapshot(page);
