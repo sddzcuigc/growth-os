@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 0.1.2 - Typing core tests
+
+### 新增
+
+- 新增 `src/game/systems/TypingSystem.ts`，将目标选择、锁定保持、错误输入、完成解锁、Backspace 和目标移除规则整理为纯 TypeScript 核心。
+- 新增 `TypingSystem.test.ts`，覆盖 6 类关键输入规则。
+- 新增 Vitest，并增加 `npm test` 命令。
+- CI 增加单元测试步骤。
+
+### 验证
+
+- 上一轮 `BlockType Adventure CI #10` 已完成且结论为 success，证明原有依赖安装、TypeScript 检查和 Vite 构建可以通过。
+- 本轮新增测试后的 CI 尚待最终结果，因此暂不声称新测试已在 GitHub Actions 通过。
+- `TypingSystem` 尚未接入 `GameScene`，本轮只完成可测试核心与测试基线。
+
 ## 0.1.1 - CI validation setup
 
 ### 新增
@@ -15,7 +30,7 @@
 ### 验证
 
 - 工作流文件已提交到开发分支。
-- 截至本次记录，GitHub 尚未返回首次工作流运行结果，因此不能声称构建已通过。
+- 首次专用 CI 已实际成功。
 - 浏览器完整流程和独立 Vercel 项目仍未验证。
 
 ## 0.1.0 - Bootstrap
@@ -31,5 +46,4 @@
 
 ### 验证
 
-- 尚未在当前连接环境执行依赖安装、类型检查、构建或浏览器自动化。
-- 不能将当前状态标记为“已验证 MVP”。
+- 初版当时尚未在连接环境执行依赖安装、类型检查、构建或浏览器自动化。
