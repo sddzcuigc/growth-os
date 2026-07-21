@@ -114,9 +114,7 @@ async function prepareVictory(page: import('@playwright/test').Page): Promise<vo
         scene: {
           getScene: (key: string) => {
             remainingSeconds: number;
-            time: {
-              getAllEvents: () => Array<{ delay: number; elapsed: number }>;
-            };
+            time: { timeScale: number };
           };
         };
       };
@@ -124,7 +122,7 @@ async function prepareVictory(page: import('@playwright/test').Page): Promise<vo
     const scene = root.__BLOCKTYPE_GAME__?.scene.getScene('game');
     if (!scene) throw new Error('GameScene is unavailable');
     scene.remainingSeconds = 1;
-    for (const timer of scene.time.getAllEvents()) timer.elapsed = timer.delay;
+    scene.time.timeScale = 100;
   });
 }
 
@@ -148,6 +146,17 @@ async function prepareBaseBreach(page: import('@playwright/test').Page): Promise
 }
 
 async function clickRestartButton(page: import('@playwright/test').Page): Promise<void> {
+  await page.evaluate(() => {
+    const root = globalThis as typeof globalThis & {
+      __BLOCKTYPE_GAME__?: {
+        scene: { getScene: (key: string) => { time: { timeScale: number } } };
+      };
+    };
+    const scene = root.__BLOCKTYPE_GAME__?.scene.getScene('game');
+    if (!scene) throw new Error('GameScene is unavailable');
+    scene.time.timeScale = 1;
+  });
+
   const canvas = page.locator('#game canvas');
   const box = await canvas.boundingBox();
   if (!box) throw new Error('Game canvas has no bounding box');
@@ -249,7 +258,7 @@ test('completes victory and failure reports and restarts through the real result
   await expect(page.locator('#game canvas')).toBeVisible();
   await expect.poll(async () => (await snapshot(page)).enemyCount).toBeGreaterThan(0);
 
-  // Prepare the countdown boundary and advance the existing timer; its production callback calls finishGame(true).
+  // Shorten time through the scene clock; the production countdown callback still calls finishGame(true).
   await prepareVictory(page);
   await expect.poll(async () => (await snapshot(page)).finished, { timeout: 5000 }).toBe(true);
   let result = await snapshot(page);
