@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 0.1.9 - High-speed keyboard baseline
+
+### 新增
+
+- 增加 Playwright 高速连续输入测试，覆盖 10、20、30 字符/秒。
+- 使用真实 Chromium `keydown` 事件记录接收顺序，并同时校验游戏统计、目标锁定、错误按键和单词完成结果。
+- 测试目标为 24 字符可控单词，中途插入 1 个错误字符，验证错误不改变锁定或后续顺序。
+
+### 验证
+
+- GitHub Actions Run `29873820235` 成功。
+- 依赖安装、TypeScript 检查、6 组 Vitest、Vite 构建、Chromium 安装、4 组 Playwright 测试和 dist 上传全部通过。
+- 30 字符/秒下接收字符数、顺序、正确数、错误数和完成状态均与预期一致。
+
 ## 0.1.8 - Result flow browser verification
 
 ### 新增
