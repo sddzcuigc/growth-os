@@ -3,13 +3,15 @@
 ## P0
 
 - [x] 建立专用 GitHub Actions 工作流，自动执行 `npm install`、`npm run check`、`npm run build`。
-- [ ] 取得首次 CI 实际运行结果，并修复所有阻断构建和游戏启动的问题。
+- [x] 取得首次 CI 实际运行结果：TypeScript 检查与 Vite 构建成功。
+- [ ] 确认加入 Vitest 后的新一轮 CI 全部通过。
 - [ ] 增加完整游戏流程自动化测试。
 - [ ] 建立独立 Vercel 项目，将 Root Directory 设置为 `apps/blocktype-adventure`。
 
 ## P1
 
-- [ ] 将输入锁定逻辑拆到 `TypingSystem` 并编写单元测试。
+- [x] 建立可独立测试的 `TypingSystem` 并覆盖目标锁定、错误输入、完成解锁和 Backspace。
+- [ ] 将 `GameScene` 接入 `TypingSystem`，统一运行时与测试规则。
 - [ ] 增加开始界面、暂停面板和关卡结算状态切换。
 - [ ] 为目标锁定、正确、错误和完成单词增加更清晰的动画反馈。
 - [ ] 接入原创透明 SVG：字核守卫、错字软泥、断键甲虫、字核塔。
