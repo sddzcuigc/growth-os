@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 0.1.3 - Typing core CI compatibility fix
+
+### 修复
+
+- 将 `TypingSystem` 中 ES2023 的 `Array.prototype.toSorted()` 改为 ES2022 可用的 `Array.prototype.sort()`。
+- 排序发生在 `filter()` 返回的新数组上，不会修改调用方传入的目标列表。
+
+### 验证
+
+- 修复前 `BlockType Adventure CI #24` 在 TypeScript 检查阶段失败，单元测试与构建被跳过。
+- 修复提交后的 `BlockType Adventure CI #26` 已完成且结论为 success。
+- 已真实通过依赖安装、TypeScript 检查、6 组 Vitest 单元测试和 Vite 构建。
+- 浏览器完整流程和独立 Vercel 项目仍未验证。
+
 ## 0.1.2 - Typing core tests
 
 ### 新增
@@ -11,9 +25,9 @@
 
 ### 验证
 
-- 上一轮 `BlockType Adventure CI #10` 已完成且结论为 success，证明原有依赖安装、TypeScript 检查和 Vite 构建可以通过。
-- 本轮新增测试后的 CI 尚待最终结果，因此暂不声称新测试已在 GitHub Actions 通过。
-- `TypingSystem` 尚未接入 `GameScene`，本轮只完成可测试核心与测试基线。
+- 原有依赖安装、TypeScript 检查和 Vite 构建曾通过专用 CI。
+- 初次加入测试后暴露 ES2022 兼容性问题，已在 0.1.3 修复并验证。
+- `TypingSystem` 尚未接入 `GameScene`，本阶段只完成可测试核心与测试基线。
 
 ## 0.1.1 - CI validation setup
 
