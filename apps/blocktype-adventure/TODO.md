@@ -5,8 +5,10 @@
 - [x] 建立专用 GitHub Actions 工作流，自动执行 `npm install`、`npm run check`、`npm test`、`npm run build`。
 - [x] 取得首次 CI 实际运行结果：TypeScript 检查与 Vite 构建成功。
 - [x] 确认加入 Vitest 后的 CI 全部通过，并修复 ES2022 兼容性问题。
-- [ ] 增加完整游戏流程自动化测试。
-- [ ] 建立独立 Vercel 项目，将 Root Directory 设置为 `apps/blocktype-adventure`。
+- [x] 让 CI 上传经过类型检查、单元测试和构建验证的 `dist` 产物。
+- [x] 建立并实际部署独立 Vercel Preview 项目 `blocktype-adventure`，确认根页面 HTTP 200。
+- [ ] 增加最小 Playwright 浏览器冒烟测试：页面加载、Canvas、键盘输入、Escape、刷新。
+- [ ] 在浏览器中验证胜利、失败、结算与重新开始完整流程。
 
 ## P1
 
@@ -22,6 +24,7 @@
 - [ ] 增加音效开关和 Web Audio 程序音效。
 - [ ] 增加本地最高分和设置存储。
 - [ ] 增加字母入门模式。
+- [ ] 将当前直接 API Preview 部署替换为稳定的 Git 分支自动部署流程。
 
 ## P3
 
