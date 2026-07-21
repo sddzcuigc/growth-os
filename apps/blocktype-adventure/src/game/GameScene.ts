@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { TypingSystem, type TypingTarget } from './systems/TypingSystem';
 
 type EnemyKind = 'typo-slime' | 'key-beetle';
 
@@ -33,7 +34,7 @@ const WORDS = [
 export class GameScene extends Phaser.Scene {
   private enemies: Enemy[] = [];
   private nextEnemyId = 1;
-  private lockedEnemy: Enemy | null = null;
+  private readonly typingSystem = new TypingSystem();
   private baseHealth = 5;
   private remainingSeconds = 60;
   private paused = false;
@@ -116,7 +117,7 @@ export class GameScene extends Phaser.Scene {
   private resetState(): void {
     this.enemies = [];
     this.nextEnemyId = 1;
-    this.lockedEnemy = null;
+    this.typingSystem.reset();
     this.baseHealth = 5;
     this.remainingSeconds = 60;
     this.paused = false;
@@ -202,6 +203,7 @@ export class GameScene extends Phaser.Scene {
       if (this.finished || this.paused) return;
 
       if (event.key === 'Backspace') {
+        event.preventDefault();
         this.handleBackspace();
         return;
       }
@@ -243,21 +245,29 @@ export class GameScene extends Phaser.Scene {
     this.enemies.push(enemy);
   }
 
+  private toTypingTargets(): TypingTarget[] {
+    return this.enemies.map((enemy) => ({
+      id: enemy.id,
+      word: enemy.word,
+      progress: enemy.progress,
+      distanceToBase: Math.max(enemy.container.x - 155, 0),
+    }));
+  }
+
+  private getLockedEnemy(): Enemy | null {
+    const lockedId = this.typingSystem.lockedTargetId;
+    return lockedId === null ? null : this.enemies.find((enemy) => enemy.id === lockedId) ?? null;
+  }
+
   private handleCharacter(key: string): void {
     this.stats.total += 1;
+    const result = this.typingSystem.handleCharacter(key, this.toTypingTargets());
 
-    if (!this.lockedEnemy) {
-      const candidates = this.enemies
-        .filter((enemy) => enemy.word.startsWith(key))
-        .sort((a, b) => a.container.x - b.container.x);
-      this.lockedEnemy = candidates[0] ?? null;
-    }
+    if (result.kind === 'correct') {
+      const enemy = this.enemies.find((item) => item.id === result.targetId);
+      if (!enemy) return;
 
-    const enemy = this.lockedEnemy;
-    const expected = enemy?.word[enemy.progress];
-
-    if (enemy && expected === key) {
-      enemy.progress += 1;
+      enemy.progress = result.nextProgress;
       this.stats.correct += 1;
       this.stats.combo += 1;
       this.stats.maxCombo = Math.max(this.stats.maxCombo, this.stats.combo);
@@ -266,12 +276,12 @@ export class GameScene extends Phaser.Scene {
       this.time.delayedCall(90, () => enemy.body.setFillStyle(enemy.kind === 'typo-slime' ? 0x7748a7 : 0xb6603c));
       this.feedbackText.setText('正确！保持节奏').setColor('#8cff7a');
 
-      if (enemy.progress >= enemy.word.length) {
+      if (result.completed) {
         this.completeEnemy(enemy);
       } else {
         this.renderEnemyLabel(enemy);
       }
-    } else {
+    } else if (result.kind === 'incorrect') {
       this.stats.incorrect += 1;
       this.stats.combo = 0;
       this.stats.errorKeys[key] = (this.stats.errorKeys[key] ?? 0) + 1;
@@ -284,25 +294,32 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleBackspace(): void {
-    const enemy = this.lockedEnemy;
+    const result = this.typingSystem.handleBackspace(this.toTypingTargets());
+    if (result.targetId === null || result.nextProgress === null) {
+      this.feedbackText.setText('已取消目标锁定').setColor('#fff3b0');
+      this.updateEnemyLabels();
+      this.updateInputText();
+      return;
+    }
+
+    const enemy = this.enemies.find((item) => item.id === result.targetId);
     if (!enemy) return;
 
-    if (enemy.progress > 0) {
-      enemy.progress -= 1;
-      this.renderEnemyLabel(enemy);
-      this.feedbackText.setText('已撤销一个字符').setColor('#fff3b0');
-    } else {
-      this.lockedEnemy = null;
-      this.feedbackText.setText('已取消目标锁定').setColor('#fff3b0');
-    }
+    enemy.progress = result.nextProgress;
+    this.renderEnemyLabel(enemy);
+    this.feedbackText.setText('已撤销一个字符').setColor('#fff3b0');
     this.updateInputText();
+  }
+
+  private updateEnemyLabels(): void {
+    for (const enemy of this.enemies) this.renderEnemyLabel(enemy);
   }
 
   private renderEnemyLabel(enemy: Enemy): void {
     const done = enemy.word.slice(0, enemy.progress).toUpperCase();
     const rest = enemy.word.slice(enemy.progress);
     enemy.label.setText(`${done}${rest}`);
-    enemy.label.setColor(enemy === this.lockedEnemy ? '#ffe36d' : '#ffffff');
+    enemy.label.setColor(enemy.id === this.typingSystem.lockedTargetId ? '#ffe36d' : '#ffffff');
   }
 
   private completeEnemy(enemy: Enemy): void {
@@ -310,7 +327,6 @@ export class GameScene extends Phaser.Scene {
     this.stats.score += 100 + enemy.word.length * 8;
     this.feedbackText.setText(`击破 ${enemy.word.toUpperCase()}！`).setColor('#ffe36d');
     this.removeEnemy(enemy);
-    this.lockedEnemy = null;
   }
 
   private damageBase(enemy: Enemy): void {
@@ -323,19 +339,21 @@ export class GameScene extends Phaser.Scene {
   }
 
   private removeEnemy(enemy: Enemy): void {
-    if (this.lockedEnemy?.id === enemy.id) this.lockedEnemy = null;
+    this.typingSystem.removeTarget(enemy.id);
     this.enemies = this.enemies.filter((item) => item.id !== enemy.id);
     enemy.container.destroy(true);
+    this.updateEnemyLabels();
     this.updateInputText();
   }
 
   private updateInputText(): void {
-    if (!this.lockedEnemy) {
+    const lockedEnemy = this.getLockedEnemy();
+    if (!lockedEnemy) {
       this.inputText.setText('输入任意目标的首字母开始攻击');
       return;
     }
-    const done = this.lockedEnemy.word.slice(0, this.lockedEnemy.progress).toUpperCase();
-    const rest = this.lockedEnemy.word.slice(this.lockedEnemy.progress);
+    const done = lockedEnemy.word.slice(0, lockedEnemy.progress).toUpperCase();
+    const rest = lockedEnemy.word.slice(lockedEnemy.progress);
     this.inputText.setText(`${done}${rest}`);
   }
 
@@ -370,7 +388,7 @@ export class GameScene extends Phaser.Scene {
     const topErrors = Object.entries(this.stats.errorKeys)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
-      .map(([key, count]) => `${key.toUpperCase()}(${count})`)
+      .map(([errorKey, count]) => `${errorKey.toUpperCase()}(${count})`)
       .join('、') || '无';
 
     const dim = this.add.rectangle(640, 360, 1280, 720, 0x081018, 0.78);
