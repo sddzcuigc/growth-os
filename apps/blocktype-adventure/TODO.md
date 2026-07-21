@@ -2,9 +2,9 @@
 
 ## P0
 
-- [x] 建立专用 GitHub Actions 工作流，自动执行 `npm install`、`npm run check`、`npm run build`。
+- [x] 建立专用 GitHub Actions 工作流，自动执行 `npm install`、`npm run check`、`npm test`、`npm run build`。
 - [x] 取得首次 CI 实际运行结果：TypeScript 检查与 Vite 构建成功。
-- [ ] 确认加入 Vitest 后的新一轮 CI 全部通过。
+- [x] 确认加入 Vitest 后的 CI 全部通过，并修复 ES2022 兼容性问题。
 - [ ] 增加完整游戏流程自动化测试。
 - [ ] 建立独立 Vercel 项目，将 Root Directory 设置为 `apps/blocktype-adventure`。
 
