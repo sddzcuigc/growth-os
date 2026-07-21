@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 0.1.8 - Result flow browser verification
+
+### 新增
+
+- 增加倒计时胜利、基地生命归零失败、结算字段和真实点击“再来一局”的 Playwright 浏览器闭环测试。
+- 场景快照增加基地生命、剩余时间和 `overlay` 结算容器文字。
+- 胜利路径通过加速 Phaser 场景时钟触发原生产倒计时回调；失败路径通过真实敌人越过基地边界触发原生产伤害逻辑。
+
+### 稳定性
+
+- 修复把结算文字错误地只从场景顶层 `children.list` 读取的问题。
+- 修复第二个敌人随机生成时序导致的测试抖动；夹具仅调用生产 `spawnEnemy()` 补足敌人数，不直接设置锁定或结果。
+
+### 验证
+
+- GitHub Actions Run `29870701302` 成功。
+- 依赖安装、TypeScript 检查、6 组 Vitest、Vite 构建、Chromium 安装、3 组 Playwright 测试和 dist 上传全部通过。
+
 ## 0.1.7 - Input browser verification
 
 ### 新增
