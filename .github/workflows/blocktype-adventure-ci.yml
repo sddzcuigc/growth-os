@@ -1,0 +1,42 @@
+name: BlockType Adventure CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/blocktype-adventure/**'
+      - '.github/workflows/blocktype-adventure-ci.yml'
+  push:
+    branches:
+      - feat/blocktype-adventure-bootstrap
+    paths:
+      - 'apps/blocktype-adventure/**'
+      - '.github/workflows/blocktype-adventure-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/blocktype-adventure
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/blocktype-adventure/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Type check
+        run: npm run check
+
+      - name: Build
+        run: npm run build
