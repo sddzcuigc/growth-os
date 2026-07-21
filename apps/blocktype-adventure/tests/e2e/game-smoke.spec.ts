@@ -116,14 +116,15 @@ test('locks the nearest same-initial enemy, rolls back with Backspace, and reset
     if (message.type() === 'error') browserErrors.push(message.text());
   });
 
-  // A constant random value makes every generated word "stone" in this browser only.
-  // Production randomness and runtime code remain unchanged.
-  await page.addInitScript(() => {
-    Math.random = () => 0.07;
-  });
-
   await page.goto('/');
   await expect(page.locator('#game canvas')).toBeVisible();
+
+  // Override randomness only after Phaser has initialized, then restart the real scene.
+  // Every generated word becomes "stone" without changing production code or engine startup.
+  await page.evaluate(() => {
+    Math.random = () => 0.07;
+  });
+  await restartScene(page);
   await expect.poll(async () => (await snapshot(page)).enemyCount).toBeGreaterThanOrEqual(2);
 
   const beforeInput = await snapshot(page);
