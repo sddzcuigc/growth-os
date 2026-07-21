@@ -22,6 +22,8 @@ type SceneSnapshot = {
   visibleTexts: string[];
 };
 
+type TextLike = { active?: boolean; visible?: boolean; text?: string };
+
 async function snapshot(page: import('@playwright/test').Page): Promise<SceneSnapshot> {
   return page.evaluate(() => {
     const root = globalThis as typeof globalThis & {
@@ -41,15 +43,15 @@ async function snapshot(page: import('@playwright/test').Page): Promise<SceneSna
             }>;
             stats: { total: number; correct: number; incorrect: number };
             typingSystem: { lockedTargetId: number | null };
-            children: {
-              list: Array<{ active?: boolean; visible?: boolean; text?: string }>;
-            };
+            children: { list: TextLike[] };
+            overlay?: { list: TextLike[] };
           };
         };
       };
     };
     const scene = root.__BLOCKTYPE_GAME__?.scene.getScene('game');
     if (!scene) throw new Error('GameScene is unavailable');
+    const textObjects = [...scene.children.list, ...(scene.overlay?.list ?? [])];
     return {
       active: scene.scene.isActive(),
       paused: scene.paused,
@@ -67,7 +69,7 @@ async function snapshot(page: import('@playwright/test').Page): Promise<SceneSna
         progress: enemy.progress,
         x: enemy.container.x,
       })),
-      visibleTexts: scene.children.list
+      visibleTexts: textObjects
         .filter((child) => child.active !== false && child.visible !== false && typeof child.text === 'string')
         .map((child) => child.text as string),
     };
