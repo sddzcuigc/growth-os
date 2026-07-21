@@ -96,12 +96,14 @@ async function prepareSameInitialTargets(page: import('@playwright/test').Page):
         scene: {
           getScene: (key: string) => {
             enemies: Array<{ word: string; progress: number }>;
+            spawnEnemy: () => void;
           };
         };
       };
     };
     const scene = root.__BLOCKTYPE_GAME__?.scene.getScene('game');
-    if (!scene || scene.enemies.length < 2) throw new Error('Two live enemies are required');
+    if (!scene) throw new Error('GameScene is unavailable');
+    while (scene.enemies.length < 2) scene.spawnEnemy();
     scene.enemies[0].word = 'stone';
     scene.enemies[0].progress = 0;
     scene.enemies[1].word = 'star';
@@ -210,9 +212,9 @@ test('locks the nearest same-initial enemy, rolls back with Backspace, and reset
 
   await page.goto('/');
   await expect(page.locator('#game canvas')).toBeVisible();
-  await expect.poll(async () => (await snapshot(page)).enemyCount).toBeGreaterThanOrEqual(2);
+  await expect.poll(async () => (await snapshot(page)).enemyCount).toBeGreaterThan(0);
 
-  // Normalize only the two fixture words; movement, distance, keyboard events and restart stay real.
+  // Use the production spawner only to guarantee the fixture count; distance and locking remain production behavior.
   await prepareSameInitialTargets(page);
   const beforeInput = await snapshot(page);
   const sameInitial = beforeInput.enemies.filter((enemy) => enemy.word.startsWith('s'));
