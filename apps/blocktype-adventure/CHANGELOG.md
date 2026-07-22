@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 0.2.0-publish-safeguard - Production entry protection
+
+### 运维
+
+- 核对最新分支头 `70db4cb4fe742e84289ba5215ae77cbacfb0e05b` 的专用 CI，Run `29877707451` 成功。
+- 下载并检查 Artifact `8513627055`，确认包含 HTML、CSS、JavaScript 和 SVG 构建产物。
+- 直接 API 探测部署暴露 Vercel 项目会继续执行 `vite build`，仅上传静态 HTML 会失败。
+- 在探测失败后立即创建恢复 Deployment `dpl_CqxqHuScPqHrYM4X4niWWqvPArz6`，正式域名恢复 HTTP 200。
+- 恢复部署明确跳转到旧可玩 Deployment，没有把旧版误报成最新 `0.2.0`。
+
+### 已知限制
+
+- 当前 Vercel 连接器要求逐文件传递文本，不能直接引用 CI ZIP；最新约 1.2 MB JavaScript bundle 尚未发布。
+- 下一步优先建立 GitHub Integration、Deploy Hook 或 GitHub Actions + Vercel CLI 自动发布路径。
+
 ## 0.2.0 - User state flow
 
 ### 新增
