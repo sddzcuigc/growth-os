@@ -1,5 +1,26 @@
 # CHANGELOG
 
+## 0.2.1-production - Current verified build released
+
+### 修复
+
+- 修复正式域名仍指向旧可玩部署的问题。
+- 根因是 Vercel 项目强制执行 `vite build`，而此前直接部署只上传裸 `dist` 或单个 HTML，没有 `package.json` 和 Vite，导致退出码 127。
+- 改为向现有项目提交同一 GitHub Commit 的完整 Vite 源码和依赖清单，先 Preview、后 Production。
+
+### 验证
+
+- GitHub Commit：`2b170208b2b1bd0cd19949fe11a3c361a0dd9070`。
+- GitHub Actions Run：`29891348752`，结果成功。
+- Preview：`dpl_3xVPrDT4zBJ1juDh1xS7KyLUnsTv`，`READY`。
+- Production：`dpl_E61fZQ9Gex6eaNj7S16QZeGuuijK`，`READY`。
+- 正式地址：`https://blocktype-adventure.vercel.app`，HTTP 200。
+- Vercel 输出文件名与 CI Artifact 一致：`index-BbPr42c4.js`、`index-DorHkehT.css`。
+
+### 限制
+
+- 当前发布仍是手动的 Preview → Production 流程，尚未形成 GitHub push 后自动发布。
+
 ## 0.2.1 - Combat feedback
 
 ### 新增
