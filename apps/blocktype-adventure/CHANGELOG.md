@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 0.2.1 - Combat feedback
+
+### 新增
+
+- 为锁定目标增加独立黄色轮廓，不再只依赖单词文字颜色。
+- 正确输入在目标位置产生短促绿色命中脉冲。
+- 错误输入在当前目标附近产生红色叉号局部反馈。
+- 完成单词时产生 6 个程序化击破碎片。
+
+### 架构
+
+- 所有反馈只消费 `TypingSystem` 和场景业务结果，不参与目标选择、字符判定、得分、胜负或重开。
+- 全部临时 Phaser 对象在 tween 完成后自动销毁，没有引入新依赖或概念图切片素材。
+
+### 验证
+
+- Commit `99f1392bd283dc0edda1e6d84976258e75d16279`。
+- GitHub Actions Run `29891134963` 成功。
+- 依赖安装、TypeScript、6 组 Vitest、Vite build、Chromium、4 组 Playwright 和 dist 上传全部通过。
+
 ## 0.2.0-publish-safeguard - Production entry protection
 
 ### 运维
