@@ -85,10 +85,9 @@
 
 - 决策：后续部署实验优先使用 Preview；只有完整构建产物已准备且可验证时才部署到 Production。若 Production 探测失败或覆盖异常，必须先恢复用户可访问入口，再继续开发功能。
 - 原因：Vercel 项目保留 Vite 构建配置，仅上传静态 `index.html` 仍会执行 `vite build` 并失败；Production 探测会直接影响正式别名。
-- 当前恢复方案：Production Deployment `dpl_CqxqHuScPqHrYM4X4niWWqvPArz6` 仅转发到已验证可玩的旧 Deployment，明确不代表最新分支已上线。
+- 历史恢复方案：Production Deployment `dpl_CqxqHuScPqHrYM4X4niWWqvPArz6` 曾临时指向旧可玩版本；该方案已被当前正式部署替代。
 - 放弃方案：将约 1.2 MB 构建 bundle 人工嵌入工具参数；继续用 Production 试错；把 HTTP 200 的转发页描述成新版本发布。
-- 下一步：建立 GitHub Integration、Deploy Hook 或 GitHub Actions + Vercel CLI 的自动发布路径，让 CI 通过的同一提交直接成为可追踪 Deployment。
-- 重新评估：稳定自动发布和回滚机制建立后，移除临时转发部署。
+- 重新评估：稳定自动发布和回滚机制建立后，移除手工源码发布流程。
 
 ## D-013 视觉反馈只消费业务结果
 
@@ -98,3 +97,13 @@
 - 素材边界：当前反馈使用原创程序图形与文字，不从概念图切片，不引入外部素材依赖。
 - 放弃方案：等待动画完成后才计分或移除敌人；通过身体颜色本身承担全部锁定状态；创建不销毁的粒子对象。
 - 重新评估：加入“减少动画”设置后，保留静态锁定与必要文字反馈，跳过短暂 tween，但业务结果保持完全一致。
+
+## D-014 现有 Vite 项目必须部署完整源码
+
+- 决策：在 Vercel 项目仍使用 Vite Framework Preset 时，直接部署必须提交完整源码、`package.json` 和构建配置；不得只上传裸 `dist` 或静态 `index.html`。
+- 原因：项目级 Vite 设置会执行 `vite build`，裸 `dist` 不包含 Vite 可执行文件，实际失败为退出码 127。
+- 发布流程：固定先创建 Preview，确认安装、构建、输出文件和 HTTP 状态，再用同一 Commit 的相同源码创建 Production。
+- 追溯要求：Vercel Deployment 必须记录 GitHub Commit SHA；构建后的 JS/CSS 文件名应与 CI Artifact 对照。
+- 当前正式部署：Commit `2b170208b2b1bd0cd19949fe11a3c361a0dd9070` → Production `dpl_E61fZQ9Gex6eaNj7S16QZeGuuijK`。
+- 临时性质：该流程解决当前发布，但不等于自动发布；Git Integration、Deploy Hook 或安全的 Actions 发布仍为 P0。
+- 放弃方案：覆盖已有项目为纯静态项目；在 Production 上试探不完整文件；把旧部署的 HTTP 200 当作新版本上线证据。
