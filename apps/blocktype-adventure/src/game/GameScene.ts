@@ -10,6 +10,7 @@ type Enemy = {
   progress: number;
   speed: number;
   container: Phaser.GameObjects.Container;
+  lockRing: Phaser.GameObjects.Arc;
   body: Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.Text;
 };
@@ -261,6 +262,8 @@ export class GameScene extends Phaser.Scene {
     const kind: EnemyKind = Math.random() > 0.5 ? 'typo-slime' : 'key-beetle';
     const laneY = Phaser.Utils.Array.GetRandom([470, 520, 570]);
     const bodyColor = kind === 'typo-slime' ? 0x7748a7 : 0xb6603c;
+    const lockRing = this.add.circle(0, 0, 52, 0xffe36d, 0).setStrokeStyle(5, 0xffe36d, 1).setAlpha(0);
+    lockRing.setData('role', 'target-lock');
     const body = this.add.rectangle(0, 0, 78, 70, bodyColor).setStrokeStyle(5, 0x2b1d28);
     const face = this.add.text(0, 3, kind === 'typo-slime' ? 'Aa' : '⌨', {
       fontFamily: 'monospace', fontSize: '26px', color: '#ffffff', fontStyle: 'bold',
@@ -269,10 +272,10 @@ export class GameScene extends Phaser.Scene {
       fontFamily: 'monospace', fontSize: '27px', color: '#ffffff', backgroundColor: '#15202b',
       padding: { x: 12, y: 7 }, fontStyle: 'bold',
     }).setOrigin(0.5).setStroke('#000000', 3);
-    const container = this.add.container(1220, laneY, [body, face, label]);
+    const container = this.add.container(1220, laneY, [lockRing, body, face, label]);
     this.enemies.push({
       id: this.nextEnemyId++, kind, word, progress: 0,
-      speed: kind === 'typo-slime' ? 38 : 48, container, body, label,
+      speed: kind === 'typo-slime' ? 38 : 48, container, lockRing, body, label,
     });
   }
 
@@ -302,6 +305,7 @@ export class GameScene extends Phaser.Scene {
       this.stats.maxCombo = Math.max(this.stats.maxCombo, this.stats.combo);
       this.stats.score += 10 + Math.min(this.stats.combo, 20);
       enemy.body.setFillStyle(0xf1d65c);
+      this.showHitEffect(enemy);
       this.time.delayedCall(90, () => {
         if (enemy.body.active) enemy.body.setFillStyle(enemy.kind === 'typo-slime' ? 0x7748a7 : 0xb6603c);
       });
@@ -313,8 +317,10 @@ export class GameScene extends Phaser.Scene {
       this.stats.combo = 0;
       this.stats.errorKeys[key] = (this.stats.errorKeys[key] ?? 0) + 1;
       this.feedbackText.setText(`错误：${key.toUpperCase()}，目标没有改变`).setColor('#ff7066');
+      this.showErrorEffect(this.getLockedEnemy());
       this.cameras.main.shake(90, 0.003);
     }
+    this.updateEnemyLabels();
     this.updateInputText();
     this.updateHud();
   }
@@ -342,14 +348,69 @@ export class GameScene extends Phaser.Scene {
   private renderEnemyLabel(enemy: Enemy): void {
     const done = enemy.word.slice(0, enemy.progress).toUpperCase();
     const rest = enemy.word.slice(enemy.progress);
+    const locked = enemy.id === this.typingSystem.lockedTargetId;
     enemy.label.setText(`${done}${rest}`);
-    enemy.label.setColor(enemy.id === this.typingSystem.lockedTargetId ? '#ffe36d' : '#ffffff');
+    enemy.label.setColor(locked ? '#ffe36d' : '#ffffff');
+    enemy.lockRing.setAlpha(locked ? 1 : 0);
+  }
+
+  private showHitEffect(enemy: Enemy): void {
+    const pulse = this.add.circle(enemy.container.x, enemy.container.y, 28, 0x8cff7a, 0.3)
+      .setStrokeStyle(4, 0xd7ff8a, 1)
+      .setDepth(20)
+      .setData('role', 'hit-effect');
+    this.tweens.add({
+      targets: pulse,
+      radius: 62,
+      alpha: 0,
+      duration: 170,
+      ease: 'Quad.easeOut',
+      onComplete: () => pulse.destroy(),
+    });
+  }
+
+  private showErrorEffect(enemy: Enemy | null): void {
+    const x = enemy?.container.x ?? 640;
+    const y = enemy?.container.y ?? 610;
+    const marker = this.add.text(x, y - 8, '×', {
+      fontFamily: 'sans-serif', fontSize: '58px', color: '#ff5148', fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(21).setData('role', 'error-effect');
+    this.tweens.add({
+      targets: marker,
+      y: y - 42,
+      alpha: 0,
+      scale: 1.35,
+      duration: 220,
+      ease: 'Quad.easeOut',
+      onComplete: () => marker.destroy(),
+    });
+  }
+
+  private showBreakEffect(enemy: Enemy): void {
+    for (let index = 0; index < 6; index += 1) {
+      const angle = (Math.PI * 2 * index) / 6;
+      const shard = this.add.rectangle(enemy.container.x, enemy.container.y, 12, 12, 0xffe36d)
+        .setRotation(angle)
+        .setDepth(20)
+        .setData('role', 'break-effect');
+      this.tweens.add({
+        targets: shard,
+        x: enemy.container.x + Math.cos(angle) * 72,
+        y: enemy.container.y + Math.sin(angle) * 58,
+        alpha: 0,
+        scale: 0.35,
+        duration: 260,
+        ease: 'Cubic.easeOut',
+        onComplete: () => shard.destroy(),
+      });
+    }
   }
 
   private completeEnemy(enemy: Enemy): void {
     this.stats.completedWords += 1;
     this.stats.score += 100 + enemy.word.length * 8;
     this.feedbackText.setText(`击破 ${enemy.word.toUpperCase()}！`).setColor('#ffe36d');
+    this.showBreakEffect(enemy);
     this.removeEnemy(enemy);
   }
 
