@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title desc">
+  <title id="title">错字软泥</title>
+  <desc id="desc">紫色圆角方块软泥怪，身体内有错位字母符号</desc>
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a86bd8"/>
+      <stop offset="1" stop-color="#684094"/>
+    </linearGradient>
+  </defs>
+  <path d="M28 68c0-28 21-48 52-48s52 20 52 48v44c0 15-12 28-28 28H56c-16 0-28-13-28-28V68Z" fill="url(#body)" stroke="#33213f" stroke-width="8" stroke-linejoin="round"/>
+  <path d="M42 47c7-14 21-21 38-21 13 0 25 4 33 13-14-4-27-3-37 2-12 5-19 13-23 25L42 47Z" fill="#d5a1f1" opacity=".75"/>
+  <rect x="47" y="78" width="18" height="23" rx="5" fill="#20162a"/>
+  <rect x="95" y="78" width="18" height="23" rx="5" fill="#20162a"/>
+  <path d="M56 119c13 8 35 8 48 0" fill="none" stroke="#20162a" stroke-width="7" stroke-linecap="round"/>
+  <g font-family="monospace" font-weight="700" fill="#fff" opacity=".9">
+    <text x="68" y="69" font-size="24" transform="rotate(-12 68 69)">A</text>
+    <text x="91" y="116" font-size="20" transform="rotate(10 91 116)">?</text>
+    <text x="38" y="123" font-size="18" transform="rotate(-18 38 123)">b</text>
+  </g>
+</svg>

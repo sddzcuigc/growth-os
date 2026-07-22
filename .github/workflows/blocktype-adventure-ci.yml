@@ -1,0 +1,68 @@
+name: BlockType Adventure CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/blocktype-adventure/**'
+      - '.github/workflows/blocktype-adventure-ci.yml'
+  push:
+    branches:
+      - feat/blocktype-adventure-bootstrap
+    paths:
+      - 'apps/blocktype-adventure/**'
+      - '.github/workflows/blocktype-adventure-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/blocktype-adventure
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Type check
+        run: npm run check
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser smoke test
+        run: npm run test:e2e
+
+      - name: Upload Playwright diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blocktype-playwright-diagnostics
+          path: |
+            apps/blocktype-adventure/playwright-report
+            apps/blocktype-adventure/test-results
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Upload verified dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: blocktype-adventure-dist
+          path: apps/blocktype-adventure/dist
+          if-no-files-found: error
+          retention-days: 1
