@@ -80,3 +80,12 @@
 - 放弃方案：假设 `restart()` 无参数会清空旧数据；在 `create()` 中根据界面对象猜测目标状态。
 - 验证：Playwright 先走胜利重玩，再走失败返回首页，确认敌人、统计和 `started` 均恢复到首页状态。
 - 重新评估：当开始、战斗、暂停和结算拆为独立 Phaser Scene 或正式状态机时，可移除该重启数据约定。
+
+## D-012 生产域名不得用于未经验证的部署探测
+
+- 决策：后续部署实验优先使用 Preview；只有完整构建产物已准备且可验证时才部署到 Production。若 Production 探测失败或覆盖异常，必须先恢复用户可访问入口，再继续开发功能。
+- 原因：Vercel 项目保留 Vite 构建配置，仅上传静态 `index.html` 仍会执行 `vite build` 并失败；Production 探测会直接影响正式别名。
+- 当前恢复方案：Production Deployment `dpl_CqxqHuScPqHrYM4X4niWWqvPArz6` 仅转发到已验证可玩的旧 Deployment，明确不代表最新分支已上线。
+- 放弃方案：将约 1.2 MB 构建 bundle 人工嵌入工具参数；继续用 Production 试错；把 HTTP 200 的转发页描述成新版本发布。
+- 下一步：建立 GitHub Integration、Deploy Hook 或 GitHub Actions + Vercel CLI 的自动发布路径，让 CI 通过的同一提交直接成为可追踪 Deployment。
+- 重新评估：稳定自动发布和回滚机制建立后，移除临时转发部署。
