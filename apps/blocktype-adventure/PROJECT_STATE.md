@@ -2,9 +2,9 @@
 
 ## 当前版本
 
-`0.2.0 state-flow-verified`
+`0.2.1 combat-feedback-verified`
 
-状态：`类型检查通过 / 单元测试通过 / Vite 构建通过 / Chromium 状态闭环通过 / 正式域名已恢复可用但仍指向旧游戏部署 / 最新分支尚未上线`
+状态：`类型检查通过 / 单元测试通过 / Vite 构建通过 / Chromium 核心流程通过 / 程序化战斗反馈已接入 / 正式域名仍指向旧部署`
 
 ## 项目入口
 
@@ -17,75 +17,69 @@
 ## 已可用
 
 - Vite + TypeScript + Phaser 3 项目骨架。
-- 开始界面：初始不生成敌人、不计键盘输入，点击“开始游戏”后才进入战斗。
-- 单场景“方块守卫战”，包含原创占位怪物“错字软泥”和“断键甲虫”。
-- 英文单词生成、首字符选敌、同首字符最近目标优先、逐字攻击和锁定保持。
-- 错误反馈、Backspace 撤销、Escape 暂停与明确暂停面板。
-- 基地生命、得分、连击、准确率、WPM、倒计时。
-- 胜利、失败和结算报告；可选择“再来一局”直接开战或“返回首页”。
+- 开始、战斗、暂停、胜负结算、重玩和返回首页状态闭环。
+- “方块守卫战”核心玩法与原创占位怪物“错字软泥”“断键甲虫”。
+- 首字符选敌、同首字符最近目标优先、锁定保持、逐字攻击、错误统计与 Backspace 撤销。
+- 基地生命、得分、连击、准确率、WPM、倒计时和错误按键报告。
 - `TypingSystem` 是运行时与测试共用的唯一输入规则实现。
-- 6 组 Vitest 输入规则测试和 4 组 Playwright Chromium 浏览器测试。
-
-## 当前架构
-
-- `src/main.ts`：Phaser 启动配置，并暴露浏览器测试接缝 `__BLOCKTYPE_GAME__`。
-- `src/game/GameScene.ts`：开始、战斗、暂停、结算状态及敌人、统计和画面呈现。
-- `src/game/systems/TypingSystem.ts`：确定性输入核心。
-- `tests/e2e/game-smoke.spec.ts`：状态闭环、输入、胜负、重开、刷新和高速输入验证。
-- `.github/workflows/blocktype-adventure-ci.yml`：安装、类型检查、单元测试、构建、Chromium 测试、失败诊断和 dist 上传。
+- 6 组 Vitest 与 4 组 Playwright Chromium 测试。
+- 新增程序化视觉反馈：锁定轮廓、正确命中脉冲、错误叉号、单词击破碎片。
 
 ## 本轮唯一目标
 
-确认并修复正式 Vercel 入口的部署风险，避免错误探测部署覆盖可玩页面，同时明确最新 CI 产物无法通过当前连接器直接完整上传的阻塞。
+在不引入新依赖、不改变输入规则的前提下，让锁定、正确、错误和完成四种关键状态获得清晰的局部视觉反馈。
 
 ## 验收条件与结果
 
-1. 读取最新 PR、分支头和专用 CI：通过。
-2. 确认最新分支头的 BlockType Adventure CI 成功：通过，Run `29877707451`。
-3. 确认 CI 产物可下载且包含 `index.html`、CSS、JavaScript 和 SVG：通过，Artifact `8513627055`。
-4. 正式域名不得停留在探测页或构建失败状态：通过，已恢复为可访问入口。
-5. 未完整部署最新产物时不得声称线上已更新：通过，状态明确记录为旧版转发。
+1. 锁定目标必须持续显示独立轮廓：通过，敌人容器内新增 `target-lock` 圆环并由 `TypingSystem.lockedTargetId` 驱动显隐。
+2. 正确输入必须在目标位置显示短促反馈：通过，新增 `hit-effect` 脉冲。
+3. 错误输入必须有局部提示且不改变锁定：通过，新增 `error-effect` 叉号，输入规则仍由 `TypingSystem` 决定。
+4. 完成单词必须显示击破反馈：通过，新增 6 个 `break-effect` 程序碎片。
+5. 临时对象必须自动销毁：通过，全部效果在 170–260ms tween 完成后销毁。
+6. 现有安装、类型检查、测试和构建必须继续通过：通过，BlockType Adventure CI Run `29891134963` 成功。
 
 ## 本轮实际完成
 
-- 读取 Draft PR #10，确认仍为 Draft、可合并，分支头为 `70db4cb4fe742e84289ba5215ae77cbacfb0e05b`。
-- 确认 `BlockType Adventure CI` Run `29877707451` 成功。
-- 下载并检查 CI 产物 `blocktype-adventure-dist`：包含构建后的 HTML、CSS、JavaScript 和原创 SVG。
-- 直接 API 探测部署暴露 Vercel 项目仍会执行 `vite build`，仅上传静态 HTML 会因缺少 Vite 失败；失败 Deployment 为 `dpl_13gTNJjDCdQNSc2SsHhhfqzVfyPb`。
-- 随即创建恢复部署 `dpl_CqxqHuScPqHrYM4X4niWWqvPArz6`，状态 `READY`，正式域名 HTTP 200。
-- 恢复部署仅负责将正式域名转发到已确认可玩的旧部署 `dpl_5LK3aseeuBQ957VdyALNMjEBPBWP`，没有冒充最新 `0.2.0`。
+- `Enemy` 增加独立 `lockRing`，不复用身体颜色表达锁定。
+- `renderEnemyLabel()` 同步更新文字颜色和锁定轮廓。
+- 正确输入调用 `showHitEffect()`；错误输入调用 `showErrorEffect()`；完成单词调用 `showBreakEffect()`。
+- 所有反馈均为 Phaser 程序图形或文字，没有使用概念图切片或外部版权素材。
+- 反馈对象只读取业务结果，不参与选敌、判定、得分、胜负或重开。
 
 ## 验证结果
 
-- GitHub Actions：`BlockType Adventure CI` Run `29877707451`，结果 `success`。
-- Artifact：`8513627055`，未过期，构建产物完整。
-- Vercel 恢复 Deployment：`dpl_CqxqHuScPqHrYM4X4niWWqvPArz6`，结果 `READY`。
-- 正式域名：HTTP `200`，页面标题为“方块打字冒险 · BlockType Adventure”。
-- 正式域名当前通过浏览器跳转进入旧可玩部署；最新分支仍未上线。
+- Commit：`99f1392bd283dc0edda1e6d84976258e75d16279`
+- GitHub Actions：`BlockType Adventure CI` Run `29891134963`
+- 依赖安装：成功。
+- TypeScript：成功。
+- 6 组 Vitest：成功。
+- Vite build：成功。
+- Chromium 安装：成功。
+- 4 组 Playwright：成功。
+- 验证后的 `dist` 上传：成功。
 
 ## Vercel 最新状态
 
 - Project：`blocktype-adventure`
 - 当前 Production Deployment：`dpl_CqxqHuScPqHrYM4X4niWWqvPArz6`
 - 状态：`READY`
-- 作用：保护正式入口并转发到旧可玩部署。
-- 最新 GitHub 分支与 CI 产物尚未发布到 Production。
+- 正式域名仍通过临时恢复页进入旧可玩部署，本轮 `0.2.1` 尚未上线。
+- 当前连接器没有提供修改 Git Integration 或向 GitHub 写入 Vercel Token 的安全能力，因此本轮未触碰 Production。
 
 ## 尚未验证
 
-- 一局中完整输入多个自然生成单词直到自然胜利的长流程。
-- 中文输入法 composition 事件。
-- 移动端软键盘、Firefox、Safari 和低性能设备。
-- 从 GitHub 分支或 CI Artifact 到 Vercel 的稳定自动发布流程。
+- 视觉反馈对象在低性能设备和减少动画模式下的表现。
+- Firefox、Safari、移动端软键盘和中文输入法 composition 事件。
+- 一局内持续输入多个自然生成单词直到自然结束的长流程。
+- GitHub 分支到 Vercel Production 的稳定自动发布。
 
 ## 已知问题
 
-- Vercel 直接部署连接器要求逐文件传入文本，不能直接引用本地 ZIP；主 JavaScript bundle 约 1.2 MB，不适合人工拼装到工具调用中。
-- 当前正式域名存在一次跳转，且落到旧版游戏部署。
-- 当前尚无关卡选择和难度设置。
-- 尚无音效、音量和减少动画设置。
-- 正式原创透明 SVG 素材仍不完整，场景主要使用程序图形。
+- 尚未实现“减少动画”开关，当前短动画不能由用户关闭。
+- 正式域名不是当前分支版本。
+- 正式原创透明 SVG 角色和建筑素材仍不完整。
+- 尚无关卡选择、难度设置、音效与本地记录。
 
 ## 下一轮唯一任务
 
-建立稳定的 GitHub → Vercel 自动部署路径：优先修复 Vercel Git Integration 或在 GitHub Actions 中使用 Vercel CLI/Deploy Hook，使专用 CI 全绿后自动发布 `apps/blocktype-adventure`，并验证正式域名直接加载当前分支而非跳转。完成前暂停视觉反馈功能开发。
+为程序化视觉反馈增加“减少动画”设置并持久化：默认开启动画；用户关闭后仍保留静态锁定轮廓和必要文字反馈，但跳过脉冲、叉号移动和碎片动画。使用本地存储保存设置，并在 Playwright 中验证刷新后保持。部署自动发布仍作为 P0 阻塞保留，只有获得 Git Integration 或 Vercel 凭据写入能力后再处理。
