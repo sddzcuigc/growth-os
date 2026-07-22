@@ -4,7 +4,7 @@
 
 `0.2.0 state-flow-verified`
 
-状态：`类型检查通过 / 单元测试通过 / Vite 构建通过 / Chromium 开始、暂停、战斗、结算、重玩与返回首页闭环通过 / Vercel 线上版本落后于当前分支`
+状态：`类型检查通过 / 单元测试通过 / Vite 构建通过 / Chromium 状态闭环通过 / 正式域名已恢复可用但仍指向旧游戏部署 / 最新分支尚未上线`
 
 ## 项目入口
 
@@ -36,56 +36,56 @@
 
 ## 本轮唯一目标
 
-建立完整用户状态闭环：开始界面 → 战斗 → 暂停/恢复 → 结算 → 再来一局或返回首页。
+确认并修复正式 Vercel 入口的部署风险，避免错误探测部署覆盖可玩页面，同时明确最新 CI 产物无法通过当前连接器直接完整上传的阻塞。
 
 ## 验收条件与结果
 
-1. 初始不生成敌人：通过。
-2. 初始字母输入不进入统计：通过。
-3. 点击“开始游戏”后生成敌人并开始计时：通过。
-4. Escape 显示明确暂停面板，暂停期间输入不统计：通过。
-5. 结算后“再来一局”直接进入新战斗并清空状态：通过。
-6. 结算后“返回首页”回到无敌人、零统计的开始界面：通过。
+1. 读取最新 PR、分支头和专用 CI：通过。
+2. 确认最新分支头的 BlockType Adventure CI 成功：通过，Run `29877707451`。
+3. 确认 CI 产物可下载且包含 `index.html`、CSS、JavaScript 和 SVG：通过，Artifact `8513627055`。
+4. 正式域名不得停留在探测页或构建失败状态：通过，已恢复为可访问入口。
+5. 未完整部署最新产物时不得声称线上已更新：通过，状态明确记录为旧版转发。
 
 ## 本轮实际完成
 
-- 新增 `started` 状态，生成器、倒计时、移动和键盘输入只在战斗状态运行。
-- 新增开始界面和 Canvas 内“开始游戏”按钮。
-- 新增明确暂停遮罩与继续提示。
-- 结算增加“返回首页”，保留“再来一局”。
-- Playwright 改为从真实开始按钮进入游戏，并覆盖首页、暂停面板、重玩和返回首页。
-- 首轮浏览器测试发现 Phaser 重启数据会保留 `autoStart:true`；已在返回首页时显式传入 `autoStart:false`，修复状态泄漏。
+- 读取 Draft PR #10，确认仍为 Draft、可合并，分支头为 `70db4cb4fe742e84289ba5215ae77cbacfb0e05b`。
+- 确认 `BlockType Adventure CI` Run `29877707451` 成功。
+- 下载并检查 CI 产物 `blocktype-adventure-dist`：包含构建后的 HTML、CSS、JavaScript 和原创 SVG。
+- 直接 API 探测部署暴露 Vercel 项目仍会执行 `vite build`，仅上传静态 HTML 会因缺少 Vite 失败；失败 Deployment 为 `dpl_13gTNJjDCdQNSc2SsHhhfqzVfyPb`。
+- 随即创建恢复部署 `dpl_CqxqHuScPqHrYM4X4niWWqvPArz6`，状态 `READY`，正式域名 HTTP 200。
+- 恢复部署仅负责将正式域名转发到已确认可玩的旧部署 `dpl_5LK3aseeuBQ957VdyALNMjEBPBWP`，没有冒充最新 `0.2.0`。
 
 ## 验证结果
 
-- GitHub Actions Workflow：`BlockType Adventure CI`
-- Run ID：`29877451027`
-- 结果：`success`
-- 成功步骤：依赖安装、TypeScript 检查、6 组 Vitest、Vite 构建、Chromium 安装、4 组 Playwright 测试和 dist 上传。
-- 首次 Run `29877217317` 的浏览器测试失败，准确暴露“返回首页后自动开战”的生产状态问题；修复后全绿。
+- GitHub Actions：`BlockType Adventure CI` Run `29877707451`，结果 `success`。
+- Artifact：`8513627055`，未过期，构建产物完整。
+- Vercel 恢复 Deployment：`dpl_CqxqHuScPqHrYM4X4niWWqvPArz6`，结果 `READY`。
+- 正式域名：HTTP `200`，页面标题为“方块打字冒险 · BlockType Adventure”。
+- 正式域名当前通过浏览器跳转进入旧可玩部署；最新分支仍未上线。
 
 ## Vercel 最新状态
 
 - Project：`blocktype-adventure`
-- Deployment：`dpl_5LK3aseeuBQ957VdyALNMjEBPBWP`
+- 当前 Production Deployment：`dpl_CqxqHuScPqHrYM4X4niWWqvPArz6`
 - 状态：`READY`
-- Target：`production`
-- 当前仅有这一条部署记录，因此线上地址尚未包含 `0.2.0` 本轮代码。
+- 作用：保护正式入口并转发到旧可玩部署。
+- 最新 GitHub 分支与 CI 产物尚未发布到 Production。
 
 ## 尚未验证
 
 - 一局中完整输入多个自然生成单词直到自然胜利的长流程。
 - 中文输入法 composition 事件。
 - 移动端软键盘、Firefox、Safari 和低性能设备。
-- 当前分支自动部署到 Vercel 的稳定流程。
+- 从 GitHub 分支或 CI Artifact 到 Vercel 的稳定自动发布流程。
 
 ## 已知问题
 
+- Vercel 直接部署连接器要求逐文件传入文本，不能直接引用本地 ZIP；主 JavaScript bundle 约 1.2 MB，不适合人工拼装到工具调用中。
+- 当前正式域名存在一次跳转，且落到旧版游戏部署。
 - 当前尚无关卡选择和难度设置。
 - 尚无音效、音量和减少动画设置。
 - 正式原创透明 SVG 素材仍不完整，场景主要使用程序图形。
-- 线上 Vercel 版本落后于当前 GitHub 分支。
 
 ## 下一轮唯一任务
 
-为目标锁定、正确输入、错误输入和完成单词增加一组最小、可辨识且可关闭的视觉反馈，并用 Playwright 验证反馈对象出现后会自动清理；暂不同时开发音效、关卡选择或正式角色美术。
+建立稳定的 GitHub → Vercel 自动部署路径：优先修复 Vercel Git Integration 或在 GitHub Actions 中使用 Vercel CLI/Deploy Hook，使专用 CI 全绿后自动发布 `apps/blocktype-adventure`，并验证正式域名直接加载当前分支而非跳转。完成前暂停视觉反馈功能开发。
