@@ -3,9 +3,16 @@
   "functions": {
     "api/index.js": {
       "maxDuration": 60
+    },
+    "api/family-skill-tree.js": {
+      "maxDuration": 30
     }
   },
   "rewrites": [
+    {
+      "source": "/api/family-skill-tree",
+      "destination": "/api/family-skill-tree.js"
+    },
     {
       "source": "/api/:path*",
       "destination": "/api/index.js"
