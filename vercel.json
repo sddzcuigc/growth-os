@@ -6,12 +6,31 @@
     },
     "api/family-skill-tree.js": {
       "maxDuration": 30
+    },
+    "api/skill-tree-bundle.js": {
+      "maxDuration": 15
     }
   },
   "rewrites": [
     {
       "source": "/api/family-skill-tree",
       "destination": "/api/family-skill-tree.js"
+    },
+    {
+      "source": "/skill-tree/p1.js",
+      "destination": "/api/skill-tree-bundle.js?part=1"
+    },
+    {
+      "source": "/skill-tree/p2.js",
+      "destination": "/api/skill-tree-bundle.js?part=2"
+    },
+    {
+      "source": "/skill-tree/p3.js",
+      "destination": "/api/skill-tree-bundle.js?part=3"
+    },
+    {
+      "source": "/skill-tree/p4.js",
+      "destination": "/api/skill-tree-bundle.js?part=4"
     },
     {
       "source": "/api/:path*",
