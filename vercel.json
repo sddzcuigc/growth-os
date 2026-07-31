@@ -7,6 +7,9 @@
     "api/family-skill-tree.js": {
       "maxDuration": 30
     },
+    "api/family-skill-tree-auth.js": {
+      "maxDuration": 30
+    },
     "api/skill-tree-bundle.js": {
       "maxDuration": 15
     }
@@ -15,6 +18,10 @@
     {
       "source": "/api/family-skill-tree",
       "destination": "/api/family-skill-tree.js"
+    },
+    {
+      "source": "/api/family-skill-tree-auth",
+      "destination": "/api/family-skill-tree-auth.js"
     },
     {
       "source": "/skill-tree/p1.js",
