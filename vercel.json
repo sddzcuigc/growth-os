@@ -12,6 +12,12 @@
     },
     "api/skill-tree-bundle.js": {
       "maxDuration": 15
+    },
+    "api/skill-tree-auth-app.js": {
+      "maxDuration": 30
+    },
+    "api/skill-tree-auth-client.js": {
+      "maxDuration": 15
     }
   },
   "rewrites": [
@@ -22,6 +28,14 @@
     {
       "source": "/api/family-skill-tree-auth",
       "destination": "/api/family-skill-tree-auth.js"
+    },
+    {
+      "source": "/skill-tree/auth-app.js",
+      "destination": "/api/skill-tree-auth-app.js"
+    },
+    {
+      "source": "/skill-tree/firebase-auth-client.js",
+      "destination": "/api/skill-tree-auth-client.js"
     },
     {
       "source": "/skill-tree/p1.js",
