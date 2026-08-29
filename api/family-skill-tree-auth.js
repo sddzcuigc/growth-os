@@ -242,11 +242,15 @@ async function getGoogleCertificates() {
 }
 
 function validateState(state) {
-  if (!state || typeof state !== "object" || !Array.isArray(state.children)) {
+  if (!state || typeof state !== "object" || !state.children || typeof state.children !== "object") {
     throw httpError(400, "状态数据格式无效", "INVALID_STATE");
   }
-  if (state.children.length < 1 || state.children.length > 20) {
+  const children = Array.isArray(state.children) ? state.children : Object.values(state.children);
+  if (children.length < 1 || children.length > 20) {
     throw httpError(400, "儿童档案数量无效", "INVALID_STATE");
+  }
+  if (children.some(child => !child || typeof child !== "object")) {
+    throw httpError(400, "儿童档案格式无效", "INVALID_STATE");
   }
   const json = JSON.stringify(state);
   if (Buffer.byteLength(json, "utf8") > MAX_STATE_BYTES) {
