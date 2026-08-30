@@ -1,0 +1,38 @@
+name: V22 Yunyang Edge TTS
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/v22-yunyang-tts.yml
+
+jobs:
+  synthesize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Edge TTS
+        run: pip install edge-tts
+      - name: Generate Yunyang narration segments
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p yunyang-audio
+          edge-tts --voice zh-CN-YunyangNeural --rate=+18% --text 'V二十二：孩子提交练习，家长确认后才发奖励。' --write-media yunyang-audio/01.mp3
+          edge-tts --voice zh-CN-YunyangNeural --rate=+18% --text '安安的今日任务，由后端按难度、熟练度和复习间隔生成。' --write-media yunyang-audio/02.mp3
+          edge-tts --voice zh-CN-YunyangNeural --rate=+18% --text '提交后进入待确认，经验和阳光币暂不增加。' --write-media yunyang-audio/03.mp3
+          edge-tts --voice zh-CN-YunyangNeural --rate=+18% --text '家长后台可以确认并发奖励，也可以退回重练。' --write-media yunyang-audio/04.mp3
+          edge-tts --voice zh-CN-YunyangNeural --rate=+18% --text '批准后，才更新熟练度、复习事件和奖励流水。' --write-media yunyang-audio/05.mp3
+          edge-tts --voice zh-CN-YunyangNeural --rate=+18% --text '周报只统计家长确认过的真实练习。' --write-media yunyang-audio/06.mp3
+          edge-tts --voice zh-CN-YunyangNeural --rate=+18% --text '森林继续保存长期技能果实。' --write-media yunyang-audio/07.mp3
+          edge-tts --voice zh-CN-YunyangNeural --rate=+18% --text '家庭协作、历史恢复和离线补传。' --write-media yunyang-audio/08.mp3
+          printf '%s\n' 'voice=zh-CN-YunyangNeural' 'rate=+18%' 'engine=edge-tts online Microsoft service' > yunyang-audio/VOICE.txt
+      - name: Upload Yunyang audio
+        uses: actions/upload-artifact@v4
+        with:
+          name: v22-yunyang-edge-tts
+          path: yunyang-audio/
+          retention-days: 7
