@@ -43,6 +43,12 @@ export default async function handler(req, res) {
     }
     const bytes = Buffer.from(await response.arrayBuffer());
     if (bytes.length < 1000) return res.status(502).json({ error: "Edge TTS audio payload too small", bytes: bytes.length });
+    if (String(req.query?.raw || "") === "1") {
+      res.setHeader("content-type", "audio/mpeg");
+      res.setHeader("content-length", String(bytes.length));
+      res.setHeader("content-disposition", `inline; filename=yunyang-v22-${index}.mp3`);
+      return res.status(200).send(bytes);
+    }
     return res.status(200).json({
       index,
       voice: VOICE,
