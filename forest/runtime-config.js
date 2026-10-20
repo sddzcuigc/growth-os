@@ -1,6 +1,9 @@
 // Public configuration only. Never place database tokens here.
-window.FOREST_RUNTIME = {
-  api: 'https://growth-os-ten-pearl.vercel.app/api/forest-sync',
-  health: 'https://growth-os-ten-pearl.vercel.app/api/forest-health',
-  signInReturnUrl: 'https://growth-os-ten-pearl.vercel.app/forest/'
-};
+{
+  const origin=window.__TAURI_INTERNALS__?'https://growth-os-ten-pearl.vercel.app':location.origin;
+  window.FOREST_RUNTIME = {
+    api: origin+'/api/forest-sync',
+    health: origin+'/api/forest-health',
+    signInReturnUrl: origin+'/forest/'
+  };
+}
