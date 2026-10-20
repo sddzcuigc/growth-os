@@ -10,7 +10,8 @@
     "check": "node --check app.js && node --check api/server.js && node --check api/database.js && node scripts/build-boss-catalog.mjs && node scripts/validate-product-logic.mjs",
     "test:boss-api": "node --test tests/api/boss-system.test.mjs",
     "test:api": "node --test --test-concurrency=1 tests/api/*.test.mjs",
-    "test:e2e": "playwright test tests/e2e --reporter=line"
+    "test:e2e": "playwright test tests/e2e --reporter=line",
+    "test:forest": "node --test tests/forest/*.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1"
