@@ -5,6 +5,7 @@ import {mergeSnapshots} from '../../forest/sync-core.mjs';
 const library=JSON.parse(await readFile(new URL('../../forest/skill-library.json',import.meta.url),'utf8'));
 const child={name:'示例',trees:[],coins:0,xp:0};
 const one=addLibrarySkill(child,library,'life-bag');
+assert.equal(one.last,null);assert.ok(Number.isFinite(Date.parse(one.createdAt)));
 assert.equal(addLibrarySkill(child,library,'life-bag'),one);
 one.reviews=2;assert.equal(addLibrarySkill(child,library,'life-bag').reviews,2);
 const project=addLibraryProject(child,library,'family-lunch');
@@ -26,3 +27,4 @@ assert.equal(merged.state.children.hu.projects[0].attempts.length,2);
 assert.throws(()=>addLibrarySkill(child,library,'does-not-exist'));
 for(const sk of library.skills){assert.ok(sk.steps.length>=5);assert.ok(sk.criteria.length);for(const ref of sk.sourceIds)assert.ok(library.sources[ref])}
 console.log('Roadmap PASS: stable skill references, no duplicate imports, original history preserved, project attempts merge, planning gives no rewards');
+

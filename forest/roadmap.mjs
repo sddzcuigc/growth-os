@@ -8,7 +8,7 @@ export function addLibrarySkill(child,library,id){
   const category=library.categories.find(x=>x.id===card.categoryId);
   let tree=child.trees.find(x=>x.categoryId===category.id||x.name===category.title);
   if(!tree){tree={id:'library-'+category.id,categoryId:category.id,name:category.title,theme:category.theme,meta:'从具体动作开始练习',height:90,skills:[]};child.trees.push(tree)}
-  const skill={id:'library-'+id,libraryId:id,name:card.title,type:'human',difficulty:3,reviews:0,minutes:0,last:null,story:'已加入练习计划；尚未记录掌握情况。'};
+  const skill={id:'library-'+id,libraryId:id,name:card.title,type:'human',difficulty:3,reviews:0,minutes:0,last:null,createdAt:new Date().toISOString(),story:'已加入练习计划；尚未记录掌握情况。'};
   tree.skills.push(skill);
   return skill;
 }
