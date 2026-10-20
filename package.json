@@ -12,7 +12,8 @@
     "test:api": "node --test --test-concurrency=1 tests/api/*.test.mjs",
     "test:e2e": "playwright test tests/e2e --reporter=line",
     "test:forest": "node --test tests/forest/*.mjs",
-    "build:forest-library": "node scripts/build-forest-library.mjs"
+    "build:forest-library": "node scripts/build-forest-library.mjs",
+    "build:forest-overview": "node scripts/build-forest-overview.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1"

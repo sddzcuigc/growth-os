@@ -1,11 +1,13 @@
-# 成长森林 V23
+# 成长森林 V24
 
-在原 GrowthOS 仓库中新增 /forest/ 入口及独立同步接口，保留现有应用。
+在 /forest/ 提供统一的成长森林界面：原创森林主视觉、中文排版与本地图标，具体技能路线、练习和项目结果共用已有家庭记录。
 
-首版包括 72 项具体技能、5 条通用基础路线、6 条职业探索路线及 8 个项目。查看路线后可加入技能树、开始项目并保存实际结果和复盘。加入计划不标记掌握。
+![电脑界面](previews/v24-desktop-home.png)
 
-资料：[路线设计与阶段目标](路线设计与阶段目标.md)、[全部具体技能卡](通用技能与职业路线_具体操作版.md)、[同步与交付说明](同步与交付说明.md)。
+[手机界面](previews/v24-phone-home.png) · [技能操作卡](previews/v24-desktop-skill-guide.png) · [离线技能树总览](技能树总览.html) · [视觉规范与资产](design/视觉规范与资产.md)
 
-运行断言检查：npm run test:forest。修改技能生成器后运行 npm run build:forest-library；模板入口在 scripts/build-forest-library.mjs。
+保留 72 项技能、11 条路线、8 个项目，以及自动同步、离线补传、冲突、账号隔离和事件去重。页面升级为 V24，数据协议兼容 23；不重置孩子的记录。
 
-本仓库通过 Vercel 路由提供 /forest/；完整独立开发工程、Tauri 工程、四项后端回归及浏览器验证脚本在本轮离线交付包中。手机和平板测试是浏览器模拟，生产 Firebase 账号、实机及教学效果尚未完成验收。
+运行相关检查：npm run test:forest。技能内容入口为 scripts/build-forest-library.mjs；离线图谱入口为 scripts/build-forest-overview.mjs。
+
+完整开发工程、原生工程、脚本、测试与证据保存在 deliveries/ 下版本化交付中。手机和平板是浏览器模拟，实机、原生安装包、生产账号和真实儿童体验尚未验收。生产网站尚未发布。
