@@ -1,5 +1,5 @@
-const CACHE='cui-growth-v24-art-shell-1';
-const APP=['./','./index.html','./forest-design.css','./visual-design.mjs','./visual-icons.mjs','./assets/forest-hero-v24.webp','./manifest.webmanifest','./sync-core.mjs','./roadmap.mjs','./skill-library.json','./runtime-config.js','./vendor/firebase-app-compat.js','./vendor/firebase-auth-compat.js','./icons/icon-192.png','./icons/icon-512.png','./assets/oak.webp','./assets/sakura.webp','./assets/orange.webp','./assets/beanstalk.webp','./assets/willow.webp','./assets/ginkgo.webp','./assets/pine.webp'];
+const CACHE='cui-growth-v25-feature-restoration-1';
+const APP=['./','./index.html','./forest-design.css?v=25','./visual-design.mjs?v=25','./visual-icons.mjs','./assets/forest-hero-v24.webp','./manifest.webmanifest','./sync-core.mjs','./roadmap.mjs','./skill-library.json','./runtime-config.js','./vendor/firebase-app-compat.js','./vendor/firebase-auth-compat.js','./icons/icon-192.png','./icons/icon-512.png','./assets/oak.webp','./assets/sakura.webp','./assets/orange.webp','./assets/beanstalk.webp','./assets/willow.webp','./assets/ginkgo.webp','./assets/pine.webp'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(APP)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('cui-growth-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',e=>{
