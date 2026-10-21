@@ -18,6 +18,9 @@ assert.equal(child.trees.flatMap(t=>t.skills).filter(s=>s.libraryId==='life-bag'
 const existing={trees:[{id:'prior',name:'自定义',skills:[{id:'prior-skill',name:one.name,reviews:9}]}]};
 assert.equal(addLibrarySkill(existing,library,'life-bag').id,'prior-skill');
 assert.equal(existing.trees[0].skills[0].reviews,9);
+const legacyBag={trees:[{id:'life',skills:[{id:'legacy-bag',name:'系塑料袋',reviews:7,minutes:70}]}]};
+assert.equal(addLibrarySkill(legacyBag,library,'life-bag').id,'legacy-bag');assert.equal(legacyBag.trees[0].skills.length,1);assert.equal(legacyBag.trees[0].skills[0].minutes,70);
+const both={trees:[{skills:[{id:'legacy',name:'系塑料袋'},{id:'linked',libraryId:'life-bag'}]}]};assert.equal(addLibrarySkill(both,library,'life-bag').id,'linked');
 const base={children:{hu:child}},left=structuredClone(base),right=structuredClone(base);
 left.children.hu.projects[0].attempts.push({id:'left',result:'独立核账'});
 right.children.hu.projects[0].attempts.push({id:'right',result:'成人示范后炒蛋'});
@@ -27,4 +30,3 @@ assert.equal(merged.state.children.hu.projects[0].attempts.length,2);
 assert.throws(()=>addLibrarySkill(child,library,'does-not-exist'));
 for(const sk of library.skills){assert.ok(sk.steps.length>=5);assert.ok(sk.criteria.length);for(const ref of sk.sourceIds)assert.ok(library.sources[ref])}
 console.log('Roadmap PASS: stable skill references, no duplicate imports, original history preserved, project attempts merge, planning gives no rewards');
-

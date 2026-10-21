@@ -1,0 +1,13 @@
+{
+  "status": "PASS",
+  "checks": [
+    "desktop: four main tabs; three home sections; both themes render, persist, work offline and preserve child records",
+    "desktop: skill instructions, all eight project entries, actual project result, themed trees, keyboard dialog, growth rewards and grouped settings work",
+    "tablet: four main tabs; three home sections; both themes render, persist, work offline and preserve child records",
+    "tablet: skill instructions, all eight project entries, actual project result, themed trees, keyboard dialog, growth rewards and grouped settings work",
+    "phone: four main tabs; three home sections; both themes render, persist, work offline and preserve child records",
+    "phone: skill instructions, all eight project entries, actual project result, themed trees, keyboard dialog, growth rewards and grouped settings work"
+  ],
+  "deviceMode": "Edge; 1440/1024/820/390/360px viewports; physical devices not certified",
+  "at": "2026-10-21T13:21:47.351Z"
+}

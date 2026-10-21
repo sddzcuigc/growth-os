@@ -37,3 +37,5 @@ html[data-theme="blocks"] .ui-icon{stroke-linecap:square;stroke-linejoin:miter}
 
 body[data-view="growth"] .growth-extras .resources-row{display:flex}
 @media(max-width:700px){.hero-copy h2 em{display:block;white-space:nowrap}}
+
+.roadmap-search{display:grid;gap:7px;padding:0 26px;margin:18px 0 12px;font-size:13px;font-weight:600;color:var(--ink)}.roadmap-search input{width:100%;min-height:46px;border:1px solid var(--line);border-radius:11px;padding:11px 14px;background:var(--paper);color:var(--ink);font-weight:400}.skill-search-status{font-size:13px;color:var(--muted);margin:3px 0 18px}.skill-search-results{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.skill-search-results:empty{display:none}html[data-theme="blocks"] .roadmap-search input{border-radius:4px}@media(max-width:700px){.roadmap-search{padding:0 17px;margin-top:14px;font-size:12px}.skill-search-results{grid-template-columns:1fr}.roadmap-actions button{min-height:44px}}

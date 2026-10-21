@@ -1,0 +1,15 @@
+{
+  "status": "PASS",
+  "checks": [
+    "desktop: search opens concrete steps; join and existing-skill actions go straight to practice; cancelling gives no reviews, XP or duplicate skills",
+    "desktop: project back-link and practice detour preserve both unsaved fields within the page",
+    "desktop: drafts are child-specific, saving clears them, and changed-child context cannot submit a stale form",
+    "desktop: offline search and concrete steps work without horizontal overflow",
+    "phone: search opens concrete steps; join and existing-skill actions go straight to practice; cancelling gives no reviews, XP or duplicate skills",
+    "phone: project back-link and practice detour preserve both unsaved fields within the page",
+    "phone: drafts are child-specific, saving clears them, and changed-child context cannot submit a stale form",
+    "phone: offline search and concrete steps work without horizontal overflow"
+  ],
+  "mode": "Edge desktop and phone emulation; explicit synthetic local identities",
+  "at": "2026-10-21T13:21:36.805Z"
+}
