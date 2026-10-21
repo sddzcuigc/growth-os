@@ -1,0 +1,17 @@
+{
+  "runId": "devices-1792551882994",
+  "identity": "Explicit local development identity; real HTTP and SQLite; no production login claimed",
+  "deviceMode": "Three isolated Chromium contexts; Android/iPad viewports are emulated, not physical-device certification",
+  "checks": [
+    "three devices read one family",
+    "selected child stays local to each device",
+    "desktop skill appears on phone and tablet without manual sync",
+    "offline practice survives reload, resends after reconnect, approval syncs once",
+    "simultaneous conflicting changes preserve both copies and pause overwriting",
+    "switching accounts does not upload another family record",
+    "switching back restores the original family",
+    "no JavaScript page errors and no horizontal overflow"
+  ],
+  "status": "PASS",
+  "at": "2026-10-21T03:05:05.192Z"
+}

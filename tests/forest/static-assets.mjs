@@ -10,3 +10,7 @@ assert.match((await request('visual-icons.mjs')).headers['content-type'],/javasc
 assert.match((await request('assets/lucide-license.txt')).headers['content-type'],/text\/plain/);
 assert.equal((await request('../api/database.js')).status,404);
 console.log('Static assets PASS: offline shell resources available, CSS/module/license MIME correct, private paths rejected');
+
+assert.match((await request('themes.css')).headers['content-type'],/text\/css/);
+assert.match((await request('themes.mjs')).headers['content-type'],/javascript/);
+assert.match((await request('assets/voxel-world.svg')).headers['content-type'],/image\/svg\+xml/);

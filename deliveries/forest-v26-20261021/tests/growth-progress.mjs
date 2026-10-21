@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {growthProgress} from '../visual-design.mjs';
+const now=new Date(2026,9,21,14),at=(day)=>new Date(2026,9,day,10).toISOString();
+const child={streak:99,trees:[{name:'生活技能树',skills:[{name:'系塑料袋',reviews:1}]}],reviewsHistory:[{minutes:10,at:at(20)},{minutes:10,at:at(21)},{minutes:10,at:at(21)},{minutes:10,at:'invalid'},{minutes:10,at:at(23)}]};
+const before=JSON.stringify(child),p=growthProgress(child,now);
+assert.equal(p.streak,2);assert.equal(p.week.filter(d=>d.done).length,2);assert.equal(p.next.remaining,1);assert.equal(p.next.label,'铜果实');assert.equal(p.badges.filter(b=>b.done).length,1);assert.equal(JSON.stringify(child),before);
+assert.equal(growthProgress({...child,reviewsHistory:[]},now).streak,0);
+assert.equal(growthProgress({...child,reviewsHistory:[{minutes:10,at:at(20)}]},now).streak,1);
+assert.equal(growthProgress({trees:[{name:'生活技能树',skills:[{reviews:8}]}]},now).next,null);
+assert.equal(growthProgress({trees:[]},now).next,null);
+console.log('Growth feedback PASS: dated records, duplicate days, future/invalid dates, no fabricated streak, original data unchanged');

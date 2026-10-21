@@ -1,0 +1,44 @@
+{
+  "name": "cui-family-growth-forest",
+  "version": "26.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev-server.mjs",
+    "test:backend": "node tests/backend-roundtrip.mjs",
+    "build:web": "node scripts/build-web.mjs",
+    "validate": "node scripts/validate.mjs",
+    "preview": "python3 -m http.server 4173 -d dist",
+    "tauri": "tauri",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build",
+    "android:init": "tauri android init",
+    "android:dev": "tauri android dev",
+    "android:build": "tauri android build",
+    "ios:init": "tauri ios init",
+    "ios:dev": "tauri ios dev",
+    "ios:build": "tauri ios build",
+    "test:tasks": "node tests/task-engine.mjs",
+    "test:weekly": "node tests/weekly-report.mjs",
+    "test:verified": "node tests/approval-flow.mjs",
+    "dev:local": "node scripts/dev-server.mjs --dev-auth",
+    "test:sync": "node tests/sync-core.mjs",
+    "test:multi-device": "node tests/multi-device.mjs",
+    "test:roadmap": "node tests/roadmap.mjs",
+    "test:atomic": "node tests/atomic-sync.mjs",
+    "build:library": "node scripts/build-skill-library.mjs",
+    "build:overview": "node scripts/build-roadmap-overview.mjs",
+    "test:features": "node tests/feature-parity.mjs",
+    "build:themes": "node scripts/build-theme-art.mjs"
+  },
+  "dependencies": {
+    "libsql": "^0.5.29"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.0",
+    "@playwright/test": "^1.61.1"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}

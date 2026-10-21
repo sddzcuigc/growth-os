@@ -69,5 +69,5 @@ export function mountRoadmap({getChild,onChange,notify}){
   }
   document.querySelectorAll('[data-open-roadmap]').forEach(button=>button.onclick=()=>open());
   document.addEventListener('click',event=>{const button=event.target.closest('[data-open-project],[data-open-route]');if(!button)return;if(button.dataset.openProject)open(button.dataset.openProject,'project');else open(button.dataset.openRoute,'route')});
-  return {open,openProject:id=>open(id,'project'),openRoute:id=>open(id,'route')};
+  return {load,open,openProject:id=>open(id,'project'),openRoute:id=>open(id,'route')};
 }

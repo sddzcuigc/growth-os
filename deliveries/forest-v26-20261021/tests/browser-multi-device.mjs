@@ -1,0 +1,74 @@
+import assert from 'node:assert/strict';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+const output=fileURLToPath(new URL('../evidence/',import.meta.url));
+export async function run(page,{baseURL='http://127.0.0.1:18787'}={}){
+  await mkdir(output,{recursive:true});
+  const browser=page.context().browser(),id='devices-'+Date.now(),url=baseURL+'/?devUser='+id;
+  const desktopContext=await browser.newContext({viewport:{width:1440,height:1000}});
+  const phoneContext=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36'});
+  const tabletContext=await browser.newContext({viewport:{width:820,height:1180},isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'});
+  const desktop=await desktopContext.newPage(),phone=await phoneContext.newPage(),tablet=await tabletContext.newPage();
+  const errors=[];for(const p of[desktop,phone,tablet])p.on('pageerror',e=>errors.push(String(e)));
+  const waitSynced=async p=>{await p.bringToFront();await p.waitForFunction(()=>document.getElementById('syncBadge')?.textContent.startsWith('已同步')&&localStorage.getItem('cui-growth-v18-cloud-dirty')!=='1',{},{timeout:20000})};
+  const navigate=async(p,name)=>{if(name==='atlas')await p.locator('[data-view="forest"]:visible').first().click();if(name==='review')await p.locator('[data-view="home"]:visible').first().click();await p.locator(`[data-view="${name}"]:visible`).first().click()};
+  const addSkill=async(p,name)=>{await navigate(p,'forest');await p.locator('#addSkillTop').click();await p.locator('#formChild').selectOption('hu');await p.locator('#formTree').selectOption({label:'生活技能树'});await p.locator('#formName').fill(name);await p.locator('#formStory').fill('用于实际生活项目的小技能练习。');await p.locator('#saveEdit').click()};
+  const readSkill=async(p,name)=>{await p.bringToFront();await navigate(p,'atlas');await p.waitForFunction(n=>document.getElementById('atlasGrid')?.textContent.includes(n),name,{timeout:20000})};
+  const stored=async p=>p.evaluate(()=>JSON.parse(localStorage.getItem('cui-growth-game-v21-state')));
+  const bodyOf=async(p,action,body)=>p.evaluate(async({baseURL,id,action,body})=>{const r=await fetch(baseURL+'/api/family-skill-tree-auth?action='+action,{method:'POST',headers:{'content-type':'application/json','x-dev-user':id+'|'+id+'@example.com'},body:JSON.stringify(body)});return{status:r.status,data:await r.json()}},{baseURL,id,action,body});
+  const report={runId:id,identity:'Explicit local development identity; real HTTP and SQLite; no production login claimed',deviceMode:'Three isolated Chromium contexts; Android/iPad viewports are emulated, not physical-device certification',checks:[]};
+  try{
+    await desktop.goto(url);await waitSynced(desktop);
+    await Promise.all([phone.goto(url),tablet.goto(url)]);await Promise.all([waitSynced(phone),waitSynced(tablet)]);
+    report.checks.push('three devices read one family');
+    await tablet.locator('[data-child="anan"]:visible').first().click();
+    await new Promise(r=>setTimeout(r,4500));
+    assert.equal((await stored(desktop)).current,'hu');assert.equal((await stored(phone)).current,'hu');assert.equal((await stored(tablet)).current,'anan');
+    await tablet.locator('[data-child="hu"]:visible').first().click();
+    report.checks.push('selected child stays local to each device');
+    const skill='按清单买菜';await addSkill(desktop,skill);await waitSynced(desktop);
+    await readSkill(phone,skill);await readSkill(tablet,skill);
+    await phone.screenshot({path:output+'/01-phone-synced-skill.png',fullPage:false});
+    await tablet.screenshot({path:output+'/02-tablet-synced-skill.png',fullPage:false});
+    report.checks.push('desktop skill appears on phone and tablet without manual sync');
+    await navigate(phone,'home');await phone.waitForSelector('[data-daily-task]');
+    await phone.evaluate(async()=>{await navigator.serviceWorker.ready});await phone.waitForFunction(()=>!!navigator.serviceWorker.controller);
+    const before=(await stored(phone)).children.hu.coins;
+    const taskId=await phone.locator('[data-daily-task]').first().getAttribute('data-daily-task');
+    await phoneContext.setOffline(true);await phone.locator(`[data-daily-task="${taskId}"]`).click();
+    assert.equal(await phone.evaluate(()=>JSON.parse(localStorage.getItem('cui-growth-v20-event-queue')).length),1);
+    assert.equal((await stored(phone)).children.hu.coins,before);
+    await phone.reload({waitUntil:'domcontentloaded'});await phone.waitForFunction(()=>JSON.parse(localStorage.getItem('cui-growth-v20-event-queue')||'[]').length===1);
+    await phone.screenshot({path:output+'/03-phone-offline-queue.png',fullPage:false});
+    await phoneContext.setOffline(false);await phone.waitForFunction(()=>JSON.parse(localStorage.getItem('cui-growth-v20-event-queue')||'[]').length===0,{},{timeout:20000});
+    await navigate(desktop,'parent');await desktop.locator('.settings-group>summary').filter({hasText:'家庭与练习确认'}).click();await desktop.bringToFront();await desktop.waitForSelector('[data-approve]',{timeout:20000});
+    const submissionId=await desktop.locator('[data-approve]').first().getAttribute('data-approve');
+    await desktop.screenshot({path:output+'/04-desktop-approval.png',fullPage:false});
+    await desktop.locator(`[data-approve="${submissionId}"]`).click();
+    await waitSynced(desktop);await phone.bringToFront();await phone.waitForFunction(n=>Number(document.getElementById('coins').textContent)>n,before,{timeout:20000});
+    const after=(await stored(phone)).children.hu.coins;
+    const duplicate=await bodyOf(tablet,'review-practice',{submissionId,decision:'approve'});assert.equal(duplicate.status,200);
+    await waitSynced(tablet);assert.equal((await stored(tablet)).children.hu.coins,after);
+    await phone.screenshot({path:output+'/05-phone-approved-growth.png',fullPage:false});
+    report.checks.push('offline practice survives reload, resends after reconnect, approval syncs once');
+    await Promise.all([waitSynced(desktop),waitSynced(phone)]);
+    await Promise.all([desktopContext.setOffline(true),phoneContext.setOffline(true)]);
+    await addSkill(desktop,'识别新鲜食材');await addSkill(phone,'安全整理采购袋');
+    await desktopContext.setOffline(false);await waitSynced(desktop);
+    await phoneContext.setOffline(false);await phone.bringToFront();await phone.waitForSelector('#syncConflict:not([hidden])',{timeout:20000});
+    const conflict=await phone.evaluate(()=>JSON.parse(localStorage.getItem('cui-growth-v23-conflict')));
+    assert.ok(conflict.paths.length);assert.ok(JSON.stringify(conflict.local).includes('安全整理采购袋'));assert.ok(JSON.stringify(conflict.remote).includes('识别新鲜食材'));
+    await phone.screenshot({path:output+'/06-phone-conflict-preserved.png',fullPage:false});
+    report.checks.push('simultaneous conflicting changes preserve both copies and pause overwriting');
+    const other=id+'-other';await tablet.goto(baseURL+'/?devUser='+other);await waitSynced(tablet);
+    assert.ok(!JSON.stringify(await stored(tablet)).includes(skill));
+    assert.equal(await tablet.evaluate(()=>JSON.parse(localStorage.getItem('cui-growth-v20-event-queue')||'[]').length),0);
+    report.checks.push('switching accounts does not upload another family record');
+    await tablet.goto(url);await waitSynced(tablet);assert.ok(JSON.stringify(await stored(tablet)).includes(skill));
+    report.checks.push('switching back restores the original family');
+    for(const [name,p]of[['phone',phone],['tablet',tablet],['desktop',desktop]]){const dimensions=await p.evaluate(()=>({width:innerWidth,content:document.documentElement.scrollWidth}));assert.ok(dimensions.content<=dimensions.width,`${name} horizontal overflow`)}
+    assert.deepEqual(errors,[]);report.checks.push('no JavaScript page errors and no horizontal overflow');
+    report.status='PASS';report.at=new Date().toISOString();await writeFile(output+'/browser-multi-device.json',JSON.stringify(report,null,2));return report;
+  }catch(error){report.status='FAIL';report.error=String(error.stack||error);report.pageErrors=errors;await Promise.all([desktop.screenshot({path:output+'/failure-desktop.png'}).catch(()=>{}),phone.screenshot({path:output+'/failure-phone.png'}).catch(()=>{})]);await writeFile(output+'/browser-multi-device.json',JSON.stringify(report,null,2));throw new Error(report.checks.join(' | ')+'\n'+error.stack)}
+  finally{await Promise.all([desktopContext.close(),phoneContext.close(),tabletContext.close()])}
+}
