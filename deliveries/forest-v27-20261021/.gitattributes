@@ -1,0 +1,2 @@
+# Preserve delivery bytes so Git checkout does not invalidate CHECKSUMS.json.
+* -text

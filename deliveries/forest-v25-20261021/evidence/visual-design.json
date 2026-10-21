@@ -1,0 +1,10 @@
+{
+  "status": "PASS",
+  "checks": [
+    "desktop: artwork and stylesheet loaded, all views fit, route and project entry work, result saved, modal keyboard focus and Escape work",
+    "tablet: artwork and stylesheet loaded, all views fit, route and project entry work, result saved, modal keyboard focus and Escape work",
+    "phone: artwork and stylesheet loaded, all views fit, route and project entry work, result saved, modal keyboard focus and Escape work"
+  ],
+  "deviceMode": "Edge desktop with 1440px, 820px and 360/390px viewports; mobile devices are emulated",
+  "at": "2026-10-21T02:39:51.823Z"
+}

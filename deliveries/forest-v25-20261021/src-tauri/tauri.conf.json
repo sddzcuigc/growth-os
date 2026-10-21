@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "崔家成长森林",
+  "version": "25.0.0",
+  "identifier": "com.cuifamily.growthforest",
+  "build": {
+    "beforeBuildCommand": "npm run build:web",
+    "beforeDevCommand": "npm run build:web",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "崔家成长森林",
+        "width": 1280,
+        "height": 860,
+        "minWidth": 360,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "../icons/icon-32.png",
+      "../icons/icon-128.png",
+      "../icons/icon-512.png"
+    ]
+  }
+}

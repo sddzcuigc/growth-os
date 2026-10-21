@@ -1,0 +1,19 @@
+{
+  "version": 25,
+  "implementedAt": "2026-10-21",
+  "dataProtocol": 23,
+  "change": "Restore original functionality and complete application entry; keep original art inside real UI",
+  "tests": [
+    "feature-parity.json",
+    "browser-multi-device.json",
+    "browser-roadmap.json",
+    "visual-design.json",
+    "overview.json"
+  ],
+  "branch": "codex/forest-v23-skill-routes",
+  "pullRequest": "https://github.com/sddzcuigc/growth-os/pull/11",
+  "limitations": [
+    "Browser emulation, no real-device/native installer acceptance",
+    "No production-account cloud acceptance or production publish"
+  ]
+}

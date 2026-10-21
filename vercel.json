@@ -18,9 +18,35 @@
     },
     "api/skill-tree-auth-client.js": {
       "maxDuration": 15
+    },
+    "api/forest-app.js": {
+      "maxDuration": 15,
+      "includeFiles": "forest/**"
+    },
+    "api/forest-sync.js": {
+      "maxDuration": 30
+    },
+    "api/forest-health.js": {
+      "maxDuration": 15
     }
   },
   "rewrites": [
+    {
+      "source": "/forest",
+      "destination": "/api/forest-app.js"
+    },
+    {
+      "source": "/forest/:path*",
+      "destination": "/api/forest-app.js?asset=:path*"
+    },
+    {
+      "source": "/api/forest-sync",
+      "destination": "/api/forest-sync.js"
+    },
+    {
+      "source": "/api/forest-health",
+      "destination": "/api/forest-health.js"
+    },
     {
       "source": "/api/family-skill-tree",
       "destination": "/api/family-skill-tree.js"

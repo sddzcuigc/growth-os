@@ -1,0 +1,19 @@
+[package]
+name = "cui-growth-forest"
+version = "26.0.0"
+description = "崔家成长森林跨平台客户端"
+authors = ["Cui Family"]
+edition = "2021"
+
+[lib]
+name = "cui_growth_forest_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+

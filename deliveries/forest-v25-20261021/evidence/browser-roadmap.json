@@ -1,0 +1,10 @@
+{
+  "checks": [
+    "concrete skill steps, unique import and guide reference sync to second device",
+    "project uses shared skill IDs and actual attempt/reflection sync without duplicated rewards",
+    "career branch includes prerequisites, concrete task, evaluation and original documentation link",
+    "installed app shell reopens full skill catalogue while offline"
+  ],
+  "status": "PASS",
+  "at": "2026-10-21T02:39:45.230Z"
+}

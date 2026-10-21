@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "mode": "Real application, explicit local-only mode; no development identity or production-login claim",
+  "checks": [
+    "original controls and restored reward, streak, badges and combo are present",
+    "skill workspace creates a real tree and skill",
+    "legacy backup imports; fifth skill is reachable and practice updates history, fruit rank and dated streak",
+    "export and reload preserve all original skill IDs and new practice",
+    "account login and sync/family/goal/install controls remain reachable",
+    "all four trees remain rendered at 1440/1024/820/390/360px; no horizontal page overflow",
+    "downloaded HTML gives launcher instructions; read-only guide is clearly separated from the application"
+  ],
+  "at": "2026-10-21T13:20:54.405Z"
+}
